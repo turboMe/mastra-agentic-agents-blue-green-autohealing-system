@@ -21,6 +21,15 @@ import {
   rssSearchArticlesTool,
   rssCreateDigestTool,
 } from '../tools/rss/rss-tools.js';
+import { searchWebTool, findCompanyLinksTool } from '../tools/search/tavily.js';
+import {
+  knowledgeQueryTool,
+  knowledgeQueryMultiTool,
+  knowledgeListNotebooksTool,
+  knowledgeCreateNotebookTool,
+  knowledgeAddSourceTool,
+  knowledgeDeleteNotebookTool,
+} from '../tools/knowledge/knowledge-tools.js';
 import { loadPrompt } from '../lib/prompt-loader.js';
 
 export const marketingAgent = new Agent({
@@ -57,5 +66,15 @@ export const marketingAgent = new Agent({
     // Shared memory
     addContextTool,
     pushSignalTool,
+    // Search (Tavily)
+    searchWebTool,
+    findCompanyLinksTool,
+    // Knowledge (NotebookLM)
+    knowledgeQueryTool,
+    knowledgeQueryMultiTool,
+    knowledgeListNotebooksTool,
+    knowledgeCreateNotebookTool,
+    knowledgeAddSourceTool,
+    knowledgeDeleteNotebookTool,
   },
 });

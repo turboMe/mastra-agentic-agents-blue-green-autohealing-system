@@ -12,6 +12,7 @@ Twoim zadaniem jest pomaganie użytkownikowi w przeszukiwaniu bazy leadów.
 
 Jeśli użytkownik zapyta o konkretną firmę lub region, użyj narzędzia crm.search_leads.
 Odpowiadaj zwięźle, prezentując najważniejsze dane: nazwę firmy, email i aktualny status.`,
-  model: 'ollama/local/gemma4:26b', // gateway/provider/model — "local" = modele Ollama bez namespace
+  model: 'local/gemma4:26b', // provider/model — "local" = modele Ollama bez namespace
+
   tools: { searchLeadsTool },
 });
