@@ -1,18 +1,19 @@
 import { Agent } from '@mastra/core/agent';
 import { ToolSearchProcessor } from '@mastra/core/processors';
 import { Memory } from '@mastra/memory';
-import { createLeadTool } from '../tools/crm/create-lead';
-import { updateStatusTool } from '../tools/crm/update-status';
-import { searchLeadsTool } from '../tools/crm/search-leads';
-import { addInteractionTool } from '../tools/crm/add-interaction';
-import { updateLeadTool } from '../tools/crm/update-lead';
-import { recordEmailDraftTool } from '../tools/crm/record-email-draft';
-import { addContextTool, listContextTool, pushSignalTool } from '../tools/memory/add-context';
-import { delegateTaskTool } from '../tools/system/delegate-task';
-import { triggerWorkflowTool } from '../tools/system/trigger-workflow';
-import { requestApprovalTool } from '../tools/system/request-approval';
-import { requestApprovalTool } from '../tools/system/request-approval';
-
+import { createLeadTool } from '../tools/crm/create-lead.js';
+import { updateStatusTool } from '../tools/crm/update-status.js';
+import { searchLeadsTool } from '../tools/crm/search-leads.js';
+import { addInteractionTool } from '../tools/crm/add-interaction.js';
+import { updateLeadTool } from '../tools/crm/update-lead.js';
+import { recordEmailDraftTool } from '../tools/crm/record-email-draft.js';
+import { addContextTool, listContextTool, pushSignalTool } from '../tools/memory/add-context.js';
+import { delegateTaskTool } from '../tools/system/delegate-task.js';
+import { triggerWorkflowTool } from '../tools/system/trigger-workflow.js';
+import { requestApprovalTool } from '../tools/system/request-approval.js';
+import { runWorkerTool } from '../tools/system/run-worker.js';
+import { recallWorkerLessonsTool } from '../tools/system/recall-worker-lessons.js';
+import { readFileTool, writeFileTool, shellExecuteTool } from '../tools/terminal/terminal-tools.js';
 import {
   n8nTriggerWebhookTool,
   n8nHealthTool,
@@ -21,7 +22,7 @@ import {
   n8nUpdateWorkflowTool,
   n8nActivateWorkflowTool,
   n8nDeactivateWorkflowTool,
-} from '../tools/n8n/n8n-tools';
+} from '../tools/n8n/n8n-tools.js';
 import {
   gmailSearchTool,
   gmailCreateDraftTool,
@@ -34,7 +35,7 @@ import {
   calendarFindEventTool,
   calendarUpdateEventTool,
   calendarDeleteEventTool,
-} from '../tools/google/google-tools';
+} from '../tools/google/google-tools.js';
 import {
   chefStartProjectTool,
   chefUpdateProfileTool,
@@ -52,14 +53,14 @@ import {
   chefAddNoteTool,
   chefSearchNotesTool,
   chefExportMenuTool,
-} from '../tools/chef/chef-tools';
+} from '../tools/chef/chef-tools.js';
 import {
   rssGetArticlesTool,
   rssGetDigestsTool,
   rssSearchArticlesTool,
   rssCreateDigestTool,
   rssListSourcesTool,
-} from '../tools/rss/rss-tools';
+} from '../tools/rss/rss-tools.js';
 import {
   knowledgeQueryTool,
   knowledgeQueryMultiTool,
@@ -67,15 +68,15 @@ import {
   knowledgeCreateNotebookTool,
   knowledgeAddSourceTool,
   knowledgeDeleteNotebookTool,
-} from '../tools/knowledge/knowledge-tools';
-import { searchWebTool, findCompanyLinksTool } from '../tools/search/tavily';
-import { loadPrompt, combinePrompts } from '../lib/prompt-loader';
-import { sharedMemoryOutputProcessor } from '../processors/shared-memory-output';
+} from '../tools/knowledge/knowledge-tools.js';
+import { searchWebTool, findCompanyLinksTool } from '../tools/search/tavily.js';
+import { combinePrompts } from '../lib/prompt-loader.js';
+import { sharedMemoryOutputProcessor } from '../processors/shared-memory-output.js';
 
 async function buildInstructions(): Promise<string> {
-  // base v2 zawiera mapę sub-agentów, decision tree i reguły parallel tool calling.
-  // response v1 dokleja format JSON {thought, reply, suggestedJobs} dla workflow runtime.
-  return await combinePrompts('meta/base', 'meta/response');
+  // base v3: full orchestrator rules — parallel calling, worker briefs, retry loop, creativity.
+  // response.md (JSON wrapper) removed — Mastra Studio renders plain markdown directly.
+  return await combinePrompts('meta/base');
 }
 
 export const metaAgent: Agent = new Agent({
@@ -83,36 +84,52 @@ export const metaAgent: Agent = new Agent({
   name: 'Meta Agent',
   instructions: await buildInstructions(),
   model: 'google/gemini-2.5-pro',
+
   memory: new Memory({
     options: {
-      lastMessages: 20
+      // 30 messages — enough to see full retry loops and parallel call traces in context
+      lastMessages: 30,
     },
   }),
-  // Automatically persist key decisions to shared_memory after each response
+
+  // Persist key decisions to shared_memory after each response
   outputProcessors: [sharedMemoryOutputProcessor],
-  // Supervisor essentials — always loaded into context
+
+  // ── Supervisor essentials — always in the prompt context ──────────────────
+  // Keep this list lean: only tools meta needs in EVERY turn.
+  // Everything else lives in the ToolSearchProcessor pool below.
   tools: {
+    // Orchestration
     delegateTaskTool,
     triggerWorkflowTool,
     requestApprovalTool,
+    // Ad-hoc workers (Etap 1 — blank local model executors)
+    runWorkerTool,
+    recallWorkerLessonsTool,
+    // Fast CRM lookup (read-only, used constantly)
     searchLeadsTool,
+    // Shared memory & signals
     addContextTool,
     listContextTool,
     pushSignalTool,
   },
-  // Searchable tool pool (~50 tools) — agent uses search_tools/load_tool meta-tools
-  // to discover and load on demand. Drastically reduces prompt context per turn.
+
+  // ── Discoverable tool pool (~50 tools via semantic search) ────────────────
+  // Agent calls search_tools(query) → ToolSearchProcessor returns top matches.
+  // Drastically reduces prompt size per turn while keeping full tool coverage.
   inputProcessors: [
     new ToolSearchProcessor({
       tools: {
-        // CRM (write paths)
+        // CRM (write paths — discovered on demand)
         createLeadTool,
         updateStatusTool,
         addInteractionTool,
         updateLeadTool,
         recordEmailDraftTool,
-        // Terminal / sandbox tools inherited from Workspace
-
+        // Terminal / sandbox
+        readFileTool,
+        writeFileTool,
+        shellExecuteTool,
         // n8n automation
         n8nTriggerWebhookTool,
         n8nHealthTool,
@@ -157,7 +174,7 @@ export const metaAgent: Agent = new Agent({
         rssSearchArticlesTool,
         rssCreateDigestTool,
         rssListSourcesTool,
-        // NotebookLM knowledge (replaces MCP)
+        // NotebookLM knowledge
         knowledgeQueryTool,
         knowledgeQueryMultiTool,
         knowledgeListNotebooksTool,

@@ -215,7 +215,25 @@ W Mastra Studio (UI) — w dropdownie chatu pojawią się wszystkie 9 modeli z `
 
 ---
 
-## 10. Quick reference — ENV vars
+## 10. Worker presets — `system.run_worker` (meta-agent v3)
+
+Ad-hoc blank executors spawned by meta-agent. Nie mają własnej osobowości ani narzędzi — meta pisze cały brief.
+
+| Preset | Model | Rozmiar | Najlepszy do |
+|---|---|---|---|
+| `fast` | `ollama/local/gemma4:e4b` | 8B / 9.6 GB | Klasyfikacja, JSON extraction, proste streszczenia, reformatowanie |
+| `default` | `ollama/local/gemma4:26b` | 26B / 18 GB | Polski copy, ogólna generacja, wieloetapowe instrukcje |
+| `reasoning` | `ollama/local/qwen3-coder:30b` | 30B / 18.6 GB | Analiza, matematyka, kod, złożone plany strukturalne |
+| `powerful` | `ollama/huihui_ai/qwen3.5-abliterated:35b` | 35B / 23.9 GB | Długie formy, trudne reasoning, kreatywne pisanie |
+| `cloud` | `google/gemini-2.5-flash` | — | Fallback gdy lokalne modele zawodzą lub za wolne |
+
+**Gdzie zdefiniowane:** `src/mastra/tools/system/run-worker.ts` → stała `PRESET_TO_MODEL`
+
+**Zmiana presetu:** edytuj tylko tę mapę — nie dotykaj promptu meta-agenta.
+
+---
+
+## 11. Quick reference — ENV vars
 
 ```bash
 # Wymagane
@@ -232,4 +250,4 @@ N8N_REASONING_LOCAL_MODEL=qwen3-coder:30b
 
 ---
 
-**Ostatnia aktualizacja:** 2026-05-05 — po migracji Jarvis → Mastra (Etap 1-7, 10).
+**Ostatnia aktualizacja:** 2026-05-05 — meta-agent v3: run_worker presets, recall_worker_lessons, parallel delegation.

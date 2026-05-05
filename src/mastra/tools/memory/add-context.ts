@@ -119,7 +119,18 @@ export const listContextTool = createTool({
 // ────────────────────────────────────────────────────────────────────────────
 export const pushSignalTool = createTool({
   id: 'shared_memory.push_signal',
-  description: 'Broadcastuje sygnał systemowy do innych agentów (np. alert o wysokiej stopie błędów, anomalia w leadach). Sygnały są krótkotrwałe (domyślnie 12h).',
+  description: `Broadcasts a typed system signal to other agents.
+Signals are short-lived (default 12h) but can be extended (ttlHours: 720 = 30 days).
+
+SPECIAL: type='lesson_learned' — saves a worker/delegation lesson for future recall via system.recall_worker_lessons.
+Convention for lesson data:
+  {
+    task_pattern: '<15-word description of the task type, precise enough for semantic search>',
+    lesson: 'For X tasks, use Y approach because Z. Avoid W.',
+    preset: 'reasoning'  // optional: which run_worker preset worked
+  }
+
+Other common types: 'HIGH_FAILURE_RATE', 'HOT_LEAD', 'LEADS_STAGNATION', 'DEPLOY_SUCCESS', 'ANOMALY_DETECTED'`,
   inputSchema: z.object({
     type: z.string().describe('Typ sygnału, np. "HIGH_FAILURE_RATE", "HOT_LEAD", "LEADS_STAGNATION"'),
     data: z.record(z.string(), z.unknown()).optional().default({}).describe('Dane sygnału (JSON)'),
