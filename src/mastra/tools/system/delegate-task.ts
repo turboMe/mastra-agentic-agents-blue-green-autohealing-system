@@ -22,7 +22,7 @@ type AgentKey = keyof typeof AGENTS_MAP;
 
 export const delegateTaskTool = createTool({
   id: 'system.delegate_task',
-  description: 'Deleguje złożone zadanie do wyspecjalizowanego sub-agenta. Używaj gdy zadanie należy do konkretnej domeny: marketing (outreach, drafty), sales (CRM pipeline, propozycje), analytics (raporty, ROI), automationArchitect (n8n workflow design), crmAgent (szybkie wyszukiwanie leadów na Ollama).',
+  description: 'Deleguje złożone zadanie do wyspecjalizowanego sub-agenta. Domeny: marketingAgent (outreach, drafty, RSS, Gmail), salesAgent (CRM pipeline, propozycje, onboarding, calendar), analyticsAgent (raporty, ROI, KPI, anomalie), automationArchitect (n8n workflow design, deploy, Pattern RAG), crmAgent (lekkie wyszukiwanie leadów, Ollama). MOŻNA WYWOŁAĆ RÓWNOLEGLE wiele instancji tego toola w jednej turze, jeśli zadania są niezależne (np. równocześnie marketing + analytics).',
   inputSchema: z.object({
     targetAgent: z.enum(['marketingAgent', 'salesAgent', 'analyticsAgent', 'automationArchitect', 'crmAgent'])
       .describe('Nazwa sub-agenta do którego delegujemy zadanie'),

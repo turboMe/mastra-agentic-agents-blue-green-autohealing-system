@@ -6,6 +6,9 @@ import { MongoDBStore } from '@mastra/mongodb';
 import { DuckDBStore } from '@mastra/duckdb';
 import { MastraCompositeStore } from '@mastra/core/storage';
 import { Observability, DefaultExporter, CloudExporter, SensitiveDataFilter } from '@mastra/observability';
+import { Workspace, LocalFilesystem, LocalSandbox, WORKSPACE_TOOLS } from '@mastra/core/workspace';
+
+
 
 // Workflows
 import { weatherWorkflow } from './workflows/weather-workflow';
@@ -102,7 +105,26 @@ export const mastra: Mastra = new Mastra({
       },
     },
   }),
+  workspace: new Workspace({
+    filesystem: new LocalFilesystem({ basePath: '/projekty/Jarvis-Projects' }),
+    sandbox: new LocalSandbox({
+      workingDirectory: '/projekty/Jarvis-Projects',
+      isolation: 'bwrap',
+      nativeSandbox: {
+        allowNetwork: true,
+      },
+    }),
+    tools: {
+      [WORKSPACE_TOOLS.FILESYSTEM.READ_FILE]: { name: 'read_file' },
+      [WORKSPACE_TOOLS.FILESYSTEM.WRITE_FILE]: { name: 'write_file' },
+      [WORKSPACE_TOOLS.FILESYSTEM.LIST_FILES]: { name: 'list_files' },
+      [WORKSPACE_TOOLS.FILESYSTEM.GREP]: { name: 'search_content' },
+      [WORKSPACE_TOOLS.SANDBOX.EXECUTE_COMMAND]: { name: 'execute_command' },
+    },
+  }),
 });
+
+
 
 mastra.addGateway(new OllamaGateway());
 

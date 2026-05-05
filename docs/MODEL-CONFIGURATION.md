@@ -18,12 +18,12 @@
 
 | Plik | Linia | Aktualnie | Rola | Rekomendacja |
 |---|---|---|---|---|
-| [`agents/meta-agent.ts`](../src/mastra/agents/meta-agent.ts) | 89 | `'google/gemini-2.5-pro'` | Supervisor, planowanie, ToolSearchProcessor | 🔒 **Gemini Pro** — supervisor potrzebuje long-context i dobrego tool-callingu. Lokalny `qwen3-coder:30b` mógłby działać, ale gorzej z planowaniem. |
-| [`agents/automation-architect.ts`](../src/mastra/agents/automation-architect.ts) | 24 | `'google/gemini-2.5-pro'` | Buduje workflow n8n, ocenia ryzyko | 🔒 **Gemini Pro** — krytyczne decyzje (deploy/block), ryzyko fałszywych pozytywów dla `verdict='block'` przy słabszym modelu. |
-| [`agents/marketing-agent.ts`](../src/mastra/agents/marketing-agent.ts) | 30 | `'google/gemini-2.5-flash'` | Producer-hunt, cold-emaile, content | ⭐ **Kandydat** dla `ollama/gemma4:26b` lub `qwen3.5-abliterated:35b` (po polsku copywriting wychodzi przyzwoicie). Zostaw fallback na Flash dla skomplikowanych draftów. |
-| [`agents/sales-agent.ts`](../src/mastra/agents/sales-agent.ts) | 20 | `'google/gemini-2.5-flash'` | Oferty, onboarding | ⭐ **Kandydat** dla `ollama/gemma4:26b` — proste task templates. |
-| [`agents/analytics-agent.ts`](../src/mastra/agents/analytics-agent.ts) | 15 | `'google/gemini-2.5-flash'` | Raporty KPI, anomalie | ⭐ **Kandydat** dla `ollama/qwen3-coder:30b` — dobry w analizie liczb i tabel. |
-| [`agents/crm-agent.ts`](../src/mastra/agents/crm-agent.ts) | 17 | `ollama('gemma4:26b')` | Wyszukiwanie leadów | ✅ **Już lokalny.** ⚠️ **Problem:** `ollama-ai-provider-v2` nie jest w `package.json` ani `node_modules` — agent crashnie przy runtime. Fix: `pnpm add ollama-ai-provider-v2`. |
+| [`agents/meta-agent.ts`](../src/mastra/agents/meta-agent.ts) | 89 | `'google/gemini-2.5-pro'` | Supervisor, planowanie, ToolSearchProcessor | 🔒 **Gemini Pro** — supervisor potrzebuje long-context i dobrego tool-callingu. |
+| [`agents/automation-architect.ts`](../src/mastra/agents/automation-architect.ts) | 24 | `'google/gemini-2.5-pro'` | Buduje workflow n8n, ocenia ryzyko | 🔒 **Gemini Pro** — krytyczne decyzje (deploy/block). |
+| [`agents/marketing-agent.ts`](../src/mastra/agents/marketing-agent.ts) | 30 | `'ollama/local/gemma4:26b'` | Producer-hunt, cold-emaile, content | ✅ **Lokalny** (gemma4:26b). |
+| [`agents/sales-agent.ts`](../src/mastra/agents/sales-agent.ts) | 20 | `'ollama/local/gemma4:26b'` | Oferty, onboarding | ✅ **Lokalny** (gemma4:26b). |
+| [`agents/analytics-agent.ts`](../src/mastra/agents/analytics-agent.ts) | 15 | `'ollama/local/qwen3-coder:30b'` | Raporty KPI, anomalie | ✅ **Lokalny** (qwen3-coder:30b). |
+| [`agents/crm-agent.ts`](../src/mastra/agents/crm-agent.ts) | 15 | `'ollama/local/gemma4:26b'` | Wyszukiwanie leadów | ✅ **Lokalny** (string-id przez OllamaGateway). |
 | [`agents/weather-agent.ts`](../src/mastra/agents/weather-agent.ts) | 21 | `'google/gemini-2.5-pro'` | Demo / wzorzec evali | 🔒 Zostaw — to wzór, nie produkcja. |
 
 ---

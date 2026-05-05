@@ -11,7 +11,8 @@ import { addContextTool, listContextTool, pushSignalTool } from '../tools/memory
 import { delegateTaskTool } from '../tools/system/delegate-task';
 import { triggerWorkflowTool } from '../tools/system/trigger-workflow';
 import { requestApprovalTool } from '../tools/system/request-approval';
-import { readFileTool, writeFileTool, shellExecuteTool } from '../tools/terminal/terminal-tools';
+import { requestApprovalTool } from '../tools/system/request-approval';
+
 import {
   n8nTriggerWebhookTool,
   n8nHealthTool,
@@ -72,14 +73,9 @@ import { loadPrompt, combinePrompts } from '../lib/prompt-loader';
 import { sharedMemoryOutputProcessor } from '../processors/shared-memory-output';
 
 async function buildInstructions(): Promise<string> {
-  try {
-    return await combinePrompts('meta/base', 'meta/response');
-  } catch {
-    return `Jesteś Meta Agentem – głównym orchestratorem systemu GastroBridge.
-Analizujesz intencje użytkownika, odpowiadasz na ogólne pytania i delegujesz zadania do wyspecjalizowanych agentów (Marketing, Sales, Analytics, AutomationArchitect).
-Jeśli zadanie jest złożone lub należy do konkretnej domeny, MUSISZ użyć delegateTaskTool lub triggerWorkflowTool zamiast próbować zrobić wszystko samemu.
-Zawsze odpowiadaj po polsku, konkretnie i bez halucynacji. Weryfikuj dane narzędziami zanim coś potwierdzisz.`;
-  }
+  // base v2 zawiera mapę sub-agentów, decision tree i reguły parallel tool calling.
+  // response v1 dokleja format JSON {thought, reply, suggestedJobs} dla workflow runtime.
+  return await combinePrompts('meta/base', 'meta/response');
 }
 
 export const metaAgent: Agent = new Agent({
@@ -115,10 +111,8 @@ export const metaAgent: Agent = new Agent({
         addInteractionTool,
         updateLeadTool,
         recordEmailDraftTool,
-        // Terminal / sandbox
-        readFileTool,
-        writeFileTool,
-        shellExecuteTool,
+        // Terminal / sandbox tools inherited from Workspace
+
         // n8n automation
         n8nTriggerWebhookTool,
         n8nHealthTool,
@@ -174,7 +168,7 @@ export const metaAgent: Agent = new Agent({
         searchWebTool,
         findCompanyLinksTool,
       },
-      search: { topK: 8, minScore: 0 },
+      search: { topK: 12, minScore: 0.3 },
       ttl: 3_600_000,
     }),
   ],

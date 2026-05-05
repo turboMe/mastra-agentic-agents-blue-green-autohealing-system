@@ -12,7 +12,7 @@ export const analyticsAgent = new Agent({
   id: 'analytics-agent',
   name: 'Analytics Agent',
   instructions: await loadPrompt('analytics/base'),
-  model: 'google/gemini-2.5-flash',
+  model: 'ollama/local/qwen3-coder:30b',
   memory: new Memory({
     options: {
       lastMessages: 10,

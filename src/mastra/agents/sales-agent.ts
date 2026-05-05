@@ -17,7 +17,7 @@ export const salesAgent = new Agent({
   id: 'sales-agent',
   name: 'Sales Agent',
   instructions: await loadPrompt('sales/base'),
-  model: 'google/gemini-2.5-flash',
+  model: 'ollama/local/gemma4:26b',
   memory: new Memory({
     options: {
       lastMessages: 15,
