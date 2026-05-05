@@ -1,0 +1,84 @@
+/**
+ * Singleton MongoDB connection for tools and services.
+ * Replaces: apps/workers/src/core/db.ts from jarvis.
+ * Used by: CRM tools, RSS tools, Chef service, memory tools, architect patterns.
+ */
+import { MongoClient, type Db } from 'mongodb';
+
+let cachedClient: MongoClient | null = null;
+let cachedDb: Db | null = null;
+
+async function connectClient(): Promise<MongoClient> {
+  const uri = process.env.MONGODB_URI ?? 'mongodb://localhost:27017/agentforge';
+  const client = new MongoClient(uri, {
+    serverSelectionTimeoutMS: Number(process.env.MONGODB_SERVER_SELECTION_TIMEOUT_MS ?? 5000),
+  });
+  try {
+    await client.connect();
+    return client;
+  } catch (error) {
+    await client.close().catch(() => {});
+    throw error;
+  }
+}
+
+export async function getDb(): Promise<Db> {
+  if (cachedDb) return cachedDb;
+  cachedClient = await connectClient();
+  cachedDb = cachedClient.db();
+  return cachedDb;
+}
+
+export async function getRssDb(): Promise<Db> {
+  if (!cachedClient) {
+    cachedClient = await connectClient();
+  }
+  return cachedClient.db('rss_intelligence');
+}
+
+export async function closeDb(): Promise<void> {
+  if (cachedClient) {
+    await cachedClient.close();
+    cachedClient = null;
+    cachedDb = null;
+  }
+}
+
+/**
+ * Ensures required indexes exist for chef + core collections.
+ * Safe to call multiple times (MongoDB no-ops if already exists).
+ */
+export async function ensureIndexes(): Promise<void> {
+  const db = await getDb();
+  await Promise.all([
+    // CRM
+    db.collection('leads').createIndex({ email: 1 }),
+    db.collection('leads').createIndex({ status: 1 }),
+    db.collection('leads').createIndex({ region: 1 }),
+    db.collection('leads').createIndex({ updatedAt: -1 }),
+    // Tasks / runs / logs
+    db.collection('tasks').createIndex({ taskId: 1 }),
+    db.collection('tasks').createIndex({ agentId: 1 }),
+    db.collection('tasks').createIndex({ createdAt: -1 }),
+    db.collection('tasks').createIndex({ status: 1 }),
+    db.collection('runs').createIndex({ taskId: 1 }),
+    db.collection('logs').createIndex({ timestamp: -1 }),
+    // Approvals
+    db.collection('approvals').createIndex({ status: 1 }),
+    db.collection('approvals').createIndex({ createdAt: -1 }),
+    // Memory / signals (TTL)
+    db.collection('signals').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
+    db.collection('shared_memory').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
+    db.collection('conversations').createIndex({ threadId: 1 }),
+    // Chef
+    db.collection('chef_projects').createIndex({ id: 1 }, { unique: true }),
+    db.collection('chef_projects').createIndex({ status: 1 }),
+    db.collection('chef_menus').createIndex({ id: 1 }, { unique: true }),
+    db.collection('chef_menus').createIndex({ projectId: 1, version: -1 }),
+    db.collection('chef_recipes').createIndex({ id: 1 }, { unique: true }),
+    db.collection('chef_notes').createIndex({ id: 1 }, { unique: true }),
+    db.collection('chef_notes').createIndex({ projectId: 1 }),
+    // Automation patterns
+    db.collection('automation_patterns').createIndex({ id: 1 }, { unique: true }),
+  ]);
+}

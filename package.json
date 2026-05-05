@@ -4,9 +4,16 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "predev": "mongosh --quiet --eval 'db.adminCommand(\"ping\")' 2>/dev/null || docker compose -f ../docker-compose.yml up -d mongo --wait",
     "dev": "mastra dev",
     "build": "mastra build",
-    "start": "mastra start"
+    "prestart": "mongosh --quiet --eval 'db.adminCommand(\"ping\")' 2>/dev/null || docker compose -f ../docker-compose.yml up -d mongo --wait",
+    "start": "mastra start",
+    "mongo:up": "docker compose -f ../docker-compose.yml up -d mongo --wait",
+    "mongo:down": "docker compose -f ../docker-compose.yml down",
+    "mongo:logs": "docker compose -f ../docker-compose.yml logs -f mongo",
+    "init-db": "npx tsx src/mastra/scripts/init-db.ts",
+    "cron": "npx tsx src/mastra/scripts/cron-runner.ts"
   },
   "keywords": [],
   "author": "",
@@ -17,13 +24,20 @@
     "node": ">=22.13.0"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "^2.0.46",
     "@mastra/core": "^1.31.0",
     "@mastra/duckdb": "^1.2.0",
     "@mastra/evals": "^1.2.2",
     "@mastra/libsql": "^1.9.1",
     "@mastra/loggers": "^1.1.1",
+    "@mastra/mcp": "^1.6.0",
     "@mastra/memory": "^1.17.4",
+    "@mastra/mongodb": "^1.7.4",
     "@mastra/observability": "^1.11.0",
+    "google-auth-library": "^10.6.2",
+    "googleapis": "^171.4.0",
+    "mongodb": "^7.2.0",
+    "ollama-ai-provider-v2": "^3.5.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
