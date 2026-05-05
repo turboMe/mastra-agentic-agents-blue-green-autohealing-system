@@ -1,0 +1,26 @@
+{
+  "draftId": "email-62da0d",
+  "taskId": "producer-hunt-bb21b520",
+  "type": "cold-email",
+  "language": "pl",
+  "status": "draft",
+  "company": "JANEX POLSKI PRODUCENT KASZ SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ",
+  "region": "lubelskie",
+  "segment": "producer",
+  "enrichment": {
+    "company": "JANEX POLSKI PRODUCENT KASZ SPÓŁKA Z OGRANICZONĄ ODPOWIEDZIALNOŚCIĄ",
+    "email": "janex@janex-jl.pl",
+    "website": "https://janex.pl/",
+    "reason": "Polski producent zdrowej żywności z Janowa Lubelskiego, który specjalizuje się w produkcji różnych gatunków kasz [1, 2].",
+    "rawAnalysis": "Janex to stabilny, rodzinny producent z 30-letnim stażem, który wyróżnia się pełną kontrolą nad procesem produkcji (od surowca po gotowy produkt). Posiadają rozbudowany asortyment obejmujący kasze, ryże oraz produkty zbożowe, co czyni ich idealnym dostawcą dla sektora HoReCa. Ich model biznesowy oparty na własnym zapleczu produkcyjnym i surowcowym buduje ogromne zaufanie w kwestii jakości i powtarzalności dostaw, co jest kluczowe dla profesjonalnej kuchni.",
+    "personalizationHook": "Biorąc pod uwagę Państwa imponujące doświadczenie w prowadzeniu pełnego łańcucha produkcji – od własnych upraw po gotowy produkt – widzę ogromny potencjał w zacieśnieniu współpracy w zakresie dotarcia do nowych segmentów rynku gastronomicznego poprzez platformę Gastro-Innowacja."
+  },
+  "gmailDraftId": "r-7267524196873496749",
+  "createdAt": "2026-05-05T20:51:46.089Z",
+  "agentId": "marketing-agent",
+  "llm": {
+    "provider": "mastra",
+    "model": "gemini-2.5-pro",
+    "costUsd": 0
+  }
+}

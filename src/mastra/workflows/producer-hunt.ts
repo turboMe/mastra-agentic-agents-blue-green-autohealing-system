@@ -25,7 +25,12 @@ import { getDb } from '../lib/mongo';
 import { GmailService } from '../tools/google/gmail.js';
 import { getDraftsStore } from '../lib/drafts-store.js';
 import { searchWebTool, findCompanyLinksTool } from '../tools/search/tavily.js';
-import { knowledgeQueryTool } from '../tools/knowledge/knowledge-tools.js';
+import { 
+  knowledgeQueryTool, 
+  knowledgeCreateNotebookTool, 
+  knowledgeAddSourceTool, 
+  knowledgeDeleteNotebookTool 
+} from '../tools/knowledge/knowledge-tools.js';
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 const leadSchema = z.object({
@@ -55,7 +60,7 @@ const draftSchema = z.object({
 });
 type Draft = z.infer<typeof draftSchema>;
 
-const isValidEmail = (e?: string): e is string =>
+const isValidEmail = (e?: string | null): e is string =>
   !!e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
 const tryParseJson = <T = unknown>(text: string): T | null => {
@@ -81,7 +86,7 @@ const tryParseJson = <T = unknown>(text: string): T | null => {
 // ── Step 01: discover-leads ─────────────────────────────────────────────────
 const discoverLeadsStep = createStep({
   id: 'discover-leads',
-  description: 'Wyszukuje lokalnych producentów w zadanym regionie (LLM-driven discovery).',
+  description: 'Wyszukuje lokalnych producentów w zadanym regionie (NotebookLM-driven discovery).',
   inputSchema: z.object({
     region: z.string(),
     count: z.number().default(10),
@@ -97,7 +102,7 @@ const discoverLeadsStep = createStep({
     const { region, count, productType } = context.inputData;
     console.log(`[producer-hunt:${taskId}] discover-leads region=${region} spec=${productType ?? 'all'}`);
 
-    // 1. Multi-Search (rozszerzona lista kategorii dla większej różnorodności)
+    // 1. Multi-Search (rozszerzona lista kategorii)
     const baseQueries = [
       `producenci ${productType ?? 'żywności'} ${region} kontakt email`,
       `lokalni dostawcy do restauracji ${region} ${productType ?? ''}`,
@@ -106,7 +111,6 @@ const discoverLeadsStep = createStep({
       `zakład przetwórstwa spożywczego ${region} ${productType ?? ''} www`,
     ];
 
-    // Jeśli nie podano konkretnego typu, szukamy w niszach
     const nicheQueries = !productType ? [
       `sery rzemieślnicze nabiał kozi owczy ${region} producent`,
       `wędliny ekologiczne rzemieślnicze masarnia ${region}`,
@@ -126,47 +130,92 @@ const discoverLeadsStep = createStep({
     const allResults = searchResults.flatMap(r => (r && 'success' in r && r.success) ? r.results : []);
     const uniqueResults = Array.from(new Map(allResults.map(r => [r.url, r])).values());
 
-    console.log(`[producer-hunt:${taskId}] total unique links found: ${uniqueResults.length}`);
+    // Wybieramy top 12 najbardziej obiecujących linków (pominając social media dla lepszej jakości źródeł)
+    const topUrls = uniqueResults
+      .filter(r => !r.url.includes('facebook.com') && !r.url.includes('linkedin.com') && !r.url.includes('instagram.com'))
+      .slice(0, 12);
 
-    let searchContext = uniqueResults
-      .map(r => `[${r.title}](${r.url}): ${r.content.slice(0, 400)}`)
-      .join('\n\n');
+    console.log(`[producer-hunt:${taskId}] total unique links: ${uniqueResults.length}, using top ${topUrls.length} for NotebookLM.`);
 
-    // 2. LLM formatuje wyniki i uzupełnia brakujące dane
-    const prompt = `Jesteś ekspertem ds. sourcingu żywności. Na podstawie poniższych danych z ${queries.length} wyszukiwań, wybierz ${count} NAJCIEKAWSZYCH i UNIKALNYCH producentów żywności z województwa ${region}.
-Specjalizacja: ${productType ?? 'ogólna - szukaj różnorodności (sery, mięso, warzywa, przetwory)'}.
-
-ZASADY SELEKCJI:
-1. Szukamy REALNYCH producentów: gospodarstwa rolne, manufaktury, rzemieślnicze zakłady, tlocznie, piekarnie.
-2. Interesują nas podmioty sprzedające bezpośrednio lub dostarczające do restauracji/sklepów.
-3. ABSOLUTNIE ODRZUĆ: portale informacyjne, bazy firm (katalogi), firmy doradcze, gazety, sklepy pośredniczące.
-4. Każda firma na liście musi być UNIKALNA. Jeśli widzisz ten sam podmiot pod różnymi nazwami, wybierz jeden wpis.
-5. Priorytetyzuj te, które mają podany e-mail lub stronę WWW.
-
-DANE Z INTERNETU:
-${searchContext}
-
-Zwróć WYŁĄCZNIE JSON w formacie: { "leads": [{ "company": "...", "email": "...", "website": "...", "reason": "...", "category": "..." }] }
-UWAGA: Jeśli w tekście widzisz adres e-mail (nawet ukryty w opisie), koniecznie go wyciągnij!`;
-
-    const res = await marketingAgent.generate(prompt);
-    const parsed = tryParseJson<{ leads?: Lead[] } | Lead[]>(res.text);
     let leads: Lead[] = [];
-    if (Array.isArray(parsed)) leads = parsed;
-    else if (parsed && Array.isArray(parsed.leads)) leads = parsed.leads;
+    let notebookId = '';
 
-    // Post-filtering: upewnij się że nazwy nie są duplikowane na poziomie kodu
+    try {
+      // 2. Notatnik Odkrywcy w NotebookLM
+      console.log(`[producer-hunt:${taskId}] tworzę Discovery Notebook...`);
+      const createRes = await knowledgeCreateNotebookTool.execute!({ title: `Discovery: Producers ${region} (${taskId})` }, {} as any);
+      if (createRes && 'success' in createRes && createRes.success) {
+        notebookId = (createRes as any).notebookId;
+        
+        // Dodawanie źródeł równolegle
+        console.log(`[producer-hunt:${taskId}] dodaję ${topUrls.length} źródeł do NotebookLM...`);
+        await Promise.all(
+          topUrls.map(url => knowledgeAddSourceTool.execute!({
+            notebook: notebookId,
+            sourceType: 'url',
+            url: url.url,
+            title: url.title
+          }, {} as any))
+        );
+
+        // Czekamy chwilę na indeksowanie (NotebookLM potrzebuje czasu)
+        console.log(`[producer-hunt:${taskId}] czekam 10s na indeksowanie...`);
+        await new Promise(resolve => setTimeout(resolve, 10000));
+
+        const discoveryQuestion = `Na podstawie załadowanych źródeł, sporządź listę do ${count} lokalnych producentów żywności z województwa ${region}.
+        Specjalizacja: ${productType ?? 'ogólna (nabiał, mięso, warzywa, sery, przetwory)'}.
+
+        Dla każdego producenta wyciągnij:
+        1. company: Pełna nazwa firmy
+        2. email: Adres e-mail (bardzo ważne, szukaj w stopkach, kontaktach)
+        3. website: Strona WWW
+        4. reason: Krótki opis (1 zdanie) co konkretnie produkują.
+
+        Zwróć WYŁĄCZNIE JSON w formacie: { "leads": [{ "company": "...", "email": "...", "website": "...", "reason": "..." }] }
+        Pomiń portale ogólne, bazy firm i sklepy pośredniczące. Skup się na REALNYCH wytwórcach.`;
+
+        console.log(`[producer-hunt:${taskId}] odpytuję NotebookLM o listę leadów...`);
+        const queryRes = await knowledgeQueryTool.execute!({
+          notebook: notebookId,
+          question: discoveryQuestion,
+          timeout: 180
+        }, {} as any);
+
+        if (queryRes && 'success' in queryRes && queryRes.success) {
+          const answer = (queryRes as any).answer || '';
+          const parsed = tryParseJson<{ leads?: Lead[] } | Lead[]>(answer);
+          if (Array.isArray(parsed)) leads = parsed;
+          else if (parsed && Array.isArray(parsed.leads)) leads = parsed.leads;
+        }
+      }
+    } catch (err) {
+      console.warn(`[producer-hunt:${taskId}] NotebookLM discovery fail:`, (err as Error).message);
+    } finally {
+      if (notebookId) {
+        await knowledgeDeleteNotebookTool.execute!({ notebookId }, {} as any).catch(() => {});
+      }
+    }
+
+    // Fallback do LLM snippets jeśli NotebookLM zawiódł lub zwrócił mało wyników
+    if (leads.length < 2) {
+      console.log(`[producer-hunt:${taskId}] NotebookLM zwrócił za mało wyników (${leads.length}), używam fallbacku przez snippets...`);
+      const searchContext = uniqueResults.slice(0, 20).map(r => `[${r.title}](${r.url}): ${r.content.slice(0, 400)}`).join('\n\n');
+      const fallbackPrompt = `Na podstawie snippetów, wybierz ${count} producentów żywności z ${region}.\n\n${searchContext}\n\nZwróć JSON: { "leads": [...] }`;
+      const res = await marketingAgent.generate(fallbackPrompt);
+      const parsed = tryParseJson<{ leads?: Lead[] } | Lead[]>(res.text);
+      const fallbackLeads = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.leads) ? parsed.leads : []);
+      leads = [...leads, ...fallbackLeads];
+    }
+
+    // Ostateczna deduplikacja i walidacja
     const seen = new Set();
     leads = leads.filter(l => {
+      if (!l.company || l.company.length < 3) return false;
       const normalized = l.company.toLowerCase().trim();
       if (seen.has(normalized)) return false;
       seen.add(normalized);
       return true;
     }).slice(0, count);
-
-    if (leads.length === 0) {
-      console.warn(`[producer-hunt:${taskId}] LLM nie zwrócił leadów — fallback.`);
-    }
 
     console.log(`[producer-hunt:${taskId}] discover-leads finished, found ${leads.length} leads.`);
     return { taskId, region, leads };
@@ -195,8 +244,8 @@ const createResearchLeadsStep = createStep({
     // Nawet jeśli nie mają maila/www - krok enrichment spróbuje je doszukać.
     const validLeads = leads.filter((l) => l.company && l.company.length > 2);
     
-    // Do researchu trafiają te, które LLM uznał za wartościowe ale wymagają uwagi (opcjonalnie)
-    const researchOnly = leads.filter((l) => !isValidEmail(l.email) && !l.website);
+    // Do researchu trafiają te, które nie mają poprawnego maila (nawet jeśli mają stronę WWW)
+    const researchOnly = leads.filter((l) => !isValidEmail(l.email));
     const db = await getDb();
 
     for (const lead of researchOnly) {
@@ -211,13 +260,11 @@ const createResearchLeadsStep = createStep({
             website: lead.website,
             updatedAt: new Date(),
             metadata: {
-              reason: 'missing_email',
-              originalEmail: lead.email,
               discoveryReason: lead.reason,
               taskId,
             },
           },
-          $setOnInsert: { createdAt: new Date(), id: `research-${randomUUID().slice(0, 8)}`, history: [] },
+          $setOnInsert: { createdAt: new Date(), id: `research-${randomUUID().slice(0, 8)}` },
         },
         { upsert: true },
       );
@@ -232,7 +279,7 @@ const createResearchLeadsStep = createStep({
 // ── Step 03: enrich-leads ───────────────────────────────────────────────────
 const enrichLeadsStep = createStep({
   id: 'enrich-leads',
-  description: 'Pogłębiony research firm (zwraca personalizationHook do drafterów).',
+  description: 'Pogłębiony research firm (zwraca personalizationHook do drafterów) z użyciem NotebookLM.',
   inputSchema: z.object({
     taskId: z.string(),
     region: z.string(),
@@ -264,6 +311,8 @@ const enrichLeadsStep = createStep({
     }
 
     for (const lead of validLeads) {
+      console.log(`[producer-hunt:${taskId}] enriching lead: ${lead.company}...`);
+      let notebookId = '';
       try {
         // 1. Szukanie linków i głębszego kontekstu przez Tavily
         const linksResult = await findCompanyLinksTool.execute!({
@@ -275,21 +324,85 @@ const enrichLeadsStep = createStep({
         const leadContext = isSuccess ? (linksResult as any).searchContext : '';
         const website = isSuccess ? ((linksResult as any).website ?? lead.website) : lead.website;
 
-        // 2. LLM generuje finalną analizę i hook
-        const prompt = `Zrób research firmy "${lead.company}" (region ${region}).
+        let nlmAnalysis = '';
+        let nlmHook = '';
+
+        // 2. Jeśli mamy stronę, robimy DEEP research przez NotebookLM
+        if (website && website.startsWith('http')) {
+          try {
+            console.log(`[producer-hunt:${taskId}] creating Deep Research notebook for ${lead.company}...`);
+            const createRes = await knowledgeCreateNotebookTool.execute!({ title: `Deep: ${lead.company} (${taskId})` }, {} as any);
+            if (createRes && 'success' in createRes && createRes.success) {
+              notebookId = (createRes as any).notebookId;
+
+              // Dodajemy stronę firmy jako główne źródło
+              await knowledgeAddSourceTool.execute!({
+                notebook: notebookId,
+                sourceType: 'url',
+                url: website,
+                title: `Strona: ${lead.company}`
+              }, {} as any);
+
+              // Opcjonalnie: dodaj wyniki z Tavily jako tekst
+              if (leadContext) {
+                await knowledgeAddSourceTool.execute!({
+                  notebook: notebookId,
+                  sourceType: 'text',
+                  text: leadContext,
+                  title: `Search context for ${lead.company}`
+                }, {} as any);
+              }
+
+              // Czekamy na indeksowanie
+              await new Promise(resolve => setTimeout(resolve, 8000));
+
+              const researchQuestion = `Przeanalizuj firmę "${lead.company}". Co ich wyróżnia? 
+              1. Jakie konkretnie produkty wytwarzają?
+              2. Czy mają jakąś historię (rodzinna tradycja, lata istnienia)?
+              3. Czy otrzymali jakieś nagrody lub certyfikaty (np. "Produkt Lokalny", RHD)?
+              4. Jakie są ich wartości (ekologia, naturalne składniki, brak konserwantów)?
+
+              Na tej podstawie przygotuj:
+              - PERSONALIZATION_HOOK: Jedno zdanie (maks 20 słów), które udowodni, że znamy ich firmę. Powinno być naturalne i konkretne (np. "Widziałem, że Wasze sery kozie zdobyły nagrodę na festiwalu w Lublinie").
+              - DEEP_ANALYSIS: Kilka zdań podsumowania o ich skali, asortymencie i tym, co moglibyśmy im zaproponować w GastroBridge.`;
+
+              const queryRes = await knowledgeQueryTool.execute!({
+                notebook: notebookId,
+                question: researchQuestion
+              }, {} as any);
+
+              if (queryRes && 'success' in queryRes && queryRes.success) {
+                const answer = (queryRes as any).answer || '';
+                nlmHook = answer.match(/PERSONALIZATION_HOOK:\s*(.*)/)?.[1]?.trim() || '';
+                nlmAnalysis = answer.match(/DEEP_ANALYSIS:\s*(.*)/s)?.[1]?.trim() || answer;
+              }
+            }
+          } catch (nlmErr) {
+            console.warn(`[producer-hunt:${taskId}] NLM Deep Research failed for ${lead.company}:`, (nlmErr as Error).message);
+          } finally {
+            if (notebookId) await knowledgeDeleteNotebookTool.execute!({ notebookId }, {} as any).catch(() => {});
+          }
+        }
+
+        // 3. Finalne szlifowanie przez marketingAgent (jeśli NLM nie dał pełnych danych)
+        const prompt = `Dokończ research firmy "${lead.company}".
 Strona: ${website ?? 'nieznana'}. 
 Oryginalny powód: ${lead.reason ?? 'lokalny producent'}.
 
-Kontekst rynkowy (z bazy wiedzy):
+Dane z głębokiego researchu (NLM):
+${nlmAnalysis || 'Brak.'}
+Hook z NLM: ${nlmHook || 'Brak.'}
+
+Kontekst rynkowy:
 ${marketContext}
 
-Wyniki wyszukiwania:
+Wyniki wyszukiwania (snippets):
 ${leadContext}
 
 Zwróć WYŁĄCZNIE JSON:
 { 
-  "personalizationHook": "1-2 zdania konkretu o firmie do użycia w mailu (nawiąż do ich produktów lub sukcesów)",
-  "rawAnalysis": "5 zdań analizy: co dokładnie produkują, jakie mają certyfikaty (np. RHD), unikalne cechy, potencjalne punkty styku z GastroBridge",
+  "personalizationHook": "Finalny 1-2 zdaniowy hook do maila (użyj danych z NLM jeśli są dobre, lub wygeneruj nowy konkretny)",
+  "rawAnalysis": "Podsumowanie: co produkują, certyfikaty, potencjał współpracy",
   "website": "...",
   "linkedIn": "...",
   "facebook": "..."
@@ -304,13 +417,8 @@ Zwróć WYŁĄCZNIE JSON:
           facebook?: string;
         }>(res.text);
 
-        const rawAnalysis = parsed?.rawAnalysis 
-          ? (typeof parsed.rawAnalysis === 'string' ? parsed.rawAnalysis : JSON.stringify(parsed.rawAnalysis))
-          : (typeof leadContext === 'string' ? leadContext : JSON.stringify(leadContext || 'Brak głębokiego researchu.'));
-
-        const personalizationHook = parsed?.personalizationHook 
-          ? (typeof parsed.personalizationHook === 'string' ? parsed.personalizationHook : JSON.stringify(parsed.personalizationHook))
-          : `Lokalny producent z ${region}.`;
+        const rawAnalysis = parsed?.rawAnalysis || nlmAnalysis || leadContext || 'Brak głębokiego researchu.';
+        const personalizationHook = parsed?.personalizationHook || nlmHook || `Producent żywności z regionu ${region}.`;
 
         enriched.push({
           ...lead,
@@ -335,6 +443,7 @@ Zwróć WYŁĄCZNIE JSON:
     };
   },
 });
+
 
 // ── Step 04: extract-emails ─────────────────────────────────────────────────
 const extractEmailsStep = createStep({
@@ -394,7 +503,7 @@ Kontekst: ${lead.rawAnalysis}\nStrona: ${lead.website ?? '-'}`;
 // ── Step 05: draft-cold-emails ──────────────────────────────────────────────
 const draftColdEmailsStep = createStep({
   id: 'draft-cold-emails',
-  description: 'Tworzy spersonalizowany cold-email dla każdego enriched lead z mailem.',
+  description: 'Pisze spersonalizowane maile na podstawie enrichmentu i zasad Patryka.',
   inputSchema: z.object({
     taskId: z.string(),
     region: z.string(),
@@ -410,28 +519,66 @@ const draftColdEmailsStep = createStep({
   execute: async (context) => {
     const { taskId, region, enrichedWithEmails } = context.inputData;
     const drafts: Draft[] = [];
+    
     for (const lead of enrichedWithEmails) {
-      if (!isValidEmail(lead.email)) continue;
-      const prompt = `Napisz krótki (max 4 zdania) spersonalizowany cold-email do "${lead.company}".
-Wykorzystaj personalizationHook: ${lead.personalizationHook}.
-Zaproponuj współpracę z GastroBridge (sprzedaż bezpośrednia do restauracji, RHD).
-Język: polski. Zwróć WYŁĄCZNIE JSON: { "subject": "...", "body": "..." }`;
-      const res = await marketingAgent.generate(prompt);
-      const parsed = tryParseJson<{ subject?: string; body?: string }>(res.text);
-      if (!parsed?.subject || !parsed?.body) {
-        console.warn(`[producer-hunt:${taskId}] draft fail ${lead.company}`);
+      if (!isValidEmail(lead.email)) {
+        console.log(`[producer-hunt:${taskId}] skip drafting for ${lead.company} (no email)`);
         continue;
       }
-      drafts.push({
-        taskId,
-        draftId: `email-${randomUUID().slice(0, 6)}`,
-        company: lead.company,
-        email: lead.email,
-        subject: parsed.subject,
-        body: parsed.body,
-        enrichment: lead,
-      });
+
+      console.log(`[producer-hunt:${taskId}] drafting email for ${lead.company} (${lead.email})...`);
+
+      const prompt = `Jesteś Patrykiem, chefem który koduje i buduje GastroBridge. 
+Napisz krótki, profesjonalny cold-email do producenta: "${lead.company}".
+
+KONTEKST O FIRMIE (Deep Research):
+${lead.rawAnalysis}
+
+DEDYKOWANY HOOK:
+${lead.personalizationHook}
+
+ZASADY PATRYKA:
+1. Maksymalnie 4 zdania. Konkret, zero "waty" sprzedażowej.
+2. ZERO emoji. Profesjonalny, ale bezpośredni ton.
+3. Cel: Zaproponowanie krótkiej rozmowy o dostawach bezpośrednich do restauracji przez GastroBridge (skrócenie łańcucha dostaw, lepsze marże dla nich). Wspomnij, że obecnie prowadzimy darmowy pilotaż dla wybranych producentów (zaznacz, że jest darmowy tylko w ramach trwającego pilotażu).
+4. Hook musi być na samym początku.
+
+ZASADY PERSONALIZACJI:
+1. Wykorzystaj minimum dwa konkretne elementy z researchu, aby pokazać, że znasz firmę:
+   - konkretny produkt lub kategorię (np. "Wasze sery kozie"),
+   - region lub miejscowość,
+   - odniesienie do informacji ze strony WWW lub sukcesu firmy.
+
+WYMOGI PRAWNE (RODO):
+1. Nie obiecuj wysyłki oferty ani cennika bez zgody odbiorcy.
+2. Nie sugeruj, że kontakt pochodzi z kupionej listy (zawsze odnoś się do researchu).
+3. Na końcu maila (po podpisie) dodaj obowiązkową stopkę:
+   ---
+   Administratorem danych jest GastroBridge. Cel: Nawiązanie relacji B2B. Źródło: Publiczne dane z sieci (research). Odpisz "NIE", aby usunąć dane.
+
+Zwróć WYŁĄCZNIE JSON: { "subject": "Temat maila", "body": "Treść maila" }`;
+
+      try {
+        const res = await marketingAgent.generate(prompt);
+        const parsed = tryParseJson<{ subject?: string; body?: string }>(res.text);
+        
+        if (parsed?.subject && parsed?.body) {
+          drafts.push({
+            taskId,
+            draftId: `email-${randomUUID().slice(0, 6)}`,
+            company: lead.company,
+            email: lead.email,
+            subject: parsed.subject,
+            body: parsed.body,
+            enrichment: lead,
+          });
+        }
+      } catch (err) {
+        console.warn(`[producer-hunt:${taskId}] draft fail ${lead.company}:`, (err as Error).message);
+      }
     }
+    
+    console.log(`[producer-hunt:${taskId}] generated ${drafts.length} drafts.`);
     return {
       taskId,
       region,
@@ -604,7 +751,6 @@ const updateCrmStep = createStep({
           $setOnInsert: {
             createdAt: now,
             id: draft.email,
-            history: [],
           },
           $push: { history: interaction } as never,
         },

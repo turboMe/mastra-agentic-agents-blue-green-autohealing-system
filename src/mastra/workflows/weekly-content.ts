@@ -277,10 +277,9 @@ const createRemindersStep = createStep({
     for (const r of calendarReminders) {
       try {
         await calendarCreateEventTool.execute!({
-          summary: `[PUBLIKACJA] ${r.title}`,
+          title: `[PUBLIKACJA] ${r.title}`,
           description: `Przypomnienie o publikacji posta dla tygodnia ${r.date}. TaskId: ${taskId}`,
-          startTime: r.date,
-          endTime: new Date(new Date(r.date).getTime() + 30 * 60 * 1000).toISOString(),
+          scheduledFor: r.date,
         }, {} as any);
         count++;
       } catch (err) {

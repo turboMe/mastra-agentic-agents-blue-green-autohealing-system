@@ -178,3 +178,37 @@ export const knowledgeDeleteNotebookTool = createTool({
     }
   },
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// knowledge.research_start
+// ────────────────────────────────────────────────────────────────────────────
+export const knowledgeResearchStartTool = createTool({
+  id: 'knowledge.research_start',
+  description: 'Rozpoczyna pogłębiony research (Deep Research) w NotebookLM na dany temat lub dla konkretnej firmy.',
+  inputSchema: z.object({
+    query: z.string().describe('Temat researchu (np. "Deep research about Acme Farm products and history")'),
+    notebookId: z.string().optional().describe('Opcjonalny ID istniejącego notebooka'),
+    mode: z.enum(['fast', 'deep']).optional().default('deep').describe('Tryb researchu (domyślnie deep)'),
+    autoImport: z.boolean().optional().default(true).describe('Czy automatycznie zaimportować znalezione źródła do notebooka'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    taskId: z.string().optional(),
+    output: z.string().optional(),
+    error: z.string().optional(),
+  }),
+  execute: async (context) => {
+    try {
+      const nlm = getNlmClient();
+      const result = await nlm.researchStart({
+        query: context.query,
+        notebookId: context.notebookId,
+        mode: context.mode,
+        autoImport: context.autoImport,
+      });
+      return { success: true, taskId: result.taskId, output: result.output };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  },
+});
