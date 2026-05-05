@@ -6,6 +6,11 @@ import { format, addDays, isValid, parseISO, startOfWeek } from 'date-fns';
 import { knowledgeQueryTool } from '../tools/knowledge/knowledge-tools.js';
 import { calendarCreateEventTool, gmailCreateDraftTool } from '../tools/google/google-tools.js';
 import { getDraftsStore } from '../lib/drafts-store.js';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 const liPostSchema = z.object({
@@ -103,22 +108,26 @@ const researchWeekStep = createStep({
       question: 'Co Choco, Proky lub inne platformy dostawcze zrobiły w ostatnim tygodniu?',
     }, {} as any);
 
-    const prompt = `Na podstawie danych z researchu, wybierz 3 najlepsze news hooks i ruchy konkurencji dla GastroBridge.
+    // Wczytanie profesjonalnego promptu (jak w Jarvis)
+    const promptPath = path.join(__dirname, '..', 'prompts', 'marketing', 'research.md');
+    const systemPrompt = await fs.readFile(promptPath, 'utf-8');
+
+    const userPrompt = `
+DANE Z NOTEBOOKLM DO ANALIZY:
+
+# PL-Market-Intelligence (Rynek):
+${(marketResult && 'success' in marketResult && marketResult.success) ? (marketResult as any).answer : 'Brak danych rynkowych.'}
+Cytaty: ${(marketResult && 'success' in marketResult && marketResult.success) ? (marketResult as any).citations?.join('\n') : 'Brak cytatów.'}
+
+# Competitor-Tracking (Konkurencja):
+${(compResult && 'success' in compResult && compResult.success) ? (compResult as any).answer : 'Brak danych o konkurencji.'}
+Cytaty: ${(compResult && 'success' in compResult && compResult.success) ? (compResult as any).citations?.join('\n') : 'Brak cytatów.'}
+
 Tydzień: ${weekDate}
 
-DANE RYNKOWE:
-${(marketResult && 'success' in marketResult && marketResult.success) ? (marketResult as any).answer : 'Brak danych rynkowych.'}
+Wybierz 3 najlepsze news hooks i ruchy konkurencji. Zwróć JSON.`;
 
-KONKURENCJA:
-${(compResult && 'success' in compResult && compResult.success) ? (compResult as any).answer : 'Brak danych o konkurencji.'}
-
-Zwróć WYŁĄCZNIE JSON:
-{
-  "newsHooks": [{ "topic": "...", "hook": "...", "data": "...", "source": "...", "bestFor": "linkedin|instagram" }],
-  "competitorMoves": [{ "competitor": "...", "move": "...", "ourAngle": "..." }]
-}`;
-
-    const res = await marketingAgent.generate(prompt);
+    const res = await marketingAgent.generate(userPrompt, { systemPrompt });
     const parsed = tryParseJson<any>(res.text) || { newsHooks: [], competitorMoves: [] };
     return { taskId, weekDate, research: parsed };
   },
@@ -145,17 +154,18 @@ const generatePlStep = createStep({
     const { taskId, weekDate, research, liCount, igCount } = context.inputData;
     console.log(`[weekly-content:${taskId}] generate-pl (LI:${liCount}, IG:${igCount})`);
 
-    const prompt = `Wygeneruj ${liCount} postów LinkedIn i ${igCount} treści Instagram dla GastroBridge.
+    // Wczytanie profesjonalnego promptu copy (PL)
+    const promptPath = path.join(__dirname, '..', 'prompts', 'marketing', 'copy-pl.md');
+    const systemPrompt = await fs.readFile(promptPath, 'utf-8');
+
+    const userPrompt = `Wygeneruj ${liCount} postów LinkedIn i ${igCount} treści Instagram dla GastroBridge.
 Tydzień: ${weekDate}
-Research: ${JSON.stringify(research)}
+RESEARCH DATA (użyj tych faktów i liczb):
+${JSON.stringify(research, null, 2)}
 
-Zwróć WYŁĄCZNIE JSON:
-{
-  "linkedin": [{ "account": "firmowe|osobiste", "topic": "...", "post": "...", "hashtags": [], "char_count": 0, "rationale": "...", "suggestedDay": "Monday", "suggestedTime": "10:00", "needsImage": true, "imagePrompt": "..." }],
-  "instagram": [{ "type": "post|carousel|story", "topic": "...", "caption": "...", "hashtags": [], "char_count": 0, "rationale": "...", "suggestedDay": "Wednesday", "suggestedTime": "12:00", "imagePrompt": "...", "slideCount": 1 }]
-}`;
+Zwróć JSON zgodnie ze strukturą opisaną w system prompcie.`;
 
-    const res = await marketingAgent.generate(prompt);
+    const res = await marketingAgent.generate(userPrompt, { systemPrompt });
     const parsed = tryParseJson<any>(res.text) || { linkedin: [], instagram: [] };
     return { taskId, weekDate, liPosts: parsed.linkedin ?? [], igPosts: parsed.instagram ?? [] };
   },
@@ -183,15 +193,18 @@ const translateEnStep = createStep({
     const topPosts = liPosts.slice(0, 2);
     if (topPosts.length === 0) return { ...context.inputData, enPosts: [] };
 
-    console.log(`[weekly-content:${taskId}] translate-en (count:${topPosts.length})`);
-    const prompt = `Przetłumacz i zaadaptuj poniższe posty LinkedIn na język angielski (profesjonalny tone):
-${JSON.stringify(topPosts)}
+    // Wczytanie profesjonalnego promptu adaptacji (EN)
+    const promptPath = path.join(__dirname, '..', 'prompts', 'marketing', 'copy-en.md');
+    const systemPrompt = await fs.readFile(promptPath, 'utf-8');
 
-Zwróć WYŁĄCZNIE JSON: { "translations": [{ "originalTopic": "...", "post": "...", "hashtags": [], "char_count": 0, "adaptationNotes": "..." }] }`;
+    const userPrompt = `Translate and adapt these Polish LinkedIn posts to English:
+${liPosts.map((p, i) => `### Post ${i + 1}: ${p.topic}\n${p.post}\nHashtags: ${p.hashtags.join(' ')}`).join('\n\n---\n\n')}
 
-    const res = await marketingAgent.generate(prompt);
-    const parsed = tryParseJson<any>(res.text);
-    return { ...context.inputData, enPosts: parsed?.translations ?? [] };
+Zwróć JSON zgodnie ze strukturą opisaną w system prompcie.`;
+
+    const res = await marketingAgent.generate(userPrompt, { systemPrompt });
+    const parsed = tryParseJson<any>(res.text) || { translations: [] };
+    return { taskId, weekDate, liPosts, igPosts: context.inputData.igPosts, enPosts: parsed.translations ?? [] };
   },
 });
 
