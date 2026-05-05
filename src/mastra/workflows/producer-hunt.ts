@@ -538,7 +538,7 @@ DEDYKOWANY HOOK:
 ${lead.personalizationHook}
 
 ZASADY PATRYKA:
-1. Maksymalnie 4 zdania. Konkret, zero "waty" sprzedażowej.
+1. Treść do 180 słów. Konkret, zero "waty" sprzedażowej.
 2. ZERO emoji. Profesjonalny, ale bezpośredni ton.
 3. Cel: Zaproponowanie krótkiej rozmowy o dostawach bezpośrednich do restauracji przez GastroBridge (skrócenie łańcucha dostaw, lepsze marże dla nich). Wspomnij, że obecnie prowadzimy darmowy pilotaż dla wybranych producentów (zaznacz, że jest darmowy tylko w ramach trwającego pilotażu).
 4. Hook musi być na samym początku.
@@ -560,7 +560,27 @@ Zwróć WYŁĄCZNIE JSON: { "subject": "Temat maila", "body": "Treść maila" }`
 
       try {
         const res = await marketingAgent.generate(prompt);
-        const parsed = tryParseJson<{ subject?: string; body?: string }>(res.text);
+        let parsed = tryParseJson<{ subject?: string; body?: string }>(res.text);
+
+        // 1. Próba naprawy (Repair), jeśli JSON jest niekompletny
+        if (!parsed?.subject || !parsed?.body) {
+          console.warn(`[producer-hunt:${taskId}] JSON parse fail dla ${lead.company}, próbuję naprawić...`);
+          const repairPrompt = `Napraw poniższy tekst, aby był poprawnym obiektem JSON. 
+          Zwróć WYŁĄCZNIE: { "subject": "...", "body": "..." }. 
+          Tekst do naprawy: ${res.text}`;
+          
+          const repairRes = await marketingAgent.generate(repairPrompt);
+          parsed = tryParseJson<{ subject?: string; body?: string }>(repairRes.text);
+        }
+
+        // 2. Fallback (Draft rezerwowy), jeśli naprawa też zawiodła
+        if (!parsed?.subject || !parsed?.body) {
+          console.error(`[producer-hunt:${taskId}] Naprawa zawiodła dla ${lead.company}, używam draftu fallback.`);
+          parsed = {
+            subject: `Współpraca GastroBridge x ${lead.company}`,
+            body: `Dzień dobry,\n\nKontaktuję się w sprawie potencjalnej współpracy z Państwa firmą. Buduję GastroBridge – platformę, która pomaga lokalnym producentom z regionu ${region} docierać bezpośrednio do restauracji, z pominięciem zbędnych pośredników.\n\nChętnie sprawdzę, czy nasz model współpracy (obecnie w darmowym pilotażu) mógłby pasować do Państwa asortymentu.\n\nCzy możemy umówić krótką rozmowę?\n\nPozdrawiam,\nPatryk (GastroBridge)\n\n---\nAdministratorem danych jest GastroBridge. Cel: Nawiązanie relacji B2B. Źródło: Publiczne dane z sieci (research). Odpisz "NIE", aby usunąć dane.`
+          };
+        }
         
         if (parsed?.subject && parsed?.body) {
           drafts.push({
