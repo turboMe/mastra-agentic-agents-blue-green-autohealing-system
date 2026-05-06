@@ -62,7 +62,7 @@ Status: brakujace reguly zostaly dopisane do promptow i user promptu kroku `gene
 | Obszar | Jarvis | Mastra przed audytem | Status po audycie |
 | --- | --- | --- | --- |
 | Bazowa tozsamosc | GastroBridge B2B marketplace, Polska, Wroclaw, Patryk Head Chef, zero frazesow | Krotszy prompt marketingowy, dobry ton, ale mniej kontekstu produktu | Uzupelniony o Wroclaw, marketplace, narracje, komunikacje do obu segmentow i NotebookLM |
-| Research | Tylko NotebookLM, cytaty, `bestFor` per platforma/konto, `sourceCitations` | Tylko fakty i JSON, ale bez `sourceCitations`, slabszy `bestFor` | Uzupelniony `bestFor`, `sourceCitations`, kontekst GastroBridge |
+| Research | NotebookLM `rynek` + `konkurencja`, cytaty, `bestFor` per platforma/konto, `sourceCitations` | Tylko fakty i JSON, ale bez `sourceCitations`, slabszy `bestFor` | Lepsze niz Jarvis: `knowledge.query_multi` dla `rynek`, `rhd`, `konkurencja`, `founder`, historia contentu i warunkowy `research_start` |
 | Copy PL | Limity znakow, pulle hashtagow, osobny LinkedIn Patryk/GastroBridge, Instagram, komunikacja producer/restaurateur, rotacja | Mial dobry ton, ale brakowalo wielu ograniczen operacyjnych | Uzupelniony o limity, hashtagi, segmenty, rotacje i harmonogram |
 | Copy EN | Adaptacja kulturowa, <1300 znakow, hashtagi EN, zachowaj GastroBridge/HoReCa | Adaptacja byla, ale bez kilku ograniczen | Uzupelniony o limity, strukture i zasady uogolniania lokalnych danych |
 | User prompt PL copy | Wymuszal mix kont, mix formatow, rotacje, unikalnosc tematow | Tylko liczba postow + research JSON | Uzupelniony |
@@ -72,8 +72,8 @@ Status: brakujace reguly zostaly dopisane do promptow i user promptu kroku `gene
 | Obszar | Jarvis | Mastra przed audytem | Status po audycie |
 | --- | --- | --- | --- |
 | Modele per step | `callLLM(step, ...)` wybieral modele i fallbacki per krok | Jeden model agenta `ollama/local/gemma4:26b` | Nadal brak pelnego per-step routing; do rozważenia osobno |
-| JSON mode | `jsonMode: true`, `repairJSON`, fallbacki | Prosty `JSON.parse` z fenced block | Parser poprawiony o wycinanie pierwszego obiektu; nadal warto dodac repair/structuredOutput |
-| NotebookLM fallback | Try/catch, fallback text, workflow szedl dalej | Brak try/catch wokol query mogl wywalic caly workflow | Dodany try/catch i fallback text |
+| JSON mode | `jsonMode: true`, `repairJSON`, fallbacki | Prosty `JSON.parse` z fenced block | Dodany Zod validation + repair pass z `structuredOutput` |
+| NotebookLM fallback | Try/catch, fallback text, workflow szedl dalej | Brak try/catch wokol query mogl wywalic caly workflow | Dodany try/catch, fallback bez halucynacji i warunkowy `knowledge.research_start` przy slabym sygnale |
 | Wolumen contentu | 5 LI + 3 IG + 2 EN | 3 LI + 2 IG, parametry gubione po pierwszym kroku | 5 LI + 3 IG, aliasy legacy, liczniki przenoszone dalej |
 | EN translation | Top 2 LinkedIn | Tworzyl `topPosts`, ale mapowal po wszystkich `liPosts` | Naprawione na top 2 |
 | Image prompts | Osobny krok + opcjonalna generacja obrazow do folderow draftow | Brak osobnego kroku image generation, tylko `imagePrompt` w danych | Nadal do przeniesienia |
@@ -93,31 +93,29 @@ Status: brakujace reguly zostaly dopisane do promptow i user promptu kroku `gene
 - Prompt `copy-pl.md` dostal limity, hashtagi, segmenty, harmonogram i rotacje.
 - Prompt `copy-en.md` dostal limity, hashtagi EN i zasady bezpiecznej adaptacji.
 - Krok EN tlumaczy top 2 posty LinkedIn, jak w Jarvisie.
+- Trzy kroki LLM (`research-week`, `generate-pl`, `translate-en`) waliduja odpowiedz przez Zod, a przy uszkodzonym JSON uruchamiaja repair pass z `structuredOutput`.
+- `generate-pl` nie moze juz po cichu zakonczyc sie zerem draftow po blednym JSON - workflow rzuca jawny blad.
+- Research uzywa `knowledge.query_multi` zamiast dwoch osobnych query.
+- Research odpytuje `rynek`, `rhd`, `konkurencja` i `founder`.
+- Research wczytuje ostatnie tematy z `DraftsStore` i przekazuje je jako `recentContentTopics`, zeby ograniczyc powtorki.
+- Przy slabym sygnale z NotebookLM (`brak danych`, krotka odpowiedz lub malo cytatow) workflow uruchamia `knowledge.research_start` dla max 2 notebookow i ponawia `query_multi`.
+- Fallback researchu nie korzysta juz z "ogolnej wiedzy o rynku HoReCa"; instruuje model, zeby przygotowal evergreen bez liczb i bez zmyslonych newsow.
 - `npx tsc --noEmit` przechodzi.
 
 ## 6. Rzeczy nadal do przeniesienia, zeby nie bylo gorzej niz w Jarvisie
 
-1. **Structured output / repair JSON**
-   Jarvis mial `jsonMode: true` i `repairJSON`. Mastra powinna uzyc `structuredOutput` z Zod albo dedykowanego repair passu jak w `producer-hunt`.
-
-2. **Per-step model routing**
+1. **Per-step model routing**
    Jarvis wybieral provider chain per krok (`research`, `copy-pl`, `copy-en`) i mial fallback. Mastra dziedziczy jeden model z agenta. To moze obnizac jakosc w krokach kreatywnych albo researchowych.
 
-3. **Image generation**
+2. **Image generation**
    Jarvis mial `ImagePlaceholderStep` i opcjonalne `generateImage()` zapisujace `image.png` obok `draft.md`. Mastra przechowuje prompt obrazu, ale nie generuje obrazu.
 
-4. **Content history**
-   Historyczna komenda `/weekly-content` sprawdzala `context/content-history/`, zeby nie powtarzac tematow. Mastra obecnie tego nie robi.
-
-5. **Founder notebook**
-   Historyczny workflow uzywal kontekstu founder przy historiach/case study. Mastra obecnie odpytuje tylko `rynek` i `konkurencja`.
-
-6. **Plan tygodnia i human approval przed generacja**
+3. **Plan tygodnia i human approval przed generacja**
    Prototypowy workflow najpierw proponowal plan tygodnia i czekal na akceptacje. Aktualny runtime Jarvisa generowal automatycznie i konczyl `awaiting_approval`, wiec to nie jest regresja wobec aktywnego Jarvisa, ale moze byc wymagane docelowo dla jakosci.
 
-7. **Telemetry LLM**
+4. **Telemetry LLM**
    Jarvis zapisywal provider/model/tokeny/koszt per step w `runs`. Mastra ma observability, ale metadata draftow nadal ma placeholder `provider: mastra`, `model: gemma`, `costUsd: 0`.
 
 ## 7. Zalecany nastepny krok
 
-Najbardziej oplacalne kolejne zadanie: dodac `structuredOutput` albo repair pass dla trzech LLM krokow `weekly-content`. To bezposrednio adresuje puste drafty po niepoprawnym JSON i jest najblizszym odpowiednikiem starego `jsonMode + repairJSON`.
+Najbardziej oplacalne kolejne zadanie: wzbogacic research o warstwe swiezych sygnalow z RSS/przetworzonych newsow. Najlepszy kierunek to osobny magazyn "content intelligence" z przetworzonymi wpisami z n8n, ktory workflow przeszukuje deterministycznie przed NotebookLM. Wybrane, wysokiej jakosci wpisy mozna dodatkowo importowac do dedykowanego notebooka NotebookLM, ale baza powinna pozostac zrodlem operacyjnym: latwiej filtrowac po dacie, tagach, zrodle i uzyciu w postach.

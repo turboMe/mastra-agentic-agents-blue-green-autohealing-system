@@ -116,6 +116,34 @@ export class DraftsStore {
       return [];
     }
   }
+
+  async listRecentMetadata(limit: number = 30): Promise<DraftMetadata[]> {
+    try {
+      const dates = (await fs.readdir(this.basePath))
+        .filter((entry) => /^\d{4}-\d{2}-\d{2}$/.test(entry))
+        .sort((a, b) => b.localeCompare(a));
+      const metadata: DraftMetadata[] = [];
+
+      for (const date of dates) {
+        const folders = await this.listByDate(date);
+        for (const folderPath of folders) {
+          try {
+            const raw = await fs.readFile(path.join(folderPath, 'draft.meta.json'), 'utf-8');
+            metadata.push(JSON.parse(raw) as DraftMetadata);
+          } catch {
+            continue;
+          }
+          if (metadata.length >= limit) {
+            return metadata.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+          }
+        }
+      }
+
+      return metadata.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    } catch {
+      return [];
+    }
+  }
 }
 
 let singleton: DraftsStore | null = null;

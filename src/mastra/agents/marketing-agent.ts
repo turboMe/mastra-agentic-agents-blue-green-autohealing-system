@@ -29,6 +29,7 @@ import {
   knowledgeCreateNotebookTool,
   knowledgeAddSourceTool,
   knowledgeDeleteNotebookTool,
+  knowledgeResearchStartTool,
 } from '../tools/knowledge/knowledge-tools.js';
 import { loadPrompt } from '../lib/prompt-loader.js';
 
@@ -76,5 +77,6 @@ export const marketingAgent = new Agent({
     knowledgeCreateNotebookTool,
     knowledgeAddSourceTool,
     knowledgeDeleteNotebookTool,
+    knowledgeResearchStartTool,
   },
 });
