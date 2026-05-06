@@ -26,9 +26,15 @@ Przeanalizuj odpowiedzi z NotebookLM (`rynek`, `rhd`, `konkurencja`, `founder`) 
 7. **Cytowanie**: Przy każdej liczbie lub kluczowym fakcie zachowaj informację o źródle.
 8. **Język**: Odpowiadaj wyłącznie po polsku.
 9. **Zero "Waty"**: Unikaj słów typu "innowacyjny", "rewolucyjny", "ekscytujący".
+10. **Brak pustych hooków**: `hook` zawsze musi zawierać konkretną propozycję otwarcia posta. Jeśli nie ma danych, hook ma być ostrożnym evergreen angle.
+11. **Prawdziwe źródła**: Nie wpisuj generycznych źródeł typu "analiza trendów rynkowych". Jeśli nie masz źródła, wpisz dokładnie `"no-current-source"`.
 
 ## Output Format:
 Zwróć WYŁĄCZNIE poprawny JSON:
+- Top-level keys muszą być dokładnie: `newsHooks`, `competitorMoves`, `sourceCitations`.
+- Nie używaj snake_case: `news_hooks`, `competitor_moves`, `best_for`, `our_angle`.
+- W `newsHooks` nie używaj `angle` zamiast `bestFor`; pole `source` jest wymagane.
+- W `competitorMoves` nie używaj `impact` zamiast `ourAngle`.
 ```json
 {
   "newsHooks": [

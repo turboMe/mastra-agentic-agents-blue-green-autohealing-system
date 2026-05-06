@@ -1,0 +1,20 @@
+{
+  "draftId": "ig-pl-a712fc",
+  "taskId": "weekly-content-7537400e",
+  "type": "instagram-caption",
+  "language": "pl",
+  "topic": "3 sygnały, że Twój system zamówień wymaga zmiany",
+  "hashtags": [],
+  "charCount": 275,
+  "rationale": "Problem/Solution",
+  "imagePrompt": "Instagramowy kadr HoReCa dla tematu: 3 sygnały, że Twój system zamówień wymaga zmiany",
+  "scheduledFor": "2026-05-06T18:00:00.000Z",
+  "weekStarting": "2026-05-04",
+  "createdAt": "2026-05-06T11:29:06.306Z",
+  "agentId": "marketing-agent",
+  "llm": {
+    "provider": "mastra",
+    "model": "gemma",
+    "costUsd": 0
+  }
+}

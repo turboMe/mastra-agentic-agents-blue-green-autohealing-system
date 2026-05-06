@@ -1,0 +1,20 @@
+{
+  "draftId": "li-pl-0b38a2",
+  "taskId": "weekly-content-7537400e",
+  "type": "linkedin-post",
+  "language": "pl",
+  "topic": "Optymalizacja kosztów operacyjnych w HoReCa",
+  "hashtags": [],
+  "charCount": 313,
+  "rationale": "Business Value / ROI",
+  "imagePrompt": "Realistyczny obraz HoReCa dla tematu: Optymalizacja kosztów operacyjnych w HoReCa",
+  "scheduledFor": "2026-05-05T10:00:00.000Z",
+  "weekStarting": "2026-05-04",
+  "createdAt": "2026-05-06T11:29:06.306Z",
+  "agentId": "marketing-agent",
+  "llm": {
+    "provider": "mastra",
+    "model": "gemma",
+    "costUsd": 0
+  }
+}

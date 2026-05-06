@@ -6,11 +6,7 @@ import { format, addDays, isValid, parseISO, startOfWeek } from 'date-fns';
 import { knowledgeQueryMultiTool, knowledgeResearchStartTool } from '../tools/knowledge/knowledge-tools.js';
 import { calendarCreateEventTool } from '../tools/google/google-tools.js';
 import { getDraftsStore } from '../lib/drafts-store.js';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { loadPrompt } from '../lib/prompt-loader.js';
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 const newsHookSchema = z.object({
@@ -85,14 +81,31 @@ const copyEnResultSchema = z.object({
   translations: z.array(enPostSchema),
 });
 
+const extractJsonText = (text: string): string => {
+  const match = text.match(/```(?:json)?\n?([\s\S]*?)```/);
+  if (match) return match[1];
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start >= 0 && end > start) return text.slice(start, end + 1);
+  return text;
+};
+
 const tryParseJson = <T = unknown>(text: string): T | null => {
   try {
-    const match = text.match(/```(?:json)?\n?([\s\S]*?)```/);
-    if (match) return JSON.parse(match[1]);
-    const start = text.indexOf('{');
-    const end = text.lastIndexOf('}');
-    if (start >= 0 && end > start) return JSON.parse(text.slice(start, end + 1));
-    return JSON.parse(text);
+    return JSON.parse(extractJsonText(text));
+  } catch {
+    return null;
+  }
+};
+
+const tryParseLooseJson = <T = unknown>(text: string): T | null => {
+  try {
+    const repaired = extractJsonText(text)
+      .replace(/([{\[,]\s*)_([A-Za-z][A-Za-z0-9_]*)"\s*:/g, '$1"$2":')
+      .replace(/([{\[,]\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:/g, '$1"$2":')
+      .replace(/"hashtations"\s*:/g, '"hashtags":')
+      .replace(/,\s*([}\]])/g, '$1');
+    return JSON.parse(repaired);
   } catch {
     return null;
   }
@@ -107,6 +120,10 @@ const CORE_RESEARCH_NOTEBOOKS = ['rynek', 'rhd', 'konkurencja', 'founder'] as co
 type ResearchNotebook = typeof CORE_RESEARCH_NOTEBOOKS[number];
 type NotebookAnswer = { answer: string; citations: string[]; error?: string };
 type ContentHistoryItem = z.infer<typeof contentHistoryItemSchema>;
+type ResearchResult = z.infer<typeof researchResultSchema>;
+type LiPost = z.infer<typeof liPostSchema>;
+type IgPost = z.infer<typeof igPostSchema>;
+type CopyPlResult = z.infer<typeof copyPlResultSchema>;
 
 const NO_SOURCE_NOTE = 'Brak wiarygodnych danych z NotebookLM. Nie wymyślaj nowych faktów ani liczb; jeśli trzeba, wybierz evergreen angle bez danych liczbowych.';
 const LOW_SIGNAL_PATTERNS = [
@@ -230,7 +247,7 @@ async function refreshWeakNotebookSources(
 function formatNotebookSection(title: string, result: NotebookAnswer): string {
   return `${title}:
 ${result.answer}
-Cytaty: ${result.citations.join('\n') || 'Brak cytatów.'}${result.error ? `\nBłąd: ${result.error}` : ''}`;
+Cytaty: ${result.citations.join('\n') || 'Brak cytatów.'}${result.error ? `\nBłąd: ${compactDiagnostic(result.error)}` : ''}`;
 }
 
 function formatContentHistory(history: ContentHistoryItem[]): string {
@@ -272,12 +289,489 @@ async function loadRecentContentHistory(limit: number = 24): Promise<ContentHist
 
 function collectCitations(
   notebookResults: Record<ResearchNotebook, NotebookAnswer>,
-  freshnessNotes: string[],
 ): string[] {
   return Array.from(new Set([
     ...CORE_RESEARCH_NOTEBOOKS.flatMap((notebook) => notebookResults[notebook].citations),
-    ...freshnessNotes,
-  ].filter(Boolean)));
+  ].filter(isUsableCitation)));
+}
+
+function compactDiagnostic(note: string): string {
+  const compact = note
+    .replace(/\s*Available: [\s\S]*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return compact.length > 260 ? `${compact.slice(0, 257)}...` : compact;
+}
+
+function collectResearchDiagnostics(
+  notebookResults: Record<ResearchNotebook, NotebookAnswer>,
+  freshnessNotes: string[],
+): string[] {
+  const queryErrors = CORE_RESEARCH_NOTEBOOKS.flatMap((notebook) => (
+    notebookResults[notebook].error
+      ? [`knowledge.query_multi:${notebook}:failed:${notebookResults[notebook].error}`]
+      : []
+  ));
+  return Array.from(new Set([...queryErrors, ...freshnessNotes].map(compactDiagnostic).filter(Boolean)));
+}
+
+function isUsableCitation(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const citation = value.trim();
+  if (!citation) return false;
+  if (/^(no-current-source|llm fallback)$/i.test(citation)) return false;
+  if (/^knowledge\./i.test(citation)) return false;
+  if (/notebook\s+".*"\s+not found/i.test(citation)) return false;
+  if (/\bavailable:\s+/i.test(citation)) return false;
+  return true;
+}
+
+function asRecord(value: unknown): Record<string, any> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, any> : null;
+}
+
+function asArray(value: unknown): Record<string, any>[] {
+  return Array.isArray(value) ? value.filter((item): item is Record<string, any> => Boolean(asRecord(item))) : [];
+}
+
+function firstString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function extractHashtags(text: string): string[] {
+  return Array.from(new Set(text.match(/#[\p{L}\p{N}_-]+/gu) ?? []));
+}
+
+function cleanGeneratedText(value: string): string {
+  return value.replace(/[–—]/g, '-').trim();
+}
+
+function normalizeHashtags(value: unknown, fallbackText: string, maxCount: number): string[] {
+  const rawValues = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? [value]
+      : [];
+  const fromFields = rawValues
+    .filter((tag): tag is string => typeof tag === 'string')
+    .flatMap((tag) => tag.split(/[\s,]+/));
+  const tags = [...fromFields, ...extractHashtags(fallbackText)]
+    .map((tag) => tag.trim())
+    .filter((tag) => /^#[\p{L}\p{N}_-]+$/u.test(tag));
+  return Array.from(new Set(tags)).slice(0, maxCount);
+}
+
+function parseSchedule(schedule: unknown, fallbackDay: string, fallbackTime: string): { day: string; time: string } {
+  const value = typeof schedule === 'string' ? schedule : '';
+  const time = value.match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/)?.[0] ?? fallbackTime;
+  const normalized = value.toLowerCase();
+  const dayMap: Array<[RegExp, string]> = [
+    [/\b(mon|monday|poniedzialek|poniedziałek)\b/, 'Monday'],
+    [/\b(tue|tuesday|wtorek)\b/, 'Tuesday'],
+    [/\b(wed|wednesday|sroda|środa)\b/, 'Wednesday'],
+    [/\b(thu|thursday|czwartek)\b/, 'Thursday'],
+    [/\b(fri|friday|piatek|piątek)\b/, 'Friday'],
+    [/\b(sat|saturday|sobota)\b/, 'Saturday'],
+    [/\b(sun|sunday|niedziela)\b/, 'Sunday'],
+  ];
+  const day = dayMap.find(([pattern]) => pattern.test(normalized))?.[1] ?? fallbackDay;
+  return { day, time };
+}
+
+function inferTopic(item: Record<string, any>, fallback: string): string {
+  const explicit = firstString(item.topic, item.title, item.angle);
+  if (explicit) return explicit;
+  const text = firstString(item.post, item.content, item.caption);
+  return text.split('\n').map((line) => line.trim()).find(Boolean)?.replace(/^slide\s*\d+:\s*/i, '') ?? fallback;
+}
+
+function normalizeBestFor(value: unknown): string {
+  const raw = firstString(value).toLowerCase();
+  if (raw.includes('instagram')) return 'instagram';
+  if (raw.includes('personal') || raw.includes('patryk') || raw.includes('osob')) return 'linkedin-personal';
+  if (raw.includes('company') || raw.includes('firm')) return 'linkedin-company';
+  if (raw.includes('linkedin')) return 'linkedin-company';
+  return 'linkedin-company';
+}
+
+function normalizeResearchOutput(parsed: unknown): ResearchResult | null {
+  const raw = asRecord(parsed);
+  if (!raw) return null;
+
+  const rawNewsHooks: Record<string, any>[] = [
+    ...asArray(raw.newsHooks),
+    ...asArray(raw.news_hooks),
+    ...asArray(raw.hooks),
+    ...asArray(raw.news),
+  ];
+  const rawCompetitorMoves: Record<string, any>[] = [
+    ...asArray(raw.competitorMoves),
+    ...asArray(raw.competitor_moves),
+    ...asArray(raw.competitors),
+    ...asArray(raw.moves),
+  ];
+
+  if (rawNewsHooks.length === 0 && rawCompetitorMoves.length === 0) return null;
+
+  const sourceCitations = [
+    ...(
+      Array.isArray(raw.sourceCitations)
+        ? raw.sourceCitations
+        : Array.isArray(raw.source_citations)
+          ? raw.source_citations
+          : Array.isArray(raw.citations)
+            ? raw.citations
+            : []
+    ),
+  ].filter((citation): citation is string => typeof citation === 'string' && citation.trim().length > 0);
+
+  const newsHooks = rawNewsHooks.map((item, index) => ({
+    topic: firstString(item.topic, item.title, item.angle, `research hook ${index + 1}`),
+    hook: firstString(item.hook, item.headline, item.summary, item.angle),
+    data: firstString(item.data, item.fact, item.metric, item.number),
+    source: firstString(item.source, item.citation, item.url, item.link, 'no-current-source'),
+    bestFor: normalizeBestFor(item.bestFor ?? item.best_for ?? item.platform ?? item.channel),
+  }));
+
+  const competitorMoves = rawCompetitorMoves.map((item) => ({
+    competitor: firstString(item.competitor, item.name, item.company, 'unknown-competitor'),
+    move: firstString(item.move, item.action, item.activity, item.summary),
+    ourAngle: firstString(item.ourAngle, item.our_angle, item.impact, item.angle, item.response),
+  }));
+
+  const normalized = { newsHooks, competitorMoves, sourceCitations };
+  const validated = researchResultSchema.safeParse(normalized);
+  return validated.success ? validated.data : null;
+}
+
+function normalizeResearchSource(source: string, data: string): string {
+  const cleanSource = cleanGeneratedText(source);
+  if (!cleanSource) return 'no-current-source';
+  if (!data && /^(analiza|trendy|sygnaly|sygnały|obserwacje)\b/i.test(cleanSource)) return 'no-current-source';
+  if (!data && /\b(oparte na sygnalach|oparte na sygnałach|trend(?:y|ow|ów)?|technologiczne|rynkowe)\b/i.test(cleanSource)) return 'no-current-source';
+  if (/^(brak|none|null)$/i.test(cleanSource)) return 'no-current-source';
+  return cleanSource;
+}
+
+function sanitizeResearchResult(result: ResearchResult, notebookCitations: string[]): ResearchResult {
+  const newsHooks = result.newsHooks.map((item, index) => {
+    const topic = cleanGeneratedText(firstString(item.topic, `research hook ${index + 1}`));
+    const data = cleanGeneratedText(item.data);
+    return {
+      topic,
+      hook: cleanGeneratedText(firstString(item.hook, topic)),
+      data,
+      source: normalizeResearchSource(item.source, data),
+      bestFor: normalizeBestFor(item.bestFor),
+    };
+  });
+
+  const competitorMoves = result.competitorMoves
+    .map((item) => ({
+      competitor: cleanGeneratedText(firstString(item.competitor, 'unknown-competitor')),
+      move: cleanGeneratedText(item.move),
+      ourAngle: cleanGeneratedText(item.ourAngle),
+    }))
+    .filter((item) => item.competitor !== 'unknown-competitor' && item.move && item.ourAngle);
+
+  const sourceCitations = Array.from(new Set([
+    ...(result.sourceCitations ?? []),
+    ...notebookCitations,
+  ].filter(isUsableCitation).map((citation) => citation.trim())));
+
+  return { newsHooks, competitorMoves, sourceCitations };
+}
+
+function normalizeCopyPlOutput(parsed: unknown, liCount: number, igCount: number): CopyPlResult | null {
+  const raw = asRecord(parsed);
+  if (!raw) return null;
+
+  const rawLinkedin: Record<string, any>[] = [
+    ...asArray(raw.linkedin),
+    ...asArray(raw.liPosts),
+    ...asArray(raw.linkedin_personal).map((item) => ({ ...item, account: item.account ?? 'personal' })),
+    ...asArray(raw.linkedin_company).map((item) => ({ ...item, account: item.account ?? 'company' })),
+  ];
+  const rawInstagram: Record<string, any>[] = [
+    ...asArray(raw.instagram),
+    ...asArray(raw.igPosts),
+    ...asArray(raw.instagram_posts),
+  ];
+
+  if (rawLinkedin.length === 0 && rawInstagram.length === 0) return null;
+
+  const linkedin = rawLinkedin.slice(0, liCount).map((item, index) => {
+    const post = cleanGeneratedText(firstString(item.post, item.content, item.body, item.text));
+    const topic = cleanGeneratedText(inferTopic(item, `LinkedIn post ${index + 1}`));
+    const platform = firstString(item.platform, item.account).toLowerCase();
+    const account = platform.includes('company') || platform.includes('firm') || item.account === 'company'
+      ? 'company'
+      : 'personal';
+    const { day, time } = parseSchedule(
+      item.schedule ?? `${firstString(item.suggestedDay, item.day)} ${firstString(item.suggestedTime, item.time)}`,
+      account === 'personal' ? 'Tuesday' : 'Monday',
+      account === 'personal' ? '10:00' : '10:00',
+    );
+    const hashtagsInput = item.hashtags ?? item.tags ?? item.hashtations;
+    return {
+      account,
+      topic,
+      post,
+      hashtags: normalizeHashtags(hashtagsInput, post, 8),
+      char_count: post.length,
+      rationale: cleanGeneratedText(firstString(item.rationale, item.angle, account === 'personal' ? 'Perspektywa foundera i building in public.' : 'Edukacyjny angle dla rynku HoReCa.')),
+      suggestedDay: day,
+      suggestedTime: time,
+      needsImage: typeof item.needsImage === 'boolean' ? item.needsImage : true,
+      imagePrompt: cleanGeneratedText(firstString(item.imagePrompt, `Realistyczny obraz HoReCa dla tematu: ${topic}`)),
+    };
+  });
+
+  const instagram = rawInstagram.slice(0, igCount).map((item, index) => {
+    const caption = cleanGeneratedText(firstString(item.caption, item.content, item.post, item.text));
+    const topic = cleanGeneratedText(inferTopic(item, `Instagram post ${index + 1}`));
+    const platformOrType = firstString(item.type, item.platform).toLowerCase();
+    const type = platformOrType.includes('carousel') || platformOrType.includes('karuzel')
+      ? 'carousel'
+      : platformOrType.includes('story')
+        ? 'story'
+        : platformOrType.includes('reel')
+          ? 'reel'
+          : 'post';
+    const { day, time } = parseSchedule(
+      item.schedule ?? `${firstString(item.suggestedDay, item.day)} ${firstString(item.suggestedTime, item.time)}`,
+      index === 0 ? 'Wednesday' : 'Friday',
+      '18:00',
+    );
+    const hashtagsInput = item.hashtags ?? item.tags ?? item.hashtations;
+    return {
+      type,
+      topic,
+      caption,
+      hashtags: normalizeHashtags(hashtagsInput, caption, 15),
+      char_count: caption.length,
+      rationale: cleanGeneratedText(firstString(item.rationale, item.angle, 'Format dopasowany do Instagram i wybranego angle.')),
+      suggestedDay: day,
+      suggestedTime: time,
+      imagePrompt: cleanGeneratedText(firstString(item.imagePrompt, `Instagramowy kadr HoReCa dla tematu: ${topic}`)),
+      slideCount: typeof item.slideCount === 'number' ? item.slideCount : type === 'carousel' ? 5 : 1,
+    };
+  });
+
+  const normalized = { linkedin, instagram };
+  const validated = copyPlResultSchema.safeParse(normalized);
+  return validated.success ? validated.data : null;
+}
+
+function sanitizeCopyPlResult(result: CopyPlResult): CopyPlResult {
+  return {
+    linkedin: result.linkedin.map((post) => {
+      const cleanPost = cleanGeneratedText(post.post);
+      const cleanTopic = cleanGeneratedText(post.topic);
+      return {
+        ...post,
+        topic: cleanTopic,
+        post: cleanPost,
+        hashtags: normalizeHashtags(post.hashtags, cleanPost, 8),
+        char_count: cleanPost.length,
+        rationale: cleanGeneratedText(post.rationale),
+        imagePrompt: cleanGeneratedText(post.imagePrompt),
+      };
+    }),
+    instagram: result.instagram.map((post) => {
+      const cleanCaption = cleanGeneratedText(post.caption);
+      const cleanTopic = cleanGeneratedText(post.topic);
+      return {
+        ...post,
+        topic: cleanTopic,
+        caption: cleanCaption,
+        hashtags: normalizeHashtags(post.hashtags, cleanCaption, 15),
+        char_count: cleanCaption.length,
+        rationale: cleanGeneratedText(post.rationale),
+        imagePrompt: cleanGeneratedText(post.imagePrompt),
+      };
+    }),
+  };
+}
+
+function assertCopyCounts(result: CopyPlResult, liCount: number, igCount: number, taskId: string): void {
+  if (result.linkedin.length !== liCount || result.instagram.length !== igCount) {
+    throw new Error(`[weekly-content:${taskId}] generate-pl returned LI:${result.linkedin.length}/IG:${result.instagram.length}, expected LI:${liCount}/IG:${igCount}`);
+  }
+}
+
+function mergeUniqueBy<T>(primary: T[], secondary: T[], maxCount: number, getKey: (item: T) => string): T[] {
+  const seen = new Set<string>();
+  const merged: T[] = [];
+  for (const item of [...primary, ...secondary]) {
+    const key = getKey(item).toLowerCase().trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(item);
+    if (merged.length >= maxCount) break;
+  }
+  return merged;
+}
+
+function getResearchHooksForFallback(research: unknown): Array<{ topic: string; hook: string; data: string; source: string }> {
+  const raw = asRecord(research);
+  const hooks = asArray(raw?.newsHooks);
+  if (hooks.length === 0) {
+    return [{
+      topic: 'Zaopatrzenie restauracji bez chaosu',
+      hook: 'Zaopatrzenie restauracji nie powinno opierać się na dziesiątkach telefonów i zgadywaniu dostępności.',
+      data: '',
+      source: 'no-current-source',
+    }];
+  }
+  return hooks.map((item, index) => {
+    const topic = cleanGeneratedText(firstString(item.topic, `Temat HoReCa ${index + 1}`));
+    return {
+      topic,
+      hook: cleanGeneratedText(firstString(item.hook, topic)),
+      data: cleanGeneratedText(firstString(item.data)),
+      source: normalizeResearchSource(firstString(item.source, 'no-current-source'), firstString(item.data)),
+    };
+  });
+}
+
+function buildFallbackLiPost(index: number, research: unknown): LiPost {
+  const hook = getResearchHooksForFallback(research)[index % getResearchHooksForFallback(research).length];
+  const account = index % 2 === 0 ? 'personal' : 'company';
+  const sourceLine = hook.data && hook.source !== 'no-current-source'
+    ? `\n\nDane wejściowe do tego angle: ${hook.data}. Źródło: ${hook.source}.`
+    : '\n\nNie dokładam tutaj liczb bez źródła. To bezpieczny angle operacyjny do rozwinięcia na bazie doświadczenia kuchni.';
+  const post = cleanGeneratedText(`${hook.hook}
+
+W gastronomii takie tematy szybko schodzą z poziomu "trend" do poziomu codziennej pracy: zamówienia, dostępność produktu, zmiana ceny, kontakt z dostawcą.
+
+GastroBridge ma pomagać właśnie w tej warstwie - mniej zgadywania, więcej porównywalnych informacji w jednym miejscu.${sourceLine}
+
+Co dziś najbardziej utrudnia zaopatrzenie w Twojej kuchni?`);
+  return {
+    account,
+    topic: hook.topic,
+    post,
+    hashtags: normalizeHashtags(['#GastroBridge', '#HoReCa', '#gastronomia', '#foodtech', '#dostawcy'], post, 8),
+    char_count: post.length,
+    rationale: 'Techniczny fallback po niepełnej odpowiedzi modelu; bez nowych faktów i liczb.',
+    suggestedDay: account === 'personal' ? 'Tuesday' : 'Monday',
+    suggestedTime: '10:00',
+    needsImage: true,
+    imagePrompt: `Realistyczny obraz HoReCa dla tematu: ${hook.topic}`,
+  };
+}
+
+function buildFallbackIgPost(index: number, research: unknown): IgPost {
+  const hook = getResearchHooksForFallback(research)[index % getResearchHooksForFallback(research).length];
+  const type = index % 3 === 0 ? 'carousel' : index % 3 === 1 ? 'reel' : 'post';
+  const caption = cleanGeneratedText(type === 'carousel'
+    ? `Slide 1: ${hook.topic}
+Slide 2: Problem: zaopatrzenie restauracji jest często rozproszone między telefonami, mailami i wiadomościami.
+Slide 3: Skutek: trudniej porównać dostępność, ceny i alternatywnych dostawców.
+Slide 4: Lepszy kierunek: jedno miejsce do porównania dostawców i produktów.
+Slide 5: GastroBridge buduje taki system dla HoReCa.`
+    : `${hook.topic}
+
+Mniej chaosu w zamówieniach. Więcej kontroli nad dostawami. Bez dopowiadania liczb, jeśli nie mamy źródła.
+
+Tak chcemy budować GastroBridge - praktycznie, od kuchni.`);
+  return {
+    type,
+    topic: hook.topic,
+    caption,
+    hashtags: normalizeHashtags(['#GastroBridge', '#HoReCa', '#gastronomia', '#restauracja', '#foodtech', '#dostawcy', '#lokalneprodukty'], caption, 15),
+    char_count: caption.length,
+    rationale: 'Techniczny fallback po niepełnej odpowiedzi modelu; format Instagram bez nowych faktów i liczb.',
+    suggestedDay: index === 0 ? 'Wednesday' : 'Friday',
+    suggestedTime: index === 0 ? '18:00' : '12:30',
+    imagePrompt: `Instagramowy kadr HoReCa dla tematu: ${hook.topic}`,
+    slideCount: type === 'carousel' ? 5 : 1,
+  };
+}
+
+function fillMissingCopyDeterministically(result: CopyPlResult, research: unknown, liCount: number, igCount: number): CopyPlResult {
+  const linkedin = [...result.linkedin];
+  const instagram = [...result.instagram];
+  while (linkedin.length < liCount) linkedin.push(buildFallbackLiPost(linkedin.length, research));
+  while (instagram.length < igCount) instagram.push(buildFallbackIgPost(instagram.length, research));
+  return sanitizeCopyPlResult({
+    linkedin: linkedin.slice(0, liCount),
+    instagram: instagram.slice(0, igCount),
+  });
+}
+
+async function completeCopyCounts({
+  taskId,
+  weekDate,
+  research,
+  current,
+  liCount,
+  igCount,
+  systemPrompt,
+}: {
+  taskId: string;
+  weekDate: string;
+  research: unknown;
+  current: CopyPlResult;
+  liCount: number;
+  igCount: number;
+  systemPrompt: string;
+}): Promise<CopyPlResult> {
+  const initial = sanitizeCopyPlResult({
+    linkedin: current.linkedin.slice(0, liCount),
+    instagram: current.instagram.slice(0, igCount),
+  });
+  if (initial.linkedin.length === liCount && initial.instagram.length === igCount) return initial;
+
+  console.warn(`[weekly-content:${taskId}] generate-pl incomplete LI:${initial.linkedin.length}/IG:${initial.instagram.length}, attempting count top-up`);
+  const topUpPrompt = `Poprzednia odpowiedź kroku generate-pl była niepełna.
+Masz zwrócić pełny obiekt JSON z dokładnie ${liCount} postami LinkedIn i dokładnie ${igCount} treściami Instagram.
+
+Zachowaj istniejące poprawne posty, ale dodaj brakujące elementy. Szczególnie pilnuj tablicy "instagram" - nie może być pusta.
+
+Tydzień: ${weekDate}
+
+RESEARCH:
+${JSON.stringify(research, null, 2)}
+
+OBECNY NIEPEŁNY WYNIK:
+${JSON.stringify(initial, null, 2)}
+
+Wymagania:
+- top-level keys: "linkedin" i "instagram";
+- dokładnie ${liCount} elementów w "linkedin";
+- dokładnie ${igCount} elementów w "instagram";
+- tematy po polsku;
+- hashtagi jako osobne elementy tablicy;
+- jeśli brak źródła, nie dodawaj liczb ani nowych faktów.
+
+Zwróć tylko JSON.`;
+
+  try {
+    const regenerated = sanitizeCopyPlResult(await generateJsonWithRepair({
+      taskId,
+      stepId: 'generate-pl-count-topup',
+      userPrompt: topUpPrompt,
+      systemPrompt,
+      schema: copyPlResultSchema,
+      modelSettings: { temperature: 0.35, maxOutputTokens: 8192 },
+      normalizeBeforeRepair: (parsed) => normalizeCopyPlOutput(parsed, liCount, igCount),
+    }));
+    const merged = sanitizeCopyPlResult({
+      linkedin: mergeUniqueBy(initial.linkedin, regenerated.linkedin, liCount, (post) => `${post.account}:${post.topic}`),
+      instagram: mergeUniqueBy(initial.instagram, regenerated.instagram, igCount, (post) => `${post.type}:${post.topic}`),
+    });
+    if (merged.linkedin.length === liCount && merged.instagram.length === igCount) return merged;
+    console.warn(`[weekly-content:${taskId}] generate-pl count top-up incomplete LI:${merged.linkedin.length}/IG:${merged.instagram.length}, using deterministic fallback for missing slots`);
+    return fillMissingCopyDeterministically(merged, research, liCount, igCount);
+  } catch (err) {
+    console.warn(`[weekly-content:${taskId}] generate-pl count top-up failed:`, (err as Error).message);
+    return fillMissingCopyDeterministically(initial, research, liCount, igCount);
+  }
 }
 
 async function generateJsonWithRepair<T extends {}>({
@@ -287,6 +781,7 @@ async function generateJsonWithRepair<T extends {}>({
   systemPrompt,
   schema,
   modelSettings,
+  normalizeBeforeRepair,
 }: {
   taskId: string;
   stepId: string;
@@ -294,6 +789,7 @@ async function generateJsonWithRepair<T extends {}>({
   systemPrompt: string;
   schema: z.ZodType<T, T>;
   modelSettings?: { temperature?: number; maxOutputTokens?: number };
+  normalizeBeforeRepair?: (parsed: unknown) => T | null;
 }): Promise<T> {
   const res = await marketingAgent.generate(userPrompt, {
     system: systemPrompt,
@@ -301,9 +797,18 @@ async function generateJsonWithRepair<T extends {}>({
     toolChoice: 'none',
     maxSteps: 1,
   });
-  const parsed = tryParseJson<T>(res.text);
+  const parsed = tryParseJson<T>(res.text) ?? tryParseLooseJson<T>(res.text);
   const validated = schema.safeParse(parsed);
   if (validated.success) return validated.data;
+  const normalized = normalizeBeforeRepair?.(parsed);
+  if (normalized) {
+    const normalizedValidated = schema.safeParse(normalized);
+    if (normalizedValidated.success) {
+      console.warn(`[weekly-content:${taskId}] ${stepId} normalized legacy JSON shape before repair`);
+      return normalizedValidated.data;
+    }
+    console.warn(`[weekly-content:${taskId}] ${stepId} legacy JSON normalization failed schema, attempting structured repair`);
+  }
 
   console.warn(`[weekly-content:${taskId}] ${stepId} invalid JSON, attempting structured repair`);
   const repairPrompt = `Napraw poniższą odpowiedź modelu do poprawnego obiektu JSON zgodnego ze schematem kroku "${stepId}".
@@ -395,11 +900,11 @@ const researchWeekStep = createStep({
     if (freshnessNotes.some((note) => !note.includes(':failed:'))) {
       notebookResults = await queryCoreNotebooks(taskId, weekDate);
     }
-    const sourceCitations = collectCitations(notebookResults, freshnessNotes);
+    const sourceCitations = collectCitations(notebookResults);
+    const researchDiagnostics = collectResearchDiagnostics(notebookResults, freshnessNotes);
 
     // Wczytanie profesjonalnego promptu (jak w Jarvis)
-    const promptPath = path.join(__dirname, '..', 'prompts', 'marketing', 'research.md');
-    const systemPrompt = await fs.readFile(promptPath, 'utf-8');
+    const systemPrompt = await loadPrompt('marketing/research');
 
     const userPrompt = `
 DANE Z NOTEBOOKLM DO ANALIZY:
@@ -420,20 +925,23 @@ ${formatNotebookSection('Founder', notebookResults.founder)}
 ${formatContentHistory(recentContentTopics)}
 
 # Diagnostyka świeżości źródeł
-${freshnessNotes.join('\n') || 'Nie uruchamiano knowledge.research_start, bo query_multi zwróciło wystarczający sygnał.'}
+${researchDiagnostics.join('\n') || 'Nie uruchamiano knowledge.research_start, bo query_multi zwróciło wystarczający sygnał.'}
 
 Tydzień: ${weekDate}
 
-Wybierz 3 najlepsze news hooks i ruchy konkurencji. Jeśli brakuje danych źródłowych, nie zgaduj liczb ani newsów: użyj ostrożnego evergreen angle i ustaw puste "data". Zwróć JSON.`;
+Wybierz 3 najlepsze news hooks i ruchy konkurencji. Jeśli brakuje danych źródłowych, nie zgaduj liczb ani newsów: użyj ostrożnego evergreen angle i ustaw puste "data". Zwróć JSON.
 
-    const research = await generateJsonWithRepair({
+Ważne: użyj dokładnie pól "newsHooks", "competitorMoves", "sourceCitations", "source", "bestFor" i "ourAngle". Nie używaj snake_case: "news_hooks", "competitor_moves", "best_for", "our_angle". Nie zwracaj pól "angle" ani "impact" zamiast wymaganych pól.`;
+
+    const research = sanitizeResearchResult(await generateJsonWithRepair({
       taskId,
       stepId: 'research-week',
       userPrompt,
       systemPrompt,
       schema: researchResultSchema,
       modelSettings: { temperature: 0.5 },
-    });
+      normalizeBeforeRepair: normalizeResearchOutput,
+    }), sourceCitations);
     if (research.newsHooks.length === 0) {
       research.newsHooks.push({
         topic: 'research-fallback',
@@ -443,7 +951,6 @@ Wybierz 3 najlepsze news hooks i ruchy konkurencji. Jeśli brakuje danych źród
         bestFor: 'linkedin-company',
       });
     }
-    research.sourceCitations = Array.from(new Set([...(research.sourceCitations ?? []), ...sourceCitations]));
     return {
       taskId,
       weekDate,
@@ -454,7 +961,7 @@ Wybierz 3 najlepsze news hooks i ruchy konkurencji. Jeśli brakuje danych źród
         competitorMoves: research.competitorMoves,
         sourceCitations: research.sourceCitations,
         recentContentTopics,
-        researchDiagnostics: freshnessNotes,
+        researchDiagnostics,
       },
     };
   },
@@ -482,8 +989,7 @@ const generatePlStep = createStep({
     console.log(`[weekly-content:${taskId}] generate-pl (LI:${liCount}, IG:${igCount})`);
 
     // Wczytanie profesjonalnego promptu copy (PL)
-    const promptPath = path.join(__dirname, '..', 'prompts', 'marketing', 'copy-pl.md');
-    const systemPrompt = await fs.readFile(promptPath, 'utf-8');
+    const systemPrompt = await loadPrompt('marketing/copy-pl');
 
     const userPrompt = `Wygeneruj ${liCount} postów LinkedIn i ${igCount} treści Instagram dla GastroBridge.
 Tydzień: ${weekDate}
@@ -499,17 +1005,30 @@ Ważne:
 - Instagram feed preferuj 12:00-13:00 albo 18:00-20:00.
 - Każdy post MUSI mieć unikalny temat.
 - Nie powtarzaj tematów ani angle z research.recentContentTopics.
+- Zwróć dokładnie ${liCount} elementów w "linkedin" i dokładnie ${igCount} elementów w "instagram".
+- Zwróć dokładnie top-level keys: "linkedin" i "instagram". Nie używaj "linkedin_personal", "linkedin_company", "content", "tags" ani "schedule".
+- Tematy "topic" zwracaj po polsku. Hashtagi zwracaj jako osobne elementy tablicy, nie jako jeden string z wieloma tagami.
 
 Zwróć JSON zgodnie ze strukturą opisaną w system prompcie.`;
 
-    const parsed = await generateJsonWithRepair({
+    const parsed = await completeCopyCounts({
       taskId,
-      stepId: 'generate-pl',
-      userPrompt,
+      weekDate,
+      research,
+      current: sanitizeCopyPlResult(await generateJsonWithRepair({
+        taskId,
+        stepId: 'generate-pl',
+        userPrompt,
+        systemPrompt,
+        schema: copyPlResultSchema,
+        modelSettings: { temperature: 0.4, maxOutputTokens: 8192 },
+        normalizeBeforeRepair: (parsed) => normalizeCopyPlOutput(parsed, liCount, igCount),
+      })),
+      liCount,
+      igCount,
       systemPrompt,
-      schema: copyPlResultSchema,
-      modelSettings: { temperature: 0.4, maxOutputTokens: 8192 },
     });
+    assertCopyCounts(parsed, liCount, igCount, taskId);
     if (parsed.linkedin.length === 0 && parsed.instagram.length === 0) {
       throw new Error(`[weekly-content:${taskId}] generate-pl returned zero drafts after JSON repair`);
     }
@@ -540,8 +1059,7 @@ const translateEnStep = createStep({
     if (topPosts.length === 0) return { ...context.inputData, enPosts: [] };
 
     // Wczytanie profesjonalnego promptu adaptacji (EN)
-    const promptPath = path.join(__dirname, '..', 'prompts', 'marketing', 'copy-en.md');
-    const systemPrompt = await fs.readFile(promptPath, 'utf-8');
+    const systemPrompt = await loadPrompt('marketing/copy-en');
 
     const userPrompt = `Translate and adapt these Polish LinkedIn posts to English:
 ${topPosts.map((p, i) => `### Post ${i + 1}: ${p.topic}\n${p.post}\nHashtags: ${p.hashtags.join(' ')}`).join('\n\n---\n\n')}

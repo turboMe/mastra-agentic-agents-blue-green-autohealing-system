@@ -94,7 +94,18 @@ Status: brakujace reguly zostaly dopisane do promptow i user promptu kroku `gene
 - Prompt `copy-en.md` dostal limity, hashtagi EN i zasady bezpiecznej adaptacji.
 - Krok EN tlumaczy top 2 posty LinkedIn, jak w Jarvisie.
 - Trzy kroki LLM (`research-week`, `generate-pl`, `translate-en`) waliduja odpowiedz przez Zod, a przy uszkodzonym JSON uruchamiaja repair pass z `structuredOutput`.
+- Trzy kroki LLM wczytuja prompty przez `loadPrompt(...)`, a nie przez sciezki liczone wzgledem bundla `.mastra/output`; usuwa to blad `ENOENT` dla `.mastra/prompts/marketing/*.md`.
+- `research-week` ma adapter zgodnosci dla starszego/snake_case JSON (`news_hooks`, `competitor_moves`, `impact`, `angle`), zeby nie uruchamiac ciezkiego LLM repair pass przy prostym mapowaniu pol.
+- `generate-pl` ma adapter zgodnosci dla starszego ksztaltu JSON (`linkedin_personal`, `linkedin_company`, `content`, `tags`, `schedule`), zeby nie obciazac lokalnego modelu LLM repair pass przy prostym mapowaniu pol.
+- Parser JSON ma lekki pre-repair dla typowych usterek lokalnego modelu (`_day"` bez otwierajacego cudzyslowu, `hashtations`, trailing comma), zanim workflow uruchomi LLM repair pass.
 - `generate-pl` nie moze juz po cichu zakonczyc sie zerem draftow po blednym JSON - workflow rzuca jawny blad.
+- Aliasowe nazwy NotebookLM (`rynek`, `rhd`, `konkurencja`, `founder`) sa mapowane w kliencie NotebookLM na realne tytuly notebookow GastroBridge, wiec `query_multi` i `research_start` nie powinny juz failowac na `Notebook "rynek" not found`.
+- `sourceCitations` zawiera tylko uzywalne cytowania, a bledy narzedzi trafiaja do `researchDiagnostics` w skroconej formie. Lista `Available notebooks` nie jest juz przekazywana copywriterowi jako zrodlo.
+- Research jest sanityzowany po JSON: puste `hook` dostaje bezpieczny fallback z tematu, generyczne zrodla typu "analiza trendow" przy braku danych sa zamieniane na `no-current-source`, a `bestFor` jest kanonizowane.
+- Copy PL jest sanityzowane po JSON: dlugie pauzy sa zamieniane na zwykly dywiz, hashtagi sa rozbijane na osobne elementy tablicy, `char_count` jest liczony z finalnej tresci, a debugowe adapter rationale nie trafia do nowych fallbackow.
+- `generate-pl` wymaga dokladnie zadanej liczby postow (`liCount`, `igCount`). Jesli model zwroci mniej lub wiecej, workflow probuje krotkiego top-up/regeneracji brakujacego kanalu; jesli lokalny model nadal nie dowiezie, uzupelnia brakujace sloty technicznym fallbackiem bez nowych faktow i liczb.
+- Research nie przepuszcza juz pustych ruchow konkurencji typu `unknown-competitor` z pustym `move` i `ourAngle`.
+- Diagnostyka `knowledge.research_start` pokazuje teraz kod bledu oraz stdout/stderr z `nlm`, zamiast pustego `nlm research start failed:`.
 - Research uzywa `knowledge.query_multi` zamiast dwoch osobnych query.
 - Research odpytuje `rynek`, `rhd`, `konkurencja` i `founder`.
 - Research wczytuje ostatnie tematy z `DraftsStore` i przekazuje je jako `recentContentTopics`, zeby ograniczyc powtorki.
@@ -119,3 +130,5 @@ Status: brakujace reguly zostaly dopisane do promptow i user promptu kroku `gene
 ## 7. Zalecany nastepny krok
 
 Najbardziej oplacalne kolejne zadanie: wzbogacic research o warstwe swiezych sygnalow z RSS/przetworzonych newsow. Najlepszy kierunek to osobny magazyn "content intelligence" z przetworzonymi wpisami z n8n, ktory workflow przeszukuje deterministycznie przed NotebookLM. Wybrane, wysokiej jakosci wpisy mozna dodatkowo importowac do dedykowanego notebooka NotebookLM, ale baza powinna pozostac zrodlem operacyjnym: latwiej filtrowac po dacie, tagach, zrodle i uzyciu w postach.
+
+Plan wdrozenia: `docs/content-intelligence-rss-n8n-plan.md`.

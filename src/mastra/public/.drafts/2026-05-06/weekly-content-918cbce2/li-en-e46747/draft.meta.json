@@ -1,0 +1,24 @@
+{
+  "draftId": "li-en-e46747",
+  "taskId": "weekly-content-918cbce2",
+  "type": "linkedin-post",
+  "language": "en",
+  "topic": "Digitalization of the food supply chain",
+  "hashtags": [
+    "#HoReCa",
+    "#FoodSupplyChain",
+    "#DigitalTransformation",
+    "#GastroBridge",
+    "#BusinessIntelligence"
+  ],
+  "charCount": 595,
+  "rationale": "Used professional industry terminology such as 'real-time visibility', 'stockouts', and 'procurement risk' to align with global B2B standards.",
+  "weekStarting": "2026-05-04",
+  "createdAt": "2026-05-06T10:33:37.242Z",
+  "agentId": "marketing-agent",
+  "llm": {
+    "provider": "mastra",
+    "model": "gemma",
+    "costUsd": 0
+  }
+}

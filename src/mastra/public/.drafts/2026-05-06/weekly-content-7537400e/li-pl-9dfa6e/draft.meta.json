@@ -1,0 +1,20 @@
+{
+  "draftId": "li-pl-9dfa6e",
+  "taskId": "weekly-content-7537400e",
+  "type": "linkedin-post",
+  "language": "pl",
+  "topic": "Dlaczego tradycyjne zamawianie przez telefon to pułapka?",
+  "hashtags": [],
+  "charCount": 523,
+  "rationale": "Storytelling / Personal Experience",
+  "imagePrompt": "Realistyczny obraz HoReCa dla tematu: Dlaczego tradycyjne zamawianie przez telefon to pułapka?",
+  "scheduledFor": "2026-05-05T10:00:00.000Z",
+  "weekStarting": "2026-05-04",
+  "createdAt": "2026-05-06T11:29:06.303Z",
+  "agentId": "marketing-agent",
+  "llm": {
+    "provider": "mastra",
+    "model": "gemma",
+    "costUsd": 0
+  }
+}

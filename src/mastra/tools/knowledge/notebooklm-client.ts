@@ -10,6 +10,16 @@ import { spawn } from 'node:child_process';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const NOTEBOOK_TITLE_ALIASES: Record<string, string> = {
+  rynek: 'GastroBridge - Polski Rynek HoReCa',
+  rhd: 'GastroBridge - Producenci i RHD',
+  konkurencja: 'GastroBridge - Konkurencja',
+  founder: 'GastroBridge - Głos Foundera',
+  leady: 'GastroBridge - Leady i Kontakty',
+  project: 'GastroBridge Master',
+  docs: 'GastroBridge: Przewodnik po Platformie i Dokumentacja Q&A',
+};
+
 const notebookIdCache = new Map<string, string>();
 let notebookIdCacheLoadedAt = 0;
 const NOTEBOOK_ID_CACHE_TTL_MS = 10 * 60 * 1000; // 10 min
@@ -23,11 +33,13 @@ export class NotebookLMClient {
 
   private async resolveNotebookId(nameOrId: string): Promise<string> {
     if (UUID_REGEX.test(nameOrId)) return nameOrId;
+    const aliasTitle = NOTEBOOK_TITLE_ALIASES[nameOrId.toLowerCase()];
+    const lookupName = aliasTitle ?? nameOrId;
 
     const cacheStale = Date.now() - notebookIdCacheLoadedAt > NOTEBOOK_ID_CACHE_TTL_MS;
 
-    if (notebookIdCache.has(nameOrId) && !cacheStale) {
-      return notebookIdCache.get(nameOrId)!;
+    if (notebookIdCache.has(lookupName) && !cacheStale) {
+      return notebookIdCache.get(lookupName)!;
     }
 
     const r = await this.exec(['notebook', 'list', '--json']);
@@ -42,10 +54,11 @@ export class NotebookLMClient {
     for (const nb of list) { if (nb?.id && nb?.title) notebookIdCache.set(nb.title, nb.id); }
     notebookIdCacheLoadedAt = Date.now();
 
-    const resolved = notebookIdCache.get(nameOrId);
+    const resolved = notebookIdCache.get(lookupName);
     if (!resolved) {
       const available = Array.from(notebookIdCache.keys()).join(', ');
-      throw new Error(`Notebook "${nameOrId}" not found. Available: ${available}`);
+      const aliasHint = aliasTitle ? ` alias "${nameOrId}" -> "${lookupName}"` : '';
+      throw new Error(`Notebook "${nameOrId}" not found${aliasHint}. Available: ${available}`);
     }
     return resolved;
   }
@@ -140,7 +153,10 @@ export class NotebookLMClient {
     if (opts.autoImport) args.push('--auto-import');
     const timeout = opts.mode === 'deep' ? 600000 : 300000;
     const r = await this.exec(args, timeout);
-    if (r.code !== 0) throw new Error(`nlm research start failed: ${r.stderr}`);
+    if (r.code !== 0) {
+      const output = [r.stderr, r.stdout].filter(Boolean).join('\n').trim() || 'no output';
+      throw new Error(`nlm research start failed (code ${r.code}): ${output}`);
+    }
     const taskMatch = r.stdout.match(/Task ID: ([a-f0-9-]{36})/);
     return { taskId: taskMatch ? taskMatch[1] : '', output: r.stdout.trim() };
   }
