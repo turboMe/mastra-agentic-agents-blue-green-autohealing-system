@@ -32,69 +32,94 @@ import {
   knowledgeResearchStartTool,
 } from '../tools/knowledge/knowledge-tools.js';
 import { loadPrompt } from '../lib/prompt-loader.js';
+import { workflowModels } from '../config/workflow-models.js';
 
-export const marketingAgent = new Agent({
-  id: 'marketing-agent',
-  name: 'Marketing Agent',
-  instructions: await loadPrompt('marketing/base'),
-  // Quick model switchboard for weekly-content / marketing tasks.
-  // Keep exactly one active `model:` line and comment the rest.
-  //
-  // Local / private / cheapest:
-  model: 'ollama/local/gemma4:26b',
-  // model: 'ollama/local/qwen3-coder:30b',
-  // model: 'ollama/local/qwen3.5-abliterated:35b',
-  //
-  // Google:
-  // model: 'google/gemini-2.5-pro',
-  // model: 'google/gemini-2.5-flash',
-  //
-  // OpenAI:
-  // model: 'openai/gpt-5.2',
-  // model: 'openai/gpt-5.2-mini',
-  //
-  // Anthropic:
-  // model: 'anthropic/claude-sonnet-4-5',
-  // model: 'anthropic/claude-haiku-4-5',
-  memory: new Memory({
-    options: {
-      lastMessages: 15,
-    },
-  }),
-  tools: {
-    // CRM (read + write context)
-    searchLeadsTool,
-    createLeadTool,
-    updateStatusTool,
-    updateLeadTool,
-    addInteractionTool,
-    recordEmailDraftTool,
-    // Gmail drafts (NO gmailSendDraftTool – wymaga approval)
-    gmailSearchTool,
-    gmailCreateDraftTool,
-    gmailUpdateDraftTool,
-    gmailListDraftsTool,
-    gmailGetDraftTool,
-    gmailDeleteDraftTool,
-    // Calendar
-    calendarCreateEventTool,
-    // RSS intelligence
-    rssGetArticlesTool,
-    rssSearchArticlesTool,
-    rssCreateDigestTool,
-    // Shared memory
-    addContextTool,
-    pushSignalTool,
-    // Search (Tavily)
-    searchWebTool,
-    findCompanyLinksTool,
-    // Knowledge (NotebookLM)
-    knowledgeQueryTool,
-    knowledgeQueryMultiTool,
-    knowledgeListNotebooksTool,
-    knowledgeCreateNotebookTool,
-    knowledgeAddSourceTool,
-    knowledgeDeleteNotebookTool,
-    knowledgeResearchStartTool,
-  },
-});
+const marketingInstructions = await loadPrompt('marketing/base');
+
+const marketingTools = {
+  // CRM (read + write context)
+  searchLeadsTool,
+  createLeadTool,
+  updateStatusTool,
+  updateLeadTool,
+  addInteractionTool,
+  recordEmailDraftTool,
+  // Gmail drafts (NO gmailSendDraftTool – wymaga approval)
+  gmailSearchTool,
+  gmailCreateDraftTool,
+  gmailUpdateDraftTool,
+  gmailListDraftsTool,
+  gmailGetDraftTool,
+  gmailDeleteDraftTool,
+  // Calendar
+  calendarCreateEventTool,
+  // RSS intelligence
+  rssGetArticlesTool,
+  rssSearchArticlesTool,
+  rssCreateDigestTool,
+  // Shared memory
+  addContextTool,
+  pushSignalTool,
+  // Search (Tavily)
+  searchWebTool,
+  findCompanyLinksTool,
+  // Knowledge (NotebookLM)
+  knowledgeQueryTool,
+  knowledgeQueryMultiTool,
+  knowledgeListNotebooksTool,
+  knowledgeCreateNotebookTool,
+  knowledgeAddSourceTool,
+  knowledgeDeleteNotebookTool,
+  knowledgeResearchStartTool,
+};
+
+function createMarketingAgent(id: string, name: string, model: string): Agent {
+  return new Agent({
+    id,
+    name,
+    instructions: marketingInstructions,
+    model,
+    memory: new Memory({
+      options: {
+        lastMessages: 15,
+      },
+    }),
+    tools: marketingTools,
+  });
+}
+
+export const marketingAgent = createMarketingAgent(
+  'marketing-agent',
+  'Marketing Agent',
+  workflowModels.marketing.default,
+);
+
+export const weeklyContentResearchAgent = createMarketingAgent(
+  'weekly-content-research-agent',
+  'Weekly Content Research Agent',
+  workflowModels.weeklyContent.research,
+);
+
+export const weeklyContentCopyAgent = createMarketingAgent(
+  'weekly-content-copy-agent',
+  'Weekly Content Copy Agent',
+  workflowModels.weeklyContent.copyPl,
+);
+
+export const weeklyContentCopyRepairAgent = createMarketingAgent(
+  'weekly-content-copy-repair-agent',
+  'Weekly Content Copy Repair Agent',
+  workflowModels.weeklyContent.copyRepair,
+);
+
+export const weeklyContentTranslationAgent = createMarketingAgent(
+  'weekly-content-translation-agent',
+  'Weekly Content Translation Agent',
+  workflowModels.weeklyContent.translateEn,
+);
+
+export const weeklyContentJsonRepairAgent = createMarketingAgent(
+  'weekly-content-json-repair-agent',
+  'Weekly Content JSON Repair Agent',
+  workflowModels.weeklyContent.jsonRepair,
+);

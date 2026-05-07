@@ -1,5 +1,12 @@
 import { createWorkflow, createStep } from '@mastra/core/workflows';
-import { marketingAgent } from '../agents/marketing-agent';
+import type { Agent } from '@mastra/core/agent';
+import {
+  weeklyContentCopyAgent,
+  weeklyContentCopyRepairAgent,
+  weeklyContentJsonRepairAgent,
+  weeklyContentResearchAgent,
+  weeklyContentTranslationAgent,
+} from '../agents/marketing-agent';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { format, addDays, isValid, parseISO, startOfWeek } from 'date-fns';
@@ -887,6 +894,7 @@ Problemy do naprawy:
 ${initialIssues.join('\n')}`;
 
   const repaired = sanitizeCopyPlResult(await generateJsonWithRepair({
+    agent: weeklyContentCopyRepairAgent,
     taskId,
     stepId: 'generate-pl-length-repair',
     userPrompt: repairPrompt,
@@ -1054,6 +1062,7 @@ Zwróć tylko JSON.`;
 
   try {
     const regenerated = sanitizeCopyPlResult(await generateJsonWithRepair({
+      agent: weeklyContentCopyRepairAgent,
       taskId,
       stepId: 'generate-pl-count-topup',
       userPrompt: topUpPrompt,
@@ -1076,6 +1085,8 @@ Zwróć tylko JSON.`;
 }
 
 async function generateJsonWithRepair<T extends {}>({
+  agent,
+  repairAgent = weeklyContentJsonRepairAgent,
   taskId,
   stepId,
   userPrompt,
@@ -1084,6 +1095,8 @@ async function generateJsonWithRepair<T extends {}>({
   modelSettings,
   normalizeBeforeRepair,
 }: {
+  agent: Agent;
+  repairAgent?: Agent;
   taskId: string;
   stepId: string;
   userPrompt: string;
@@ -1092,7 +1105,7 @@ async function generateJsonWithRepair<T extends {}>({
   modelSettings?: { temperature?: number; maxOutputTokens?: number };
   normalizeBeforeRepair?: (parsed: unknown) => T | null;
 }): Promise<T> {
-  const res = await marketingAgent.generate(userPrompt, {
+  const res = await agent.generate(userPrompt, {
     system: systemPrompt,
     modelSettings,
     toolChoice: 'none',
@@ -1118,7 +1131,7 @@ Zwróć tylko dane, bez komentarza i bez markdown.
 ORYGINALNA ODPOWIEDŹ:
 ${res.text}`;
 
-  const repaired = await marketingAgent.generate<T>(repairPrompt, {
+  const repaired = await repairAgent.generate<T>(repairPrompt, {
     system: 'Jesteś deterministycznym parserem JSON. Zachowaj sens danych wejściowych, usuń tekst poza JSON i nie dopowiadaj faktów.',
     structuredOutput: {
       schema,
@@ -1246,6 +1259,7 @@ Wybierz 3 najlepsze news hooks i ruchy konkurencji. Preferuj FreshSignals z URL-
 Ważne: użyj dokładnie pól "newsHooks", "competitorMoves", "sourceCitations", "source", "bestFor" i "ourAngle". Nie używaj snake_case: "news_hooks", "competitor_moves", "best_for", "our_angle". Nie zwracaj pól "angle" ani "impact" zamiast wymaganych pól.`;
 
     const generatedResearch = sanitizeResearchResult(await generateJsonWithRepair({
+      agent: weeklyContentResearchAgent,
       taskId,
       stepId: 'research-week',
       userPrompt,
@@ -1350,6 +1364,7 @@ Zwróć JSON zgodnie ze strukturą opisaną w system prompcie.`;
       weekDate,
       research,
       current: sanitizeCopyPlResult(await generateJsonWithRepair({
+        agent: weeklyContentCopyAgent,
         taskId,
         stepId: 'generate-pl',
         userPrompt,
@@ -1412,6 +1427,7 @@ ${topPosts.map((p, i) => `### Post ${i + 1}: ${p.topic}\n${p.post}\nHashtags: ${
 Zwróć JSON zgodnie ze strukturą opisaną w system prompcie.`;
 
     const parsed = await generateJsonWithRepair({
+      agent: weeklyContentTranslationAgent,
       taskId,
       stepId: 'translate-en',
       userPrompt,
