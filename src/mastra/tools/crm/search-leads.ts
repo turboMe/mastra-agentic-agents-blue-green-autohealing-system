@@ -25,6 +25,22 @@ export const CRM_STATUSES = [
 
 export type CrmStatus = (typeof CRM_STATUSES)[number];
 
+const optionalString = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+};
+
+const optionalDateString = (value: unknown): string | undefined => {
+  if (!value) return undefined;
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'string') return optionalString(value);
+  if (typeof (value as { toISOString?: unknown }).toISOString === 'function') {
+    return (value as { toISOString: () => string }).toISOString();
+  }
+  return undefined;
+};
+
 export const searchLeadsTool = createTool({
   id: 'crm.search_leads',
   description: 'Wyszukuje leady w CRM MongoDB. Filtruje po nazwie firmy/emailu, regionie i statusie. Zwraca listę leadów z historią interakcji.',
@@ -79,15 +95,15 @@ export const searchLeadsTool = createTool({
         success: true,
         count: leads.length,
         leads: leads.map(l => ({
-          id: l.id ?? String(l._id),
-          companyName: l.companyName,
-          email: l.email,
-          contactName: l.contactName,
-          status: l.status,
-          region: l.region,
-          segment: l.segment,
-          lastInteractionAt: l.lastInteractionAt?.toISOString?.() ?? l.lastInteractionAt,
-          website: l.website,
+          id: optionalString(l.id) ?? String(l._id),
+          companyName: optionalString(l.companyName),
+          email: optionalString(l.email),
+          contactName: optionalString(l.contactName),
+          status: optionalString(l.status),
+          region: optionalString(l.region),
+          segment: optionalString(l.segment),
+          lastInteractionAt: optionalDateString(l.lastInteractionAt),
+          website: optionalString(l.website),
         })),
       };
     } catch (error) {
