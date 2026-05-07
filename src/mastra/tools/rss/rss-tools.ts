@@ -1,35 +1,36 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import { getDb } from '../../lib/mongo';
+import { getRssDb } from '../../lib/mongo';
 
 export class RssService {
   async getLatestArticles(limit: number = 5): Promise<any[]> {
-    const db = await getDb();
-    return db.collection('rss_articles').find({}).sort({ pubDate: -1 }).limit(limit).toArray();
+    const db = await getRssDb();
+    return db.collection('rss_articles').find({}).sort({ publishedAt: -1, pubDate: -1 }).limit(limit).toArray();
   }
 
   async getLatestDigests(limit: number = 3): Promise<any[]> {
-    const db = await getDb();
+    const db = await getRssDb();
     return db.collection('digests').find({}).sort({ _id: -1 }).limit(limit).toArray();
   }
 
   async searchArticles(query: string, limit: number = 5): Promise<any[]> {
-    const db = await getDb();
+    const db = await getRssDb();
     return db.collection('rss_articles').find({
       $or: [
         { title: { $regex: query, $options: 'i' } },
-        { description: { $regex: query, $options: 'i' } }
+        { description: { $regex: query, $options: 'i' } },
+        { summary_ai: { $regex: query, $options: 'i' } },
       ]
-    }).sort({ pubDate: -1 }).limit(limit).toArray();
+    }).sort({ publishedAt: -1, pubDate: -1 }).limit(limit).toArray();
   }
 
   async listSources(): Promise<any[]> {
-    const db = await getDb();
+    const db = await getRssDb();
     return db.collection('rss_sources').find({}).toArray();
   }
 
   async addSource(url: string, name?: string): Promise<void> {
-    const db = await getDb();
+    const db = await getRssDb();
     await db.collection('rss_sources').updateOne(
       { url },
       { $set: { url, name: name || url, last_fetch: null, active: true } },
@@ -38,12 +39,12 @@ export class RssService {
   }
 
   async removeSource(url: string): Promise<void> {
-    const db = await getDb();
+    const db = await getRssDb();
     await db.collection('rss_sources').deleteOne({ url });
   }
   
   async createDigest(subject: string, body: string): Promise<string> {
-    const db = await getDb();
+    const db = await getRssDb();
     const result = await db.collection('digests').insertOne({
         subject,
         body,

@@ -37,7 +37,25 @@ export const marketingAgent = new Agent({
   id: 'marketing-agent',
   name: 'Marketing Agent',
   instructions: await loadPrompt('marketing/base'),
+  // Quick model switchboard for weekly-content / marketing tasks.
+  // Keep exactly one active `model:` line and comment the rest.
+  //
+  // Local / private / cheapest:
   model: 'ollama/local/gemma4:26b',
+  // model: 'ollama/local/qwen3-coder:30b',
+  // model: 'ollama/local/qwen3.5-abliterated:35b',
+  //
+  // Google:
+  // model: 'google/gemini-2.5-pro',
+  // model: 'google/gemini-2.5-flash',
+  //
+  // OpenAI:
+  // model: 'openai/gpt-5.2',
+  // model: 'openai/gpt-5.2-mini',
+  //
+  // Anthropic:
+  // model: 'anthropic/claude-sonnet-4-5',
+  // model: 'anthropic/claude-haiku-4-5',
   memory: new Memory({
     options: {
       lastMessages: 15,

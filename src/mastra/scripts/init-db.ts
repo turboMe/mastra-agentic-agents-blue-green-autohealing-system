@@ -17,6 +17,7 @@ async function main() {
   const client = new MongoClient(MONGODB_URI);
   await client.connect();
   const db = client.db(DB_NAME);
+  const rssDb = client.db('rss_intelligence');
   console.log(`📦 Baza danych: ${DB_NAME}\n`);
 
   // ── leads (CRM) ───────────────────────────────────────────────────────────
@@ -64,26 +65,31 @@ async function main() {
     { expireAfterSeconds: 0 },  // TTL
   );
 
-  // ── rss_articles ──────────────────────────────────────────────────────────
-  console.log('📰 rss_articles...');
-  const rss = db.collection('rss_articles');
-  await rss.createIndex({ link: 1 }, { unique: true, sparse: true });
-  await rss.createIndex({ pubDate: -1 });
-  await rss.createIndex({ source: 1, pubDate: -1 });
-  await rss.createIndex(
-    { pubDate: 1 },
-    { expireAfterSeconds: 30 * 24 * 3600 },  // keep articles 30 days
-  );
+  // ── rss_intelligence ──────────────────────────────────────────────────────
+  console.log('📰 rss_intelligence.rss_articles / content_signals...');
+  const rss = rssDb.collection('rss_articles');
+  await rss.createIndex({ guid: 1 }, { unique: true });
+  await rss.createIndex({ canonicalUrl: 1 });
+  await rss.createIndex({ processed: 1, sourcePriority: -1, publishedAt: -1 });
+  await rss.createIndex({ source: 1, publishedAt: -1 });
 
-  // ── rss_sources ───────────────────────────────────────────────────────────
-  console.log('📡 rss_sources...');
-  await db.collection('rss_sources').createIndex({ url: 1 }, { unique: true });
+  console.log('📡 rss_intelligence.rss_sources...');
+  await rssDb.collection('rss_sources').createIndex({ url: 1 }, { unique: true, sparse: true });
+  await rssDb.collection('rss_sources').createIndex({ active: 1, priority: -1 });
 
-  // ── rss_digests ───────────────────────────────────────────────────────────
-  console.log('📋 rss_digests...');
-  const digests = db.collection('rss_digests');
-  await digests.createIndex({ id: 1 }, { unique: true });
-  await digests.createIndex({ createdAt: -1 });
+  console.log('📋 rss_intelligence.digests...');
+  await rssDb.collection('digests').createIndex({ generated_at: -1 });
+
+  const contentSignals = rssDb.collection('content_signals');
+  await contentSignals.createIndex({ signalId: 1 }, { unique: true });
+  await contentSignals.createIndex({ 'scores.relevance': -1, publishedAt: -1 });
+  await contentSignals.createIndex({ language: 1, country: 1, publishedAt: -1 });
+  await contentSignals.createIndex({ usedInTasks: 1 });
+  await contentSignals.createIndex({ source: 1, publishedAt: -1 });
+
+  const researchRuns = rssDb.collection('research_runs');
+  await researchRuns.createIndex({ taskId: 1 }, { unique: true });
+  await researchRuns.createIndex({ weekDate: -1 });
 
   // ── reports ───────────────────────────────────────────────────────────────
   console.log('📊 reports...');

@@ -7,6 +7,14 @@ import { knowledgeQueryMultiTool, knowledgeResearchStartTool } from '../tools/kn
 import { calendarCreateEventTool } from '../tools/google/google-tools.js';
 import { getDraftsStore } from '../lib/drafts-store.js';
 import { loadPrompt } from '../lib/prompt-loader.js';
+import {
+  markFreshContentSignalsUsed,
+  saveResearchRun,
+  searchFreshContentSignals,
+  updateResearchRunStatus,
+  type FreshContentSignal,
+  type ResearchRunQuality,
+} from '../lib/content-signals.js';
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 const newsHookSchema = z.object({
@@ -30,6 +38,39 @@ const contentHistoryItemSchema = z.object({
   weekStarting: z.string().optional(),
   scheduledFor: z.string().optional(),
   rationale: z.string().optional(),
+});
+
+const freshSignalHookSchema = z.object({
+  hook: z.string(),
+  bestFor: z.string(),
+  angle: z.string(),
+});
+
+const freshContentSignalSchema = z.object({
+  id: z.string(),
+  guid: z.string(),
+  title: z.string(),
+  source: z.string(),
+  sourceName: z.string(),
+  url: z.string(),
+  publishedAt: z.string(),
+  summary: z.string(),
+  whyItMatters: z.string(),
+  language: z.string(),
+  country: z.string(),
+  category: z.string(),
+  tags: z.array(z.string()),
+  bestAngles: z.array(z.string()),
+  hooks: z.array(freshSignalHookSchema),
+  score: z.number(),
+  confidence: z.number(),
+  novelty: z.number(),
+});
+
+const researchQualitySchema = z.object({
+  passed: z.boolean(),
+  score: z.number(),
+  reasons: z.array(z.string()),
 });
 
 const researchResultSchema = z.object({
@@ -315,6 +356,15 @@ function collectResearchDiagnostics(
   return Array.from(new Set([...queryErrors, ...freshnessNotes].map(compactDiagnostic).filter(Boolean)));
 }
 
+function resolveNumberEnv(name: string, fallback: number): number {
+  const parsed = Number(process.env[name]);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function isStrictResearchGateEnabled(): boolean {
+  return process.env.WEEKLY_CONTENT_REQUIRE_RICH_RESEARCH !== 'false';
+}
+
 function isUsableCitation(value: unknown): value is string {
   if (typeof value !== 'string') return false;
   const citation = value.trim();
@@ -324,6 +374,183 @@ function isUsableCitation(value: unknown): value is string {
   if (/notebook\s+".*"\s+not found/i.test(citation)) return false;
   if (/\bavailable:\s+/i.test(citation)) return false;
   return true;
+}
+
+function getFreshSignalDate(signal: FreshContentSignal): Date | null {
+  const parsed = new Date(signal.publishedAt);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function isRecentFreshSignal(signal: FreshContentSignal, weekDate: string, days: number): boolean {
+  const date = getFreshSignalDate(signal);
+  if (!date) return false;
+  const anchor = new Date(`${weekDate}T00:00:00.000Z`);
+  const safeAnchor = Number.isNaN(anchor.getTime()) ? new Date() : anchor;
+  return date.getTime() >= safeAnchor.getTime() - days * 24 * 60 * 60 * 1000;
+}
+
+function freshSignalSourceKey(signal: FreshContentSignal): string {
+  return (signal.sourceName || signal.source || 'unknown-source').toLowerCase().trim();
+}
+
+function selectDiverseFreshSignals(signals: FreshContentSignal[], maxCount: number): FreshContentSignal[] {
+  const sorted = [...signals].sort((a, b) => {
+    const languageScore = (b.language === 'pl' ? 1 : 0) - (a.language === 'pl' ? 1 : 0);
+    if (languageScore !== 0) return languageScore;
+    return b.score - a.score;
+  });
+
+  const selected: FreshContentSignal[] = [];
+  const perSource = new Map<string, number>();
+
+  for (const signal of sorted) {
+    const sourceKey = freshSignalSourceKey(signal);
+    const used = perSource.get(sourceKey) ?? 0;
+    if (used >= 2) continue;
+    selected.push(signal);
+    perSource.set(sourceKey, used + 1);
+    if (selected.length >= maxCount) return selected;
+  }
+
+  for (const signal of sorted) {
+    if (selected.some((item) => item.id === signal.id || item.url === signal.url)) continue;
+    selected.push(signal);
+    if (selected.length >= maxCount) break;
+  }
+
+  return selected;
+}
+
+function collectFreshSignalCitations(signals: FreshContentSignal[]): string[] {
+  return Array.from(new Set(signals.map((signal) => signal.url).filter(isUsableCitation)));
+}
+
+function formatFreshSignalSection(signals: FreshContentSignal[]): string {
+  if (signals.length === 0) {
+    return 'Brak zweryfikowanych freshSignals z rss_intelligence. Nie wymyślaj aktualnych newsów ani liczb.';
+  }
+
+  return signals.map((signal, index) => {
+    const hooks = signal.hooks
+      .slice(0, 3)
+      .map((hook) => `- ${hook.bestFor}: ${hook.hook} (${hook.angle})`)
+      .join('\n');
+    return `${index + 1}. ${signal.title}
+Źródło: ${signal.sourceName} | ${signal.url}
+Data: ${signal.publishedAt}
+Język/kategoria: ${signal.language}/${signal.category}
+Score: ${signal.score.toFixed(2)} | confidence: ${signal.confidence.toFixed(2)}
+Streszczenie: ${signal.summary || 'Brak streszczenia.'}
+Dlaczego ważne: ${signal.whyItMatters || 'Brak oceny.'}
+Proponowane hooki:
+${hooks || '- brak gotowych hooków'}`;
+  }).join('\n\n');
+}
+
+function buildNewsHookFromSignal(signal: FreshContentSignal, index: number): z.infer<typeof newsHookSchema> {
+  const preferredHook = signal.hooks.find((hook) => hook.bestFor !== 'instagram') ?? signal.hooks[0];
+  const hook = preferredHook?.hook || signal.summary || signal.title;
+  return {
+    topic: signal.title || `fresh signal ${index + 1}`,
+    hook: cleanGeneratedText(hook),
+    data: cleanGeneratedText(signal.whyItMatters || signal.summary || ''),
+    source: signal.url,
+    bestFor: normalizeBestFor(preferredHook?.bestFor ?? 'linkedin-company'),
+  };
+}
+
+function mergeFreshSignalHooksIntoResearch(research: ResearchResult, signals: FreshContentSignal[]): ResearchResult {
+  if (signals.length === 0) return research;
+
+  const usableHooks = research.newsHooks.filter((hook) => isUsableCitation(hook.source));
+  const needed = Math.max(0, 3 - usableHooks.length);
+  const signalHooks = signals
+    .slice(0, Math.max(needed, 3))
+    .map((signal, index) => buildNewsHookFromSignal(signal, index));
+
+  const merged = [
+    ...usableHooks,
+    ...signalHooks.filter((hook) => !usableHooks.some((existing) => existing.source === hook.source || existing.topic.toLowerCase() === hook.topic.toLowerCase())),
+  ].slice(0, 3);
+
+  return {
+    ...research,
+    newsHooks: merged.length > 0 ? merged : research.newsHooks,
+    sourceCitations: Array.from(new Set([
+      ...(research.sourceCitations ?? []),
+      ...collectFreshSignalCitations(signals),
+    ].filter(isUsableCitation))),
+  };
+}
+
+function getSourceCoverage(signals: FreshContentSignal[]): Record<string, number> {
+  const coverage: Record<string, number> = {};
+  for (const signal of signals) {
+    const key = signal.sourceName || signal.source || 'unknown-source';
+    coverage[key] = (coverage[key] ?? 0) + 1;
+  }
+  return coverage;
+}
+
+function evaluateResearchQuality(
+  weekDate: string,
+  research: ResearchResult,
+  signals: FreshContentSignal[],
+  diagnostics: string[],
+): ResearchRunQuality {
+  const minSignals = resolveNumberEnv('WEEKLY_CONTENT_MIN_FRESH_SIGNALS', 6);
+  const minPolishSignals = resolveNumberEnv('WEEKLY_CONTENT_MIN_PL_SIGNALS', 4);
+  const minDistinctSources = resolveNumberEnv('WEEKLY_CONTENT_MIN_DISTINCT_SOURCES', 3);
+  const minRecentSignals = resolveNumberEnv('WEEKLY_CONTENT_MIN_RECENT_SIGNALS', 3);
+  const minCitations = resolveNumberEnv('WEEKLY_CONTENT_MIN_CITATIONS', 3);
+  const reasons: string[] = [];
+
+  const citations = Array.from(new Set([
+    ...(research.sourceCitations ?? []),
+    ...collectFreshSignalCitations(signals),
+  ].filter(isUsableCitation)));
+  const polishSignals = signals.filter((signal) => signal.language === 'pl').length;
+  const distinctSources = new Set(signals.map(freshSignalSourceKey).filter(Boolean)).size;
+  const recentSignals = signals.filter((signal) => isRecentFreshSignal(signal, weekDate, 14)).length;
+  const sourcedHooks = research.newsHooks.filter((hook) => isUsableCitation(hook.source)).length;
+  const hasPendingNotebookImport = diagnostics.some((note) => /sources not yet imported|niezaimport/i.test(note));
+
+  if (signals.length < minSignals) reasons.push(`freshSignals:${signals.length}/${minSignals}`);
+  if (polishSignals < minPolishSignals) reasons.push(`polishSignals:${polishSignals}/${minPolishSignals}`);
+  if (distinctSources < minDistinctSources) reasons.push(`distinctSources:${distinctSources}/${minDistinctSources}`);
+  if (recentSignals < minRecentSignals) reasons.push(`recentSignals14d:${recentSignals}/${minRecentSignals}`);
+  if (citations.length < minCitations) reasons.push(`citations:${citations.length}/${minCitations}`);
+  if (research.newsHooks.length === 0) reasons.push('newsHooks:0');
+  if (sourcedHooks < research.newsHooks.length) reasons.push(`sourcedHooks:${sourcedHooks}/${research.newsHooks.length}`);
+  if (hasPendingNotebookImport && signals.length < minSignals) reasons.push('notebookImportPendingWithoutDbBackup');
+
+  const checks = 7;
+  const failed = reasons.length;
+  return {
+    passed: failed === 0,
+    score: Math.max(0, Math.round(((checks - Math.min(failed, checks)) / checks) * 100) / 100),
+    reasons,
+  };
+}
+
+async function loadFreshSignalsForWeek(taskId: string, weekDate: string): Promise<{ signals: FreshContentSignal[]; diagnostics: string[] }> {
+  try {
+    const fetched = await searchFreshContentSignals({
+      weekDate,
+      limit: resolveNumberEnv('WEEKLY_CONTENT_FRESH_SIGNAL_LIMIT', 18),
+      minRelevance: resolveNumberEnv('WEEKLY_CONTENT_MIN_SIGNAL_RELEVANCE', 0.6),
+      excludeUsed: process.env.WEEKLY_CONTENT_REUSE_SIGNALS === 'true' ? false : true,
+    });
+    const selected = selectDiverseFreshSignals(fetched, resolveNumberEnv('WEEKLY_CONTENT_SELECTED_SIGNAL_LIMIT', 10));
+    return {
+      signals: selected,
+      diagnostics: [`content.signals.search:ok:${selected.length}/${fetched.length}`],
+    };
+  } catch (err) {
+    const message = compactDiagnostic((err as Error).message);
+    console.warn(`[weekly-content:${taskId}] content.signals.search fail:`, message);
+    return { signals: [], diagnostics: [`content.signals.search:failed:${message}`] };
+  }
 }
 
 function asRecord(value: unknown): Record<string, any> | null {
@@ -603,6 +830,80 @@ function assertCopyCounts(result: CopyPlResult, liCount: number, igCount: number
   }
 }
 
+function getLinkedInLengthIssues(result: CopyPlResult): string[] {
+  const minChars = resolveNumberEnv('WEEKLY_CONTENT_MIN_LINKEDIN_CHARS', 1000);
+  const maxChars = resolveNumberEnv('WEEKLY_CONTENT_MAX_LINKEDIN_CHARS', 2200);
+  return result.linkedin.flatMap((post, index) => {
+    const length = post.post.length;
+    if (length < minChars) return [`linkedin[${index}] ${length}<${minChars}`];
+    if (length > maxChars) return [`linkedin[${index}] ${length}>${maxChars}`];
+    return [];
+  });
+}
+
+async function ensureLinkedInLengthQuality({
+  taskId,
+  weekDate,
+  research,
+  current,
+  liCount,
+  igCount,
+  systemPrompt,
+}: {
+  taskId: string;
+  weekDate: string;
+  research: unknown;
+  current: CopyPlResult;
+  liCount: number;
+  igCount: number;
+  systemPrompt: string;
+}): Promise<CopyPlResult> {
+  const initialIssues = getLinkedInLengthIssues(current);
+  if (initialIssues.length === 0) return current;
+
+  const minChars = resolveNumberEnv('WEEKLY_CONTENT_MIN_LINKEDIN_CHARS', 1000);
+  const maxChars = resolveNumberEnv('WEEKLY_CONTENT_MAX_LINKEDIN_CHARS', 2200);
+  console.warn(`[weekly-content:${taskId}] generate-pl LI length issues: ${initialIssues.join(', ')}, attempting expansion`);
+
+  const repairPrompt = `Poprzednia odpowiedź ma za krótkie albo za długie posty LinkedIn.
+Przepisz wynik do pełnego JSON-a z dokładnie ${liCount} postami LinkedIn i ${igCount} treściami Instagram.
+
+Wymagania bez wyjątków:
+- każdy LinkedIn post musi mieć od ${minChars} do ${maxChars} znaków w polu "post";
+- rozwiń LinkedIn do 5-8 krótkich akapitów: hook, kontekst, konkret ze źródła, konsekwencja dla HoReCa, perspektywa GastroBridge, CTA;
+- zachowaj prawdziwe źródła z researchu, nie dopowiadaj liczb;
+- Instagram może zostać krótszy, ale ma pozostać w tablicy;
+- zwróć tylko JSON z top-level keys "linkedin" i "instagram".
+
+Tydzień: ${weekDate}
+
+RESEARCH:
+${JSON.stringify(research, null, 2)}
+
+OBECNY WYNIK:
+${JSON.stringify(current, null, 2)}
+
+Problemy do naprawy:
+${initialIssues.join('\n')}`;
+
+  const repaired = sanitizeCopyPlResult(await generateJsonWithRepair({
+    taskId,
+    stepId: 'generate-pl-length-repair',
+    userPrompt: repairPrompt,
+    systemPrompt,
+    schema: copyPlResultSchema,
+    modelSettings: { temperature: 0.3, maxOutputTokens: 12000 },
+    normalizeBeforeRepair: (parsed) => normalizeCopyPlOutput(parsed, liCount, igCount),
+  }));
+  assertCopyCounts(repaired, liCount, igCount, taskId);
+
+  const remainingIssues = getLinkedInLengthIssues(repaired);
+  if (remainingIssues.length > 0) {
+    throw new Error(`[weekly-content:${taskId}] LinkedIn quality gate failed after repair: ${remainingIssues.join(', ')}`);
+  }
+  return repaired;
+}
+
 function mergeUniqueBy<T>(primary: T[], secondary: T[], maxCount: number, getKey: (item: T) => string): T[] {
   const seen = new Set<string>();
   const merged: T[] = [];
@@ -879,6 +1180,9 @@ const researchWeekStep = createStep({
       sourceCitations: z.array(z.string()).optional(),
       recentContentTopics: z.array(contentHistoryItemSchema).optional(),
       researchDiagnostics: z.array(z.string()).optional(),
+      freshSignals: z.array(freshContentSignalSchema).optional(),
+      researchQuality: researchQualitySchema.optional(),
+      selectedSignalIds: z.array(z.string()).optional(),
     }),
   }),
   execute: async (context) => {
@@ -895,19 +1199,27 @@ const researchWeekStep = createStep({
     console.log(`[weekly-content:${taskId}] research-week date=${weekDate}`);
 
     const recentContentTopics = await loadRecentContentHistory();
+    const freshSignalResult = await loadFreshSignalsForWeek(taskId, weekDate);
+    const freshSignals = freshSignalResult.signals;
     let notebookResults = await queryCoreNotebooks(taskId, weekDate);
     const freshnessNotes = await refreshWeakNotebookSources(taskId, weekDate, notebookResults);
     if (freshnessNotes.some((note) => !note.includes(':failed:'))) {
       notebookResults = await queryCoreNotebooks(taskId, weekDate);
     }
     const sourceCitations = collectCitations(notebookResults);
-    const researchDiagnostics = collectResearchDiagnostics(notebookResults, freshnessNotes);
+    const researchDiagnostics = [
+      ...freshSignalResult.diagnostics,
+      ...collectResearchDiagnostics(notebookResults, freshnessNotes),
+    ];
 
     // Wczytanie profesjonalnego promptu (jak w Jarvis)
     const systemPrompt = await loadPrompt('marketing/research');
 
     const userPrompt = `
 DANE Z NOTEBOOKLM DO ANALIZY:
+
+# FreshSignals z rss_intelligence - użyj jako głównego źródła aktualnych tematów
+${formatFreshSignalSection(freshSignals)}
 
 # PL-Market-Intelligence (Rynek)
 ${formatNotebookSection('Rynek', notebookResults.rynek)}
@@ -929,11 +1241,11 @@ ${researchDiagnostics.join('\n') || 'Nie uruchamiano knowledge.research_start, b
 
 Tydzień: ${weekDate}
 
-Wybierz 3 najlepsze news hooks i ruchy konkurencji. Jeśli brakuje danych źródłowych, nie zgaduj liczb ani newsów: użyj ostrożnego evergreen angle i ustaw puste "data". Zwróć JSON.
+Wybierz 3 najlepsze news hooks i ruchy konkurencji. Preferuj FreshSignals z URL-em jako źródłem. Jeśli brakuje danych źródłowych, nie zgaduj liczb ani newsów: użyj ostrożnego evergreen angle i ustaw puste "data". Zwróć JSON.
 
 Ważne: użyj dokładnie pól "newsHooks", "competitorMoves", "sourceCitations", "source", "bestFor" i "ourAngle". Nie używaj snake_case: "news_hooks", "competitor_moves", "best_for", "our_angle". Nie zwracaj pól "angle" ani "impact" zamiast wymaganych pól.`;
 
-    const research = sanitizeResearchResult(await generateJsonWithRepair({
+    const generatedResearch = sanitizeResearchResult(await generateJsonWithRepair({
       taskId,
       stepId: 'research-week',
       userPrompt,
@@ -941,7 +1253,8 @@ Ważne: użyj dokładnie pól "newsHooks", "competitorMoves", "sourceCitations",
       schema: researchResultSchema,
       modelSettings: { temperature: 0.5 },
       normalizeBeforeRepair: normalizeResearchOutput,
-    }), sourceCitations);
+    }), [...sourceCitations, ...collectFreshSignalCitations(freshSignals)]);
+    const research = mergeFreshSignalHooksIntoResearch(generatedResearch, freshSignals);
     if (research.newsHooks.length === 0) {
       research.newsHooks.push({
         topic: 'research-fallback',
@@ -950,6 +1263,23 @@ Ważne: użyj dokładnie pól "newsHooks", "competitorMoves", "sourceCitations",
         source: 'LLM fallback',
         bestFor: 'linkedin-company',
       });
+    }
+    const researchQuality = evaluateResearchQuality(weekDate, research, freshSignals, researchDiagnostics);
+    const selectedSignalIds = freshSignals.map((signal) => signal.id);
+    await saveResearchRun({
+      taskId,
+      weekDate,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      selectedSignalIds,
+      rejectedSignalIds: [],
+      sourceCoverage: getSourceCoverage(freshSignals),
+      diagnostics: researchDiagnostics,
+      quality: researchQuality,
+      status: researchQuality.passed ? 'research_ready' : 'needs_research',
+    });
+    if (!researchQuality.passed && isStrictResearchGateEnabled()) {
+      throw new Error(`[weekly-content:${taskId}] rich research gate failed: ${researchQuality.reasons.join(', ')}`);
     }
     return {
       taskId,
@@ -962,6 +1292,9 @@ Ważne: użyj dokładnie pól "newsHooks", "competitorMoves", "sourceCitations",
         sourceCitations: research.sourceCitations,
         recentContentTopics,
         researchDiagnostics,
+        freshSignals,
+        researchQuality,
+        selectedSignalIds,
       },
     };
   },
@@ -981,6 +1314,7 @@ const generatePlStep = createStep({
   outputSchema: z.object({
     taskId: z.string(),
     weekDate: z.string(),
+    research: z.any().optional(),
     liPosts: z.array(liPostSchema),
     igPosts: z.array(igPostSchema),
   }),
@@ -1011,7 +1345,7 @@ Ważne:
 
 Zwróć JSON zgodnie ze strukturą opisaną w system prompcie.`;
 
-    const parsed = await completeCopyCounts({
+    const counted = await completeCopyCounts({
       taskId,
       weekDate,
       research,
@@ -1028,11 +1362,20 @@ Zwróć JSON zgodnie ze strukturą opisaną w system prompcie.`;
       igCount,
       systemPrompt,
     });
+    const parsed = await ensureLinkedInLengthQuality({
+      taskId,
+      weekDate,
+      research,
+      current: counted,
+      liCount,
+      igCount,
+      systemPrompt,
+    });
     assertCopyCounts(parsed, liCount, igCount, taskId);
     if (parsed.linkedin.length === 0 && parsed.instagram.length === 0) {
       throw new Error(`[weekly-content:${taskId}] generate-pl returned zero drafts after JSON repair`);
     }
-    return { taskId, weekDate, liPosts: parsed.linkedin, igPosts: parsed.instagram };
+    return { taskId, weekDate, research, liPosts: parsed.linkedin, igPosts: parsed.instagram };
   },
 });
 
@@ -1043,12 +1386,14 @@ const translateEnStep = createStep({
   inputSchema: z.object({
     taskId: z.string(),
     weekDate: z.string(),
+    research: z.any().optional(),
     liPosts: z.array(liPostSchema),
     igPosts: z.array(igPostSchema),
   }),
   outputSchema: z.object({
     taskId: z.string(),
     weekDate: z.string(),
+    research: z.any().optional(),
     liPosts: z.array(liPostSchema),
     igPosts: z.array(igPostSchema),
     enPosts: z.array(enPostSchema),
@@ -1074,7 +1419,7 @@ Zwróć JSON zgodnie ze strukturą opisaną w system prompcie.`;
       schema: copyEnResultSchema,
       modelSettings: { temperature: 0.5 },
     });
-    return { taskId, weekDate, liPosts, igPosts: context.inputData.igPosts, enPosts: parsed.translations };
+    return { taskId, weekDate, research: context.inputData.research, liPosts, igPosts: context.inputData.igPosts, enPosts: parsed.translations };
   },
 });
 
@@ -1085,6 +1430,7 @@ const saveDraftsStep = createStep({
   inputSchema: z.object({
     taskId: z.string(),
     weekDate: z.string(),
+    research: z.any().optional(),
     liPosts: z.array(liPostSchema),
     igPosts: z.array(igPostSchema),
     enPosts: z.array(enPostSchema),
@@ -1095,7 +1441,7 @@ const saveDraftsStep = createStep({
     calendarReminders: z.array(z.object({ title: z.string(), date: z.string() })),
   }),
   execute: async (context) => {
-    const { taskId, weekDate, liPosts, igPosts, enPosts } = context.inputData;
+    const { taskId, weekDate, research, liPosts, igPosts, enPosts } = context.inputData;
     const store = getDraftsStore();
     await store.ensureBaseDir();
     let count = 0;
@@ -1137,6 +1483,14 @@ const saveDraftsStep = createStep({
       });
       count++;
     }
+
+    const selectedSignalIds = Array.isArray(research?.selectedSignalIds)
+      ? research.selectedSignalIds.filter((id: unknown): id is string => typeof id === 'string' && id.trim().length > 0)
+      : [];
+    if (selectedSignalIds.length > 0) {
+      await markFreshContentSignalsUsed(taskId, selectedSignalIds);
+    }
+    await updateResearchRunStatus(taskId, 'drafts_saved');
 
     return { taskId, draftCount: count, calendarReminders: reminders };
   },

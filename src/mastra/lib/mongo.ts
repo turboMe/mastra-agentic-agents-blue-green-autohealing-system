@@ -50,6 +50,7 @@ export async function closeDb(): Promise<void> {
  */
 export async function ensureIndexes(): Promise<void> {
   const db = await getDb();
+  const rssDb = await getRssDb();
   await Promise.all([
     // CRM
     db.collection('leads').createIndex({ email: 1 }),
@@ -80,5 +81,18 @@ export async function ensureIndexes(): Promise<void> {
     db.collection('chef_notes').createIndex({ projectId: 1 }),
     // Automation patterns
     db.collection('automation_patterns').createIndex({ id: 1 }, { unique: true }),
+    // RSS/content intelligence lives in the dedicated rss_intelligence database.
+    rssDb.collection('rss_articles').createIndex({ guid: 1 }, { unique: true }),
+    rssDb.collection('rss_articles').createIndex({ canonicalUrl: 1 }),
+    rssDb.collection('rss_articles').createIndex({ processed: 1, sourcePriority: -1, publishedAt: -1 }),
+    rssDb.collection('rss_articles').createIndex({ source: 1, publishedAt: -1 }),
+    rssDb.collection('rss_sources').createIndex({ url: 1 }, { unique: true, sparse: true }),
+    rssDb.collection('rss_sources').createIndex({ active: 1, priority: -1 }),
+    rssDb.collection('content_signals').createIndex({ signalId: 1 }, { unique: true }),
+    rssDb.collection('content_signals').createIndex({ 'scores.relevance': -1, publishedAt: -1 }),
+    rssDb.collection('content_signals').createIndex({ language: 1, country: 1, publishedAt: -1 }),
+    rssDb.collection('content_signals').createIndex({ usedInTasks: 1 }),
+    rssDb.collection('research_runs').createIndex({ taskId: 1 }, { unique: true }),
+    rssDb.collection('research_runs').createIndex({ weekDate: -1 }),
   ]);
 }

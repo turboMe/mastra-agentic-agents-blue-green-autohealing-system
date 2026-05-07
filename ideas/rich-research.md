@@ -659,3 +659,27 @@ Uwaga praktyczna: w niektorych wersjach n8n `RSS Feed Read` przy dynamicznym URL
 5. Dopiero potem importowac pelne `RSS-Content-Intelligence-v2`.
 6. Na koncu dodac validator dlugosci i bogactwa postow LinkedIn.
 
+## 7. Status implementacji
+
+Wdrozone w repo:
+
+- `src/mastra/lib/content-signals.ts` - adapter `content_signals` plus fallback do obecnych `rss_articles`.
+- `src/mastra/tools/rss/rss-tools.ts` - RSS tools czytaja teraz `rss_intelligence`, nie puste `agentforge`.
+- `src/mastra/workflows/weekly-content.ts` - `research-week` pobiera `freshSignals`, zapisuje `research_runs`, ma strict quality gate i przekazuje wykorzystane sygnaly do `save-drafts`.
+- `src/mastra/workflows/weekly-content.ts` - `generate-pl` ma dodatkowy repair/validator dlugosci LinkedIn.
+- `src/mastra/lib/mongo.ts` i `src/mastra/scripts/init-db.ts` - indeksy RSS sa kierowane do `rss_intelligence`.
+- `scratch/install-rich-research-n8n.mjs` - skrypt instalujacy/aktualizujacy workflow n8n z istniejacym credentialem Mongo.
+
+Wdrozone w n8n:
+
+- Utworzony i aktywowany workflow: `RSS-Content-Intelligence-v2`.
+- ID workflowa: `r2BRW4botxo0hche`.
+- Harmonogram: co 2 godziny.
+- Mongo credential uzyty z istniejacych workflowow: `4LCohL9nB1UUU4qh` (`MongoDB account 2`).
+
+Uwagi po wdrozeniu:
+
+- API n8n w tej instalacji zwrocilo `405 POST method not allowed` dla recznego `/run`, wiec pierwszy przebieg trzeba odpalic z UI n8n albo poczekac na harmonogram.
+- W momencie wdrozenia `rss_intelligence.content_signals` mialo `0` dokumentow, ale adapter fallbacku widzial 10 sygnalow z przetworzonych `rss_articles` dla tygodnia `2026-05-04`.
+- Fallback mial za malo polskich zrodel, wiec strict quality gate moze celowo zatrzymac natychmiastowy run `weekly-content` do czasu, az nowy n8n przetworzy polskie feedy.
+- `init-db` zatrzymuje sie obecnie na starym problemie `agentforge.shared_memory`: duplikaty `{ key: null }` blokuja unikalny indeks `key_1`. Indeksy `rss_intelligence` zostaly zalozone osobnym poleceniem.
