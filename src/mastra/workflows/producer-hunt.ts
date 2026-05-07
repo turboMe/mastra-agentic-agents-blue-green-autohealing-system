@@ -3,7 +3,7 @@
  * (apps/workers/src/agents/marketing-agent: outreach.ts, enrichment.ts, drafting.ts, index.ts).
  *
  * Mapowanie steps → jarvis (per plan §8.1):
- *   01 discover-leads          ← steps/outreach.ts (Tavily/NotebookLM zastąpione marketingAgent.generate)
+ *   01 discover-leads          ← steps/outreach.ts (Tavily/NotebookLM + fallback LLM)
  *   02 create-research-leads   ← index.ts:461-478 (lead bez maila → status `research_needed`)
  *   03 enrich-leads            ← steps/enrichment.ts (deep research; tu fallback przez agent.generate)
  *   04 extract-emails          ← index.ts:499-510 (LLM email-extraction)
@@ -15,12 +15,19 @@
  *   10 send-on-approve         ← gmail.sendDraft per draft
  *
  * Uwaga: NotebookLM/Tavily nie są jeszcze zintegrowane w mastra (Etap 4C/4D),
- * więc enrichment używa fallbacku przez marketingAgent zamiast prawdziwego deep research.
+ * więc enrichment używa fallbacku przez LLM zamiast pełnego deep research, gdy NLM nie wystarczy.
  */
 import { createWorkflow, createStep } from '@mastra/core/workflows';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
-import { marketingAgent } from '../agents/marketing-agent';
+import {
+  producerHuntDiscoveryAgent,
+  producerHuntDraftAgent,
+  producerHuntEmailExtractionAgent,
+  producerHuntEnrichmentAgent,
+  producerHuntJsonRepairAgent,
+} from '../agents/marketing-agent';
+import { workflowModels } from '../config/workflow-models.js';
 import { getDb } from '../lib/mongo';
 import { GmailService } from '../tools/google/gmail.js';
 import { getDraftsStore } from '../lib/drafts-store.js';
@@ -201,7 +208,7 @@ const discoverLeadsStep = createStep({
       console.log(`[producer-hunt:${taskId}] NotebookLM zwrócił za mało wyników (${leads.length}), używam fallbacku przez snippets...`);
       const searchContext = uniqueResults.slice(0, 20).map(r => `[${r.title}](${r.url}): ${r.content.slice(0, 400)}`).join('\n\n');
       const fallbackPrompt = `Na podstawie snippetów, wybierz ${count} producentów żywności z ${region}.\n\n${searchContext}\n\nZwróć JSON: { "leads": [...] }`;
-      const res = await marketingAgent.generate(fallbackPrompt);
+      const res = await producerHuntDiscoveryAgent.generate(fallbackPrompt);
       const parsed = tryParseJson<{ leads?: Lead[] } | Lead[]>(res.text);
       const fallbackLeads = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.leads) ? parsed.leads : []);
       leads = [...leads, ...fallbackLeads];
@@ -384,7 +391,7 @@ const enrichLeadsStep = createStep({
           }
         }
 
-        // 3. Finalne szlifowanie przez marketingAgent (jeśli NLM nie dał pełnych danych)
+        // 3. Finalne szlifowanie przez LLM (jeśli NLM nie dał pełnych danych)
         const prompt = `Dokończ research firmy "${lead.company}".
 Strona: ${website ?? 'nieznana'}. 
 Oryginalny powód: ${lead.reason ?? 'lokalny producent'}.
@@ -408,7 +415,7 @@ Zwróć WYŁĄCZNIE JSON:
   "facebook": "..."
 }`;
 
-        const res = await marketingAgent.generate(prompt);
+        const res = await producerHuntEnrichmentAgent.generate(prompt);
         const parsed = tryParseJson<{ 
           personalizationHook?: string; 
           rawAnalysis?: string;
@@ -474,7 +481,7 @@ const extractEmailsStep = createStep({
         const prompt = `Wyciągnij adres e-mail dla firmy "${lead.company}" z poniższego kontekstu.
 Zwróć WYŁĄCZNIE adres email lub słowo "null".
 Kontekst: ${lead.rawAnalysis}\nStrona: ${lead.website ?? '-'}`;
-        const res = await marketingAgent.generate(prompt);
+        const res = await producerHuntEmailExtractionAgent.generate(prompt);
         const candidate = res.text.trim().replace(/^"|"$/g, '');
         if (isValidEmail(candidate)) {
           console.log(`[producer-hunt:${taskId}] znaleziono email dla ${lead.company}: ${candidate}`);
@@ -559,7 +566,7 @@ WYMOGI PRAWNE (RODO):
 Zwróć WYŁĄCZNIE JSON: { "subject": "Temat maila", "body": "Treść maila" }`;
 
       try {
-        const res = await marketingAgent.generate(prompt);
+        const res = await producerHuntDraftAgent.generate(prompt);
         let parsed = tryParseJson<{ subject?: string; body?: string }>(res.text);
 
         // 1. Próba naprawy (Repair), jeśli JSON jest niekompletny
@@ -569,7 +576,7 @@ Zwróć WYŁĄCZNIE JSON: { "subject": "Temat maila", "body": "Treść maila" }`
           Zwróć WYŁĄCZNIE: { "subject": "...", "body": "..." }. 
           Tekst do naprawy: ${res.text}`;
           
-          const repairRes = await marketingAgent.generate(repairPrompt);
+          const repairRes = await producerHuntJsonRepairAgent.generate(repairPrompt);
           parsed = tryParseJson<{ subject?: string; body?: string }>(repairRes.text);
         }
 
@@ -696,8 +703,8 @@ const saveDraftsFsStep = createStep({
             enrichment: draft.enrichment,
             gmailDraftId: draft.gmailDraftId,
             createdAt: new Date().toISOString(),
-            agentId: 'marketing-agent',
-            llm: { provider: 'mastra', model: 'gemini-2.5-pro', costUsd: 0 },
+            agentId: 'producer-hunt-draft-agent',
+            llm: { provider: 'mastra', model: workflowModels.producerHunt.draftEmail, costUsd: 0 },
           },
         });
         result.push({ ...draft, fsPath });

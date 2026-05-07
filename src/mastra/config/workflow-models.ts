@@ -39,5 +39,14 @@ export const workflowModels = {
     translateEn: modelPresets.localMarketing,
     jsonRepair: modelPresets.localMarketing,
   },
-} as const;
 
+  producerHunt: {
+    // Discovery/enrichment can stay local for cheaper exploratory work.
+    // For better outreach quality, draftEmail is the first step worth moving to cloud.
+    discovery: modelPresets.localMarketing,
+    enrichment: modelPresets.localMarketing,
+    emailExtraction: modelPresets.localMarketing,
+    draftEmail: modelPresets.localMarketing,
+    jsonRepair: modelPresets.localMarketing,
+  },
+} as const;

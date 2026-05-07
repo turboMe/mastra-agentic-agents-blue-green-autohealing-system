@@ -123,3 +123,33 @@ export const weeklyContentJsonRepairAgent = createMarketingAgent(
   'Weekly Content JSON Repair Agent',
   workflowModels.weeklyContent.jsonRepair,
 );
+
+export const producerHuntDiscoveryAgent = createMarketingAgent(
+  'producer-hunt-discovery-agent',
+  'Producer Hunt Discovery Agent',
+  workflowModels.producerHunt.discovery,
+);
+
+export const producerHuntEnrichmentAgent = createMarketingAgent(
+  'producer-hunt-enrichment-agent',
+  'Producer Hunt Enrichment Agent',
+  workflowModels.producerHunt.enrichment,
+);
+
+export const producerHuntEmailExtractionAgent = createMarketingAgent(
+  'producer-hunt-email-extraction-agent',
+  'Producer Hunt Email Extraction Agent',
+  workflowModels.producerHunt.emailExtraction,
+);
+
+export const producerHuntDraftAgent = createMarketingAgent(
+  'producer-hunt-draft-agent',
+  'Producer Hunt Draft Agent',
+  workflowModels.producerHunt.draftEmail,
+);
+
+export const producerHuntJsonRepairAgent = createMarketingAgent(
+  'producer-hunt-json-repair-agent',
+  'Producer Hunt JSON Repair Agent',
+  workflowModels.producerHunt.jsonRepair,
+);
