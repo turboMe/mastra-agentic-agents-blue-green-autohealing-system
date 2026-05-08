@@ -1,0 +1,26 @@
+{
+  "draftId": "email-eb9492",
+  "taskId": "producer-hunt-a330f863",
+  "type": "cold-email",
+  "language": "pl",
+  "status": "draft",
+  "company": "Aronia Eggert Sp. z o.o.",
+  "region": "mazowieckie",
+  "segment": "producer",
+  "enrichment": {
+    "company": "Aronia Eggert Sp. z o.o.",
+    "email": "aronia@aroniaeggert.com",
+    "website": "https://aronia.org.pl/",
+    "reason": "Firma to ekologiczne przetwórstwo, które bezpośrednio zajmuje się produkcją wyrobów z polskich superowoców (m.in. aronii) i warzyw [5, 6].",
+    "rawAnalysis": "Wstępny research dla Aronia Eggert Sp. z o.o.. Wymaga weryfikacji tożsamości. Original analysis: Firma specjalizuje się w produkcji wysokiej jakości sadzonek oraz materiału roślinnego aronii (odmia...",
+    "personalizationHook": "Producent żywności z regionu mazowieckie."
+  },
+  "gmailDraftId": "r-5854254067735336901",
+  "createdAt": "2026-05-08T02:21:13.841Z",
+  "agentId": "producer-hunt-draft-agent",
+  "llm": {
+    "provider": "mastra",
+    "model": "ollama/local/gemma4:26b",
+    "costUsd": 0
+  }
+}

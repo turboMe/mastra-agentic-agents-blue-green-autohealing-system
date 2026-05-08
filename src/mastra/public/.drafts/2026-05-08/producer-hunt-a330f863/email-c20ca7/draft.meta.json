@@ -1,0 +1,26 @@
+{
+  "draftId": "email-c20ca7",
+  "taskId": "producer-hunt-a330f863",
+  "type": "cold-email",
+  "language": "pl",
+  "status": "draft",
+  "company": "Wilga Fruit Sp. z o.o.",
+  "region": "mazowieckie",
+  "segment": "producer",
+  "enrichment": {
+    "company": "Wilga Fruit Sp. z o.o.",
+    "email": "info@wilgafruit.pl",
+    "website": "https://wilgafruit.pl/",
+    "reason": "Firma zrzesza ponad 60 producentów, którzy uprawiają własne owoce i warzywa na terenie południowego Mazowsza [3, 4].",
+    "rawAnalysis": "Firma Wilga Fruit Sp. z o.o. (prowadząca działalność pod nazwą Wilga Fruit lub powiązana z Marcinem Sabałą) to podmiot działający w województwie mazowieckim (rejon Piaseczna/Sobienie-Jeziory). Firma zajmuje się obrotem owocami i warzywami, specjalizując się w dystrybucji. Na podstawie danych z LinkedIn i paneli biznesowych, firma operuje w modelu hurtowym. Kluczowym elementem ich działalności jest łączenie lokalnych producentów z rynkiem zbytu. Potencjał współpracy z GastroBridge leży w cyfryzacji procesu zamówień dla sektora gastronomicznego, co mogłoby odciążyć ich obecny model operacyjny i zwiększyć zasięg dotarcia do nowych odbiorców końcowych (restauracje, kawiarnie) bez konieczności rozbudowy własnej infrastruktury sprzedażowej.",
+    "personalizationHook": "Biorąc pod uwagę Państwa ugruntowaną pozycję na rynku mazowieckim oraz doświadczenie w dystrybucji owoców, widzę ogromny potencjał w połączeniu Państwa oferty z nowoczesnymi kanałami sprzedaży bezpośredniej do sektora HoReCa."
+  },
+  "gmailDraftId": "r-7294773462407759701",
+  "createdAt": "2026-05-08T02:21:13.840Z",
+  "agentId": "producer-hunt-draft-agent",
+  "llm": {
+    "provider": "mastra",
+    "model": "ollama/local/gemma4:26b",
+    "costUsd": 0
+  }
+}

@@ -26,6 +26,7 @@ import {
   producerHuntEmailExtractionAgent,
   producerHuntEnrichmentAgent,
   producerHuntJsonRepairAgent,
+  producerHuntCloudFallbackAgent,
 } from '../agents/marketing-agent';
 import { workflowModels } from '../config/workflow-models.js';
 import { getDb } from '../lib/mongo';
@@ -38,6 +39,18 @@ import {
   knowledgeAddSourceTool, 
   knowledgeDeleteNotebookTool 
 } from '../tools/knowledge/knowledge-tools.js';
+import { 
+  normalizeTextField, 
+  normalizeNullableString, 
+  generateJsonWithFallback,
+  assertSafeProducerHuntModel
+} from './producer-hunt/helpers.js';
+import { 
+  scoreLead, 
+  validateEnrichmentIdentity, 
+  validateDraft,
+  normalizeOptionalText,
+} from './producer-hunt/quality.js';
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 const leadSchema = z.object({
@@ -45,12 +58,19 @@ const leadSchema = z.object({
   email: z.string().nullable().optional(),
   website: z.string().nullable().optional(),
   reason: z.string().nullable().optional(),
+  city: z.string().nullable().optional(),
+  productCategory: z.string().nullable().optional(),
+  sourceUrls: z.union([z.array(z.string()), z.string()]).nullable().optional(),
+  emailSource: z.string().nullable().optional(),
+  isProducer: z.boolean().nullable().optional(),
+  confidence: z.number().min(0).max(1).nullable().optional(),
 });
 type Lead = z.infer<typeof leadSchema>;
 
 const enrichedLeadSchema = leadSchema.extend({
   rawAnalysis: z.string(),
   personalizationHook: z.string(),
+  companyName: z.string().nullable().optional(),
 });
 type EnrichedLead = z.infer<typeof enrichedLeadSchema>;
 
@@ -67,8 +87,87 @@ const draftSchema = z.object({
 });
 type Draft = z.infer<typeof draftSchema>;
 
+const qualitySummarySchema = z.object({
+  discovered: z.number(),
+  draftCandidates: z.number(),
+  researchNeeded: z.number(),
+  rejected: z.number(),
+  candidatesForResearch: z.number(),
+});
+
+const postResearchSummarySchema = z.object({
+  inputCandidates: z.number(),
+  enrichedAccepted: z.number(),
+  enrichedRejected: z.number(),
+});
+
+// New schemas for LLM responses
+const enrichmentResponseSchema = z.object({
+  companyName: z.string().optional().nullable(),
+  personalizationHook: z.string().min(5),
+  rawAnalysis: z.union([
+    z.string(),
+    z.record(z.string(), z.unknown()),
+    z.array(z.unknown()),
+  ]).optional(),
+  website: z.string().optional().nullable(),
+  linkedIn: z.string().optional().nullable(),
+  facebook: z.string().optional().nullable(),
+  identityConfidence: z.number().min(0).max(1).optional(),
+  identityWarning: z.string().optional(),
+});
+
+const draftResponseSchema = z.object({
+  subject: z.string().min(5).max(120),
+  body: z.string().min(200),
+});
+
+const discoveryResponseSchema = z.object({
+  leads: z.array(leadSchema).default([]),
+});
+
 const isValidEmail = (e?: string | null): e is string =>
-  !!e && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+  !!normalizeOptionalText(e) && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeOptionalText(e)!);
+
+const normalizeSourceUrls = (value: unknown): string[] | undefined => {
+  if (!value) return undefined;
+  const values = Array.isArray(value)
+    ? value
+    : String(value).split(/[\n,;]/);
+  const normalized = values
+    .map((url) => normalizeOptionalText(String(url)))
+    .filter((url): url is string => !!url);
+  return normalized.length > 0 ? normalized : undefined;
+};
+
+const normalizeBoolean = (value: unknown): boolean | undefined => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (['true', 'tak', 'yes', '1'].includes(normalized)) return true;
+  if (['false', 'nie', 'no', '0'].includes(normalized)) return false;
+  return undefined;
+};
+
+const normalizeConfidence = (value: unknown): number | undefined => {
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.min(1, value));
+  if (typeof value !== 'string') return undefined;
+  const parsed = Number(value.replace(',', '.'));
+  return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : undefined;
+};
+
+const normalizeLead = (lead: Lead): Lead => ({
+  company: lead.company.trim(),
+  email: normalizeOptionalText(lead.email),
+  website: normalizeOptionalText(lead.website),
+  reason: normalizeOptionalText(lead.reason),
+  city: normalizeOptionalText(lead.city),
+  productCategory: normalizeOptionalText(lead.productCategory),
+  sourceUrls: normalizeSourceUrls(lead.sourceUrls),
+  emailSource: normalizeOptionalText(lead.emailSource),
+  isProducer: normalizeBoolean(lead.isProducer),
+  confidence: normalizeConfidence(lead.confidence),
+});
 
 const tryParseJson = <T = unknown>(text: string): T | null => {
   try {
@@ -108,6 +207,12 @@ const discoverLeadsStep = createStep({
     const taskId = `producer-hunt-${randomUUID().slice(0, 8)}`;
     const { region, count, productType } = context.inputData;
     console.log(`[producer-hunt:${taskId}] discover-leads region=${region} spec=${productType ?? 'all'}`);
+
+    // Preflight checks
+    const models = workflowModels.producerHunt;
+    assertSafeProducerHuntModel(models.discovery, 'discovery', taskId);
+    assertSafeProducerHuntModel(models.enrichment, 'enrichment', taskId);
+    assertSafeProducerHuntModel(models.draftEmail, 'draftEmail', taskId);
 
     // 1. Multi-Search (rozszerzona lista kategorii)
     const baseQueries = [
@@ -174,11 +279,19 @@ const discoverLeadsStep = createStep({
 
         Dla każdego producenta wyciągnij:
         1. company: Pełna nazwa firmy
-        2. email: Adres e-mail (bardzo ważne, szukaj w stopkach, kontaktach)
-        3. website: Strona WWW
-        4. reason: Krótki opis (1 zdanie) co konkretnie produkują.
+        2. email: Adres e-mail lub null (szukaj w stopkach, kontaktach i oficjalnych źródłach)
+        3. website: Oficjalna strona WWW lub null
+        4. city: Miasto/miejscowość
+        5. productCategory: Konkretna kategoria produktu (np. pierogi, nabiał, kawa, przetwory)
+        6. sourceUrls: 1-3 źródła, z których wynika, że to producent
+        7. emailSource: źródło emaila, jeśli jest znane
+        8. isProducer: true tylko jeśli źródło wskazuje realne wytwarzanie/produkcję
+        9. confidence: liczba 0-1 określająca pewność dopasowania
+        10. reason: Krótki opis (1 zdanie) co konkretnie produkują i gdzie.
 
-        Zwróć WYŁĄCZNIE JSON w formacie: { "leads": [{ "company": "...", "email": "...", "website": "...", "reason": "..." }] }
+        Nie wpisuj "Brak danych" ani "brak" - używaj null.
+        Zwróć WYŁĄCZNIE JSON w formacie:
+        { "leads": [{ "company": "...", "email": null, "website": null, "city": "...", "productCategory": "...", "sourceUrls": ["..."], "emailSource": null, "isProducer": true, "confidence": 0.8, "reason": "..." }] }
         Pomiń portale ogólne, bazy firm i sklepy pośredniczące. Skup się na REALNYCH wytwórcach.`;
 
         console.log(`[producer-hunt:${taskId}] odpytuję NotebookLM o listę leadów...`);
@@ -204,28 +317,58 @@ const discoverLeadsStep = createStep({
     }
 
     // Fallback do LLM snippets jeśli NotebookLM zawiódł lub zwrócił mało wyników
-    if (leads.length < 2) {
-      console.log(`[producer-hunt:${taskId}] NotebookLM zwrócił za mało wyników (${leads.length}), używam fallbacku przez snippets...`);
+    const minAcceptable = count;
+    if (leads.length < minAcceptable) {
+      console.log(`[producer-hunt:${taskId}] NotebookLM zwrócił mniej niż target (${leads.length}/${count}), używam fallbacku przez snippets...`);
       const searchContext = uniqueResults.slice(0, 20).map(r => `[${r.title}](${r.url}): ${r.content.slice(0, 400)}`).join('\n\n');
-      const fallbackPrompt = `Na podstawie snippetów, wybierz ${count} producentów żywności z ${region}.\n\n${searchContext}\n\nZwróć JSON: { "leads": [...] }`;
-      const res = await producerHuntDiscoveryAgent.generate(fallbackPrompt);
-      const parsed = tryParseJson<{ leads?: Lead[] } | Lead[]>(res.text);
-      const fallbackLeads = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.leads) ? parsed.leads : []);
-      leads = [...leads, ...fallbackLeads];
+      const fallbackPrompt = `Na podstawie snippetów, wybierz ${count} producentów żywności z ${region}.
+
+Pamiętaj, aby pominąć katalogi firm i portale ogólne. Nie wpisuj "Brak danych" - używaj null.
+
+${searchContext}
+
+Zwróć JSON:
+{ "leads": [{ "company": "...", "email": null, "website": null, "city": "...", "productCategory": "...", "sourceUrls": ["..."], "emailSource": null, "isProducer": true, "confidence": 0.8, "reason": "..." }] }`;
+      
+      const res = await generateJsonWithFallback({
+        taskId,
+        stepId: 'discover-leads-fallback',
+        prompt: fallbackPrompt,
+        schema: discoveryResponseSchema,
+        localAgent: producerHuntDiscoveryAgent,
+        repairAgent: producerHuntJsonRepairAgent,
+        cloudFallbackAgent: producerHuntCloudFallbackAgent,
+        fallback: () => ({ leads: [] }),
+      });
+      
+      leads = [...leads, ...res.leads];
     }
 
     // Ostateczna deduplikacja i walidacja
     const seen = new Set();
-    leads = leads.filter(l => {
+    const normalizedLeads = leads
+      .filter((l) => l?.company && l.company.length >= 3)
+      .map((l) => normalizeLead(l));
+
+    const finalLeads = normalizedLeads.filter(l => {
       if (!l.company || l.company.length < 3) return false;
-      const normalized = l.company.toLowerCase().trim();
-      if (seen.has(normalized)) return false;
-      seen.add(normalized);
+      
+      // Bardziej agresywna deduplikacja
+      const normalizedName = l.company.toLowerCase()
+        .replace(/sp\. z o\.o\.|s\.c\.|sp\. j\.|p\.h\.u\.|p\.p\.h\.u\.|spółka|"/g, '')
+        .trim();
+      
+      const emailDomain = l.email && isValidEmail(l.email) ? l.email.split('@')[1].toLowerCase() : null;
+      
+      const key = emailDomain ? `domain:${emailDomain}` : `name:${normalizedName}`;
+      
+      if (seen.has(key)) return false;
+      seen.add(key);
       return true;
     }).slice(0, count);
 
-    console.log(`[producer-hunt:${taskId}] discover-leads finished, found ${leads.length} leads.`);
-    return { taskId, region, leads };
+    console.log(`[producer-hunt:${taskId}] discover-leads finished, found ${finalLeads.length} leads.`);
+    return { taskId, region, leads: finalLeads };
   },
 });
 
@@ -233,7 +376,7 @@ const discoverLeadsStep = createStep({
 const createResearchLeadsStep = createStep({
   id: 'create-research-leads',
   description:
-    'Leady bez maila trafiają do CRM ze statusem research_needed (do późniejszego pogłębienia).',
+    'Klasyfikuje leady i przepuszcza draft_candidate oraz research_needed do pogłębionego researchu.',
   inputSchema: z.object({
     taskId: z.string(),
     region: z.string(),
@@ -244,30 +387,73 @@ const createResearchLeadsStep = createStep({
     region: z.string(),
     validLeads: z.array(leadSchema),
     researchOnlyCount: z.number(),
+    qualitySummary: qualitySummarySchema,
   }),
   execute: async (context) => {
     const { taskId, region, leads } = context.inputData;
-    // Przepuszczamy wszystkie leady które mają nazwę firmy. 
-    // Nawet jeśli nie mają maila/www - krok enrichment spróbuje je doszukać.
-    const validLeads = leads.filter((l) => l.company && l.company.length > 2);
     
-    // Do researchu trafiają te, które nie mają poprawnego maila (nawet jeśli mają stronę WWW)
-    const researchOnly = leads.filter((l) => !isValidEmail(l.email));
+    // Scoring and filtering
+    const scoredLeads = leads.map((l) => {
+      const lead = normalizeLead(l);
+      return {
+        lead,
+        quality: scoreLead(lead, region),
+      };
+    }).sort((a, b) => b.quality.score - a.quality.score);
+
+    // validLeads zostaje nazwą kontraktu workflow, ale teraz oznacza kandydatów
+    // do researchu: pewnych i niepewnych, o ile nie są odrzucone.
+    const validLeads = scoredLeads
+      .filter(sl => sl.quality.decision !== 'reject')
+      .map(sl => sl.lead);
+    
+    const researchOnly = scoredLeads
+      .filter(sl => sl.quality.decision === 'research_needed')
+      .map(sl => sl.lead);
+
+    const draftCandidateCount = scoredLeads.filter(sl => sl.quality.decision === 'draft_candidate').length;
+    const rejectedCount = scoredLeads.filter(sl => sl.quality.decision === 'reject').length;
+    const qualitySummary = {
+      discovered: scoredLeads.length,
+      draftCandidates: draftCandidateCount,
+      researchNeeded: researchOnly.length,
+      rejected: rejectedCount,
+      candidatesForResearch: validLeads.length,
+    };
+
     const db = await getDb();
 
-    for (const lead of researchOnly) {
+    for (const sl of scoredLeads) {
+      console.log(
+        `[producer-hunt:${taskId}] lead quality ${sl.lead.company}: decision=${sl.quality.decision}, score=${sl.quality.score}, reasons=${sl.quality.reasons.join('; ')}`,
+      );
+
+      if (sl.quality.decision === 'reject') {
+        console.log(`[producer-hunt:${taskId}] rejecting lead ${sl.lead.company} (score: ${sl.quality.score}, reasons: ${sl.quality.reasons.join(', ')})`);
+        continue;
+      }
+
       await db.collection('leads').updateOne(
-        { companyName: lead.company, region },
+        { companyName: sl.lead.company, region },
         {
           $set: {
-            companyName: lead.company,
+            companyName: sl.lead.company,
             segment: 'producer',
             region,
-            status: 'research_needed',
-            website: lead.website,
+            status: sl.quality.decision === 'draft_candidate' ? 'research_queued' : 'research_needed',
+            website: sl.lead.website,
             updatedAt: new Date(),
             metadata: {
-              discoveryReason: lead.reason,
+              discoveryReason: sl.lead.reason,
+              city: sl.lead.city,
+              productCategory: sl.lead.productCategory,
+              sourceUrls: sl.lead.sourceUrls,
+              emailSource: sl.lead.emailSource,
+              isProducer: sl.lead.isProducer,
+              confidence: sl.lead.confidence,
+              qualityScore: sl.quality.score,
+              qualityDecision: sl.quality.decision,
+              qualityReasons: sl.quality.reasons,
               taskId,
             },
           },
@@ -276,10 +462,11 @@ const createResearchLeadsStep = createStep({
         { upsert: true },
       );
     }
+    
     console.log(
-      `[producer-hunt:${taskId}] research-only=${researchOnly.length}, valid=${validLeads.length}`,
+      `[producer-hunt:${taskId}] candidates-for-research=${validLeads.length}, research-needed=${researchOnly.length}, draft-candidates=${draftCandidateCount}, rejected=${rejectedCount}`,
     );
-    return { taskId, region, validLeads, researchOnlyCount: researchOnly.length };
+    return { taskId, region, validLeads, researchOnlyCount: researchOnly.length, qualitySummary };
   },
 });
 
@@ -292,16 +479,19 @@ const enrichLeadsStep = createStep({
     region: z.string(),
     validLeads: z.array(leadSchema),
     researchOnlyCount: z.number(),
+    qualitySummary: qualitySummarySchema.optional(),
   }),
   outputSchema: z.object({
     taskId: z.string(),
     region: z.string(),
     enriched: z.array(enrichedLeadSchema),
     researchOnlyCount: z.number(),
+    postResearchSummary: postResearchSummarySchema,
   }),
   execute: async (context) => {
     const { taskId, region, validLeads } = context.inputData;
     const enriched: EnrichedLead[] = [];
+    let enrichedRejected = 0;
 
     // Pobierz ogólny kontekst rynkowy z NotebookLM (jeśli dostępny)
     let marketContext = '';
@@ -317,6 +507,8 @@ const enrichLeadsStep = createStep({
       console.warn(`[producer-hunt:${taskId}] NotebookLM 'rynek' niedostępny.`);
     }
 
+    const db = await getDb();
+
     for (const lead of validLeads) {
       console.log(`[producer-hunt:${taskId}] enriching lead: ${lead.company}...`);
       let notebookId = '';
@@ -329,13 +521,16 @@ const enrichLeadsStep = createStep({
 
         const isSuccess = linksResult && 'success' in linksResult && linksResult.success;
         const leadContext = isSuccess ? (linksResult as any).searchContext : '';
-        const website = isSuccess ? ((linksResult as any).website ?? lead.website) : lead.website;
+        const website = normalizeOptionalText(isSuccess ? ((linksResult as any).website ?? lead.website) : lead.website);
+        const researchWebsite = website
+          ? (website.startsWith('http') ? website : `https://${website}`)
+          : null;
 
         let nlmAnalysis = '';
         let nlmHook = '';
 
         // 2. Jeśli mamy stronę, robimy DEEP research przez NotebookLM
-        if (website && website.startsWith('http')) {
+        if (researchWebsite) {
           try {
             console.log(`[producer-hunt:${taskId}] creating Deep Research notebook for ${lead.company}...`);
             const createRes = await knowledgeCreateNotebookTool.execute!({ title: `Deep: ${lead.company} (${taskId})` }, {} as any);
@@ -346,7 +541,7 @@ const enrichLeadsStep = createStep({
               await knowledgeAddSourceTool.execute!({
                 notebook: notebookId,
                 sourceType: 'url',
-                url: website,
+                url: researchWebsite,
                 title: `Strona: ${lead.company}`
               }, {} as any);
 
@@ -392,8 +587,13 @@ const enrichLeadsStep = createStep({
         }
 
         // 3. Finalne szlifowanie przez LLM (jeśli NLM nie dał pełnych danych)
+        const sourceUrls = Array.isArray(lead.sourceUrls) ? lead.sourceUrls.join('\n') : (lead.sourceUrls ?? '');
         const prompt = `Dokończ research firmy "${lead.company}".
-Strona: ${website ?? 'nieznana'}. 
+Strona: ${researchWebsite ?? website ?? 'nieznana'}.
+Miasto: ${lead.city ?? 'nieznane'}.
+Kategoria z discovery: ${lead.productCategory ?? 'nieznana'}.
+Źródła z discovery:
+${sourceUrls || 'Brak.'}
 Oryginalny powód: ${lead.reason ?? 'lokalny producent'}.
 
 Dane z głębokiego researchu (NLM):
@@ -406,40 +606,135 @@ ${marketContext}
 Wyniki wyszukiwania (snippets):
 ${leadContext}
 
+Nie podmieniaj firmy na inną o podobnej nazwie. 
+Jeśli nie możesz potwierdzić, że źródło dotyczy dokładnie tej firmy, ustaw "identityConfidence" poniżej 0.5.
+
 Zwróć WYŁĄCZNIE JSON:
 { 
-  "personalizationHook": "Finalny 1-2 zdaniowy hook do maila (użyj danych z NLM jeśli są dobre, lub wygeneruj nowy konkretny)",
+  "companyName": "Potwierdzona nazwa firmy z researchu",
+  "personalizationHook": "Finalny 1-2 zdaniowy hook do maila",
   "rawAnalysis": "Podsumowanie: co produkują, certyfikaty, potencjał współpracy",
   "website": "...",
   "linkedIn": "...",
-  "facebook": "..."
+  "facebook": "...",
+  "identityConfidence": 1.0
 }`;
 
-        const res = await producerHuntEnrichmentAgent.generate(prompt);
-        const parsed = tryParseJson<{ 
-          personalizationHook?: string; 
-          rawAnalysis?: string;
-          website?: string;
-          linkedIn?: string;
-          facebook?: string;
-        }>(res.text);
+        const parsed = await generateJsonWithFallback({
+          taskId,
+          stepId: 'enrich-leads',
+          entityName: lead.company,
+          prompt,
+          schema: enrichmentResponseSchema,
+          localAgent: producerHuntEnrichmentAgent,
+          repairAgent: producerHuntJsonRepairAgent,
+          cloudFallbackAgent: producerHuntCloudFallbackAgent,
+          fallback: () => ({
+            companyName: lead.company,
+            personalizationHook: nlmHook || lead.reason || `Producent żywności z regionu ${region}.`,
+            rawAnalysis: nlmAnalysis || leadContext || 'Brak głębokiego researchu.',
+            website: researchWebsite ?? website,
+            identityConfidence: 0.5
+          }),
+        });
 
-        const rawAnalysis = parsed?.rawAnalysis || nlmAnalysis || leadContext || 'Brak głębokiego researchu.';
-        const personalizationHook = parsed?.personalizationHook || nlmHook || `Producent żywności z regionu ${region}.`;
+        const rawAnalysis = normalizeTextField(
+          parsed.rawAnalysis,
+          normalizeTextField(nlmAnalysis || leadContext, 'Brak głębokiego researchu.'),
+        );
 
-        enriched.push({
+        const personalizationHook = normalizeTextField(
+          parsed.personalizationHook,
+          nlmHook || `Producent żywności z regionu ${region}.`,
+        );
+
+        const candidate = {
           ...lead,
-          website: parsed?.website ?? website,
+          companyName: normalizeOptionalText(parsed.companyName) ?? lead.company,
+          website: normalizeNullableString(parsed.website ?? researchWebsite ?? website ?? lead.website),
           personalizationHook,
           rawAnalysis,
-        });
+        };
+
+        // Identity Guardrail
+        const identity = validateEnrichmentIdentity(lead, parsed);
+        if (!identity.ok || (parsed.identityConfidence && parsed.identityConfidence < 0.5)) {
+          console.warn(`[producer-hunt:${taskId}] identity mismatch for ${lead.company}:`, identity.reasons.join(', '));
+          // Reset to safe values if identity is doubtful
+          candidate.personalizationHook = `Producent żywności z regionu ${region}.`;
+          candidate.rawAnalysis = `Wstępny research dla ${lead.company}. Wymaga weryfikacji tożsamości. Original analysis: ${rawAnalysis.slice(0, 100)}...`;
+        }
+
+        const validation = enrichedLeadSchema.safeParse(candidate);
+        if (!validation.success) {
+          console.warn(`[producer-hunt:${taskId}] schema repair fallback for ${lead.company}:`, validation.error.message);
+          const fallbackCandidate = {
+            ...lead,
+            personalizationHook: `Producent żywności z regionu ${region}.`,
+            rawAnalysis: 'Błąd walidacji enrichmentu.',
+            companyName: lead.company,
+          };
+          const fallbackQuality = scoreLead(fallbackCandidate, region);
+          await db.collection('leads').updateOne(
+            { companyName: lead.company, region },
+            {
+              $set: {
+                status: fallbackQuality.decision === 'reject' ? 'research_rejected' : 'research_enriched',
+                updatedAt: new Date(),
+                'metadata.postResearchQuality': fallbackQuality,
+              },
+            },
+          );
+          if (fallbackQuality.decision === 'reject') {
+            enrichedRejected++;
+            continue;
+          }
+          enriched.push(fallbackCandidate);
+        } else {
+          const postResearchQuality = scoreLead(validation.data, region);
+          await db.collection('leads').updateOne(
+            { companyName: lead.company, region },
+            {
+              $set: {
+                status: postResearchQuality.decision === 'reject' ? 'research_rejected' : 'research_enriched',
+                website: validation.data.website,
+                updatedAt: new Date(),
+                'metadata.postResearchQuality': postResearchQuality,
+                'metadata.enrichmentPreview': {
+                  website: validation.data.website,
+                  companyName: validation.data.companyName,
+                  personalizationHook: validation.data.personalizationHook,
+                  rawAnalysisPreview: validation.data.rawAnalysis.slice(0, 500),
+                },
+              },
+            },
+          );
+
+          console.log(
+            `[producer-hunt:${taskId}] post-research quality ${lead.company}: decision=${postResearchQuality.decision}, score=${postResearchQuality.score}, reasons=${postResearchQuality.reasons.join('; ')}`,
+          );
+
+          if (postResearchQuality.decision === 'reject') {
+            console.warn(`[producer-hunt:${taskId}] post-research reject ${lead.company}`);
+            enrichedRejected++;
+            continue;
+          }
+          enriched.push(validation.data);
+        }
       } catch (err) {
         console.warn(`[producer-hunt:${taskId}] enrichment fail dla ${lead.company}:`, (err as Error).message);
-        enriched.push({
+        const fallbackCandidate = {
           ...lead,
           personalizationHook: lead.reason ?? 'Lokalny producent',
           rawAnalysis: 'Enrichment niedostępny.',
-        });
+          companyName: lead.company,
+        };
+        const fallbackQuality = scoreLead(fallbackCandidate, region);
+        if (fallbackQuality.decision === 'reject') {
+          enrichedRejected++;
+          continue;
+        }
+        enriched.push(fallbackCandidate);
       }
     }
     return {
@@ -447,6 +742,11 @@ Zwróć WYŁĄCZNIE JSON:
       region,
       enriched,
       researchOnlyCount: context.inputData.researchOnlyCount,
+      postResearchSummary: {
+        inputCandidates: validLeads.length,
+        enrichedAccepted: enriched.length,
+        enrichedRejected,
+      },
     };
   },
 });
@@ -462,6 +762,7 @@ const extractEmailsStep = createStep({
     region: z.string(),
     enriched: z.array(enrichedLeadSchema),
     researchOnlyCount: z.number(),
+    postResearchSummary: postResearchSummarySchema.optional(),
   }),
   outputSchema: z.object({
     taskId: z.string(),
@@ -487,15 +788,50 @@ Kontekst: ${lead.rawAnalysis}\nStrona: ${lead.website ?? '-'}`;
           console.log(`[producer-hunt:${taskId}] znaleziono email dla ${lead.company}: ${candidate}`);
           out.push({ ...lead, email: candidate });
         } else {
-          // Nie usuwamy leada! Idzie dalej, ale bez maila nie powstanie draft.
-          console.warn(`[producer-hunt:${taskId}] brak emaila dla ${lead.company} — zapiszę w CRM jako do researchu.`);
-          out.push(lead); 
+          console.warn(`[producer-hunt:${taskId}] local email extraction returned no email for ${lead.company}, próbuję cloud fallback.`);
+          try {
+            const cloudRes = await producerHuntCloudFallbackAgent.generate(`${prompt}\n\nReturn only one email address or null.`);
+            const cloudCandidate = cloudRes.text.trim().replace(/^"|"$/g, '');
+            if (isValidEmail(cloudCandidate)) {
+              console.log(`[producer-hunt:${taskId}] cloud fallback znalazł email dla ${lead.company}: ${cloudCandidate}`);
+              out.push({ ...lead, email: cloudCandidate });
+            } else {
+              // Nie usuwamy leada! Idzie dalej, ale bez maila nie powstanie draft.
+              console.warn(`[producer-hunt:${taskId}] brak emaila dla ${lead.company} — zapiszę w CRM jako do researchu.`);
+              out.push(lead);
+            }
+          } catch (cloudErr) {
+            console.warn(
+              `[producer-hunt:${taskId}] extract-email cloud fallback fail ${lead.company}:`,
+              (cloudErr as Error).message,
+            );
+            out.push(lead);
+          }
         }
       } catch (err) {
         console.warn(
           `[producer-hunt:${taskId}] extract-email fail ${lead.company}:`,
           (err as Error).message,
         );
+        try {
+          const prompt = `Wyciągnij adres e-mail dla firmy "${lead.company}" z poniższego kontekstu.
+Zwróć WYŁĄCZNIE adres email lub słowo "null".
+Kontekst: ${lead.rawAnalysis}\nStrona: ${lead.website ?? '-'}`;
+          const cloudRes = await producerHuntCloudFallbackAgent.generate(`${prompt}\n\nReturn only one email address or null.`);
+          const cloudCandidate = cloudRes.text.trim().replace(/^"|"$/g, '');
+          if (isValidEmail(cloudCandidate)) {
+            console.log(`[producer-hunt:${taskId}] cloud fallback znalazł email dla ${lead.company}: ${cloudCandidate}`);
+            out.push({ ...lead, email: cloudCandidate });
+          } else {
+            out.push(lead);
+          }
+        } catch (cloudErr) {
+          console.warn(
+            `[producer-hunt:${taskId}] extract-email cloud fallback fail ${lead.company}:`,
+            (cloudErr as Error).message,
+          );
+          out.push(lead);
+        }
       }
     }
     return {
@@ -535,6 +871,11 @@ const draftColdEmailsStep = createStep({
 
       console.log(`[producer-hunt:${taskId}] drafting email for ${lead.company} (${lead.email})...`);
 
+      const fallbackDraft = () => ({
+        subject: `Współpraca GastroBridge x ${lead.company}`,
+        body: `Dzień dobry,\n\nKontaktuję się w sprawie potencjalnej współpracy z Państwa firmą. Buduję GastroBridge – platformę, która pomaga lokalnym producentom z regionu ${region} docierać bezpośrednio do restauracji, z pominięciem zbędnych pośredników.\n\nChętnie sprawdzę, czy nasz model współpracy (obecnie w darmowym pilotażu) mógłby pasować do Państwa asortymentu.\n\nCzy możemy umówić krótką rozmowę?\n\nPozdrawiam,\nPatryk (GastroBridge)\n\n---\nAdministratorem danych jest GastroBridge. Cel: Nawiązanie relacji B2B. Źródło: Publiczne dane z sieci (research). Odpisz "NIE", aby usunąć dane.`
+      });
+
       const prompt = `Jesteś Patrykiem, chefem który koduje i buduje GastroBridge. 
 Napisz krótki, profesjonalny cold-email do producenta: "${lead.company}".
 
@@ -566,40 +907,43 @@ WYMOGI PRAWNE (RODO):
 Zwróć WYŁĄCZNIE JSON: { "subject": "Temat maila", "body": "Treść maila" }`;
 
       try {
-        const res = await producerHuntDraftAgent.generate(prompt);
-        let parsed = tryParseJson<{ subject?: string; body?: string }>(res.text);
+        const parsed = await generateJsonWithFallback({
+          taskId,
+          stepId: 'draft-cold-emails',
+          entityName: lead.company,
+          prompt,
+          schema: draftResponseSchema,
+          localAgent: producerHuntDraftAgent,
+          repairAgent: producerHuntJsonRepairAgent,
+          cloudFallbackAgent: producerHuntCloudFallbackAgent,
+          repairPrompt: (badOutput, error) => {
+            const validation = validateDraft(tryParseJson(badOutput) as any || { subject: '', body: '' }, lead);
+            const failureList = validation.hardFailures.join(', ');
+            return `Napraw poniższy draft maila. Musi być poprawnym JSONem i spełniać wszystkie zasady (zwłaszcza RODO i brak placeholderów).
+              Błędy: ${failureList || error}
+              Oryginalny output: ${badOutput}`;
+          },
+          fallback: fallbackDraft,
+        });
 
-        // 1. Próba naprawy (Repair), jeśli JSON jest niekompletny
-        if (!parsed?.subject || !parsed?.body) {
-          console.warn(`[producer-hunt:${taskId}] JSON parse fail dla ${lead.company}, próbuję naprawić...`);
-          const repairPrompt = `Napraw poniższy tekst, aby był poprawnym obiektem JSON. 
-          Zwróć WYŁĄCZNIE: { "subject": "...", "body": "..." }. 
-          Tekst do naprawy: ${res.text}`;
-          
-          const repairRes = await producerHuntJsonRepairAgent.generate(repairPrompt);
-          parsed = tryParseJson<{ subject?: string; body?: string }>(repairRes.text);
+        // Final quality check
+        const validation = validateDraft(parsed, lead);
+        if (!validation.ok) {
+           console.error(`[producer-hunt:${taskId}] draft validation failed for ${lead.company} even after repair/fallback:`, validation.hardFailures.join(', '));
+           const safeDraft = fallbackDraft();
+           parsed.subject = safeDraft.subject;
+           parsed.body = safeDraft.body;
         }
 
-        // 2. Fallback (Draft rezerwowy), jeśli naprawa też zawiodła
-        if (!parsed?.subject || !parsed?.body) {
-          console.error(`[producer-hunt:${taskId}] Naprawa zawiodła dla ${lead.company}, używam draftu fallback.`);
-          parsed = {
-            subject: `Współpraca GastroBridge x ${lead.company}`,
-            body: `Dzień dobry,\n\nKontaktuję się w sprawie potencjalnej współpracy z Państwa firmą. Buduję GastroBridge – platformę, która pomaga lokalnym producentom z regionu ${region} docierać bezpośrednio do restauracji, z pominięciem zbędnych pośredników.\n\nChętnie sprawdzę, czy nasz model współpracy (obecnie w darmowym pilotażu) mógłby pasować do Państwa asortymentu.\n\nCzy możemy umówić krótką rozmowę?\n\nPozdrawiam,\nPatryk (GastroBridge)\n\n---\nAdministratorem danych jest GastroBridge. Cel: Nawiązanie relacji B2B. Źródło: Publiczne dane z sieci (research). Odpisz "NIE", aby usunąć dane.`
-          };
-        }
-        
-        if (parsed?.subject && parsed?.body) {
-          drafts.push({
-            taskId,
-            draftId: `email-${randomUUID().slice(0, 6)}`,
-            company: lead.company,
-            email: lead.email,
-            subject: parsed.subject,
-            body: parsed.body,
-            enrichment: lead,
-          });
-        }
+        drafts.push({
+          taskId,
+          draftId: `email-${randomUUID().slice(0, 6)}`,
+          company: lead.company,
+          email: lead.email,
+          subject: parsed.subject,
+          body: parsed.body,
+          enrichment: lead,
+        });
       } catch (err) {
         console.warn(`[producer-hunt:${taskId}] draft fail ${lead.company}:`, (err as Error).message);
       }

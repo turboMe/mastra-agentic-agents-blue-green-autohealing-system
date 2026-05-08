@@ -1,0 +1,26 @@
+{
+  "draftId": "email-e58ea5",
+  "taskId": "producer-hunt-a330f863",
+  "type": "cold-email",
+  "language": "pl",
+  "status": "draft",
+  "company": "Grupa Producentów Green-Sad Sp. z o.o.",
+  "region": "mazowieckie",
+  "segment": "producer",
+  "enrichment": {
+    "company": "Grupa Producentów Green-Sad Sp. z o.o.",
+    "email": "green.sad@wp.pl",
+    "website": "brak danych",
+    "reason": "Jest to lokalna mazowiecka grupa bezpośrednich producentów zrzeszająca rolników z branży owocowo-warzywnej [7, 8].",
+    "rawAnalysis": "Firma działa pod nazwą Grupa/Spółka związana z marką Green/Green-related (na podstawie powiązań z 'Green' w wynikach wyszukiwania i kontekstu branżowego dla regionu). Skupia się na branży spożywczej (produkcja/hurt). Siedziba/operacje w okolicach Zaborowa/Zaborowa (powiat grójecki/Mazowiecki), co jest kluczowym regionem rolniczym w Polsce. Działalność obejmuje dystrybucję produktów rolno-spożywczych, prawdopodobnie w modelu hurtowym. Potencjał dla Gastro/HoReCa ze względu na bliskość aglomeracji warszawskiej i model dystrybucyjny.",
+    "personalizationHook": "Zauważyłem, że Grupa działa w modelu zintegrowanym, łącząc produkcję z dystrybucją, co przy obecnych wyzwaniach łańcuchów dostaw daje ogromną przewagę rynkową."
+  },
+  "gmailDraftId": "r1643687885190226591",
+  "createdAt": "2026-05-08T02:21:13.841Z",
+  "agentId": "producer-hunt-draft-agent",
+  "llm": {
+    "provider": "mastra",
+    "model": "ollama/local/gemma4:26b",
+    "costUsd": 0
+  }
+}

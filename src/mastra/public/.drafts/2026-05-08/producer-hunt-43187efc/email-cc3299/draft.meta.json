@@ -1,0 +1,35 @@
+{
+  "draftId": "email-cc3299",
+  "taskId": "producer-hunt-43187efc",
+  "type": "cold-email",
+  "language": "pl",
+  "status": "draft",
+  "company": "A&A Coffee",
+  "region": "śląskie",
+  "segment": "producer",
+  "enrichment": {
+    "company": "A&A Coffee",
+    "email": "aacoffee@gmail.com",
+    "website": "https://lapavoni.eu/",
+    "reason": "Firma zajmująca się rzemieślniczym przetwórstwem kawy, herbaty i kakao w Sosnowcu.",
+    "city": "Sosnowiec",
+    "productCategory": "kawa, herbata, kakao",
+    "sourceUrls": [
+      "Lista firm | Firmy spożywcze"
+    ],
+    "emailSource": "Lista firm | Firmy spożywcze",
+    "isProducer": true,
+    "confidence": 0.9,
+    "rawAnalysis": "A&A Coffee z Sosnowca to palarnia kawy, importer kawy zielonej oraz herbaty, a także dystrybutor sprzętu gastronomicznego, w tym palarek i ekspresów do kawy. Firma koncentruje się na rynku B2B. Angielskojęzyczny profil firmy deklaruje wspieranie lokalnych rolników i społeczności oraz stawianie na wysokiej jakości, lokalnie pozyskiwane ziarna. Brak informacji o dacie założenia, historii, nagrodach czy certyfikatach (np. RHD). Potencjalna współpraca z GastroBridge mogłaby polegać na poszerzeniu kanału sprzedaży hurtowej, łącząc ich z nowymi kawiarniami i restauracjami, które potrzebują kompleksowego dostawcy zarówno ziaren, jak i technologii do parzenia. Status importera może zapewnić konkurencyjne ceny dla restauracji.",
+    "personalizationHook": "Zaimponowało mi Wasze kompleksowe podejście – od importu zielonej kawy po własną palarnię i dystrybucję ekspresów w Sosnowcu.",
+    "companyName": "A&A Coffee"
+  },
+  "gmailDraftId": "r-5078125411996032375",
+  "createdAt": "2026-05-08T03:42:52.806Z",
+  "agentId": "producer-hunt-draft-agent",
+  "llm": {
+    "provider": "mastra",
+    "model": "openai/gpt-5.2-mini",
+    "costUsd": 0
+  }
+}

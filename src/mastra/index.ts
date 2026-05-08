@@ -36,6 +36,7 @@ import {
   producerHuntEmailExtractionAgent,
   producerHuntEnrichmentAgent,
   producerHuntJsonRepairAgent,
+  producerHuntCloudFallbackAgent,
 } from './agents/marketing-agent';
 import { salesAgent } from './agents/sales-agent';
 import { analyticsAgent } from './agents/analytics-agent';
@@ -76,6 +77,7 @@ export const mastra: Mastra = new Mastra({
     producerHuntEmailExtractionAgent,
     producerHuntDraftAgent,
     producerHuntJsonRepairAgent,
+    producerHuntCloudFallbackAgent,
     salesAgent,
     analyticsAgent,
     automationArchitect,

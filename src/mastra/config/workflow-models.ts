@@ -7,7 +7,7 @@
 
 export const modelPresets = {
   // Local / private / cheapest
-  localMarketing: 'ollama/local/gemma4:26b',
+  localMarketing: 'openai/gpt-5.2-mini',
   localReasoning: 'ollama/local/gemma4:26b',
   localPowerful: 'ollama/local/gemma4:26b',
   //localReasoning: 'ollama/local/qwen3-coder:30b',
@@ -50,5 +50,6 @@ export const workflowModels = {
     emailExtraction: modelPresets.localMarketing,
     draftEmail: modelPresets.localMarketing,
     jsonRepair: modelPresets.localMarketing,
+    cloudFallback: modelPresets.googleFlash,
   },
 } as const;

@@ -153,3 +153,9 @@ export const producerHuntJsonRepairAgent = createMarketingAgent(
   'Producer Hunt JSON Repair Agent',
   workflowModels.producerHunt.jsonRepair,
 );
+
+export const producerHuntCloudFallbackAgent = createMarketingAgent(
+  'producer-hunt-cloud-fallback-agent',
+  'Producer Hunt Cloud Fallback Agent',
+  workflowModels.producerHunt.cloudFallback,
+);
