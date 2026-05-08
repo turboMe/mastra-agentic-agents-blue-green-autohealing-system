@@ -8,8 +8,10 @@
 export const modelPresets = {
   // Local / private / cheapest
   localMarketing: 'ollama/local/gemma4:26b',
-  localReasoning: 'ollama/local/qwen3-coder:30b',
-  localPowerful: 'ollama/local/qwen3.5-abliterated:35b',
+  localReasoning: 'ollama/local/gemma4:26b',
+  localPowerful: 'ollama/local/gemma4:26b',
+  //localReasoning: 'ollama/local/qwen3-coder:30b',
+  //localPowerful: 'ollama/local/qwen3.5-abliterated:35b',
 
   // Google
   googlePro: 'google/gemini-2.5-pro',

@@ -29,7 +29,14 @@ import { onboardingChecklistWorkflow } from './workflows/sales/onboarding-checkl
 import { weatherAgent } from './agents/weather-agent';
 import { crmAgent } from './agents/crm-agent';
 import { metaAgent } from './agents/meta-agent';
-import { marketingAgent } from './agents/marketing-agent';
+import {
+  marketingAgent,
+  producerHuntDiscoveryAgent,
+  producerHuntDraftAgent,
+  producerHuntEmailExtractionAgent,
+  producerHuntEnrichmentAgent,
+  producerHuntJsonRepairAgent,
+} from './agents/marketing-agent';
 import { salesAgent } from './agents/sales-agent';
 import { analyticsAgent } from './agents/analytics-agent';
 import { automationArchitect } from './agents/automation-architect';
@@ -64,6 +71,11 @@ export const mastra: Mastra = new Mastra({
     crmAgent,
     metaAgent,
     marketingAgent,
+    producerHuntDiscoveryAgent,
+    producerHuntEnrichmentAgent,
+    producerHuntEmailExtractionAgent,
+    producerHuntDraftAgent,
+    producerHuntJsonRepairAgent,
     salesAgent,
     analyticsAgent,
     automationArchitect,
@@ -127,4 +139,3 @@ export const mastra: Mastra = new Mastra({
 
 
 mastra.addGateway(new OllamaGateway());
-
