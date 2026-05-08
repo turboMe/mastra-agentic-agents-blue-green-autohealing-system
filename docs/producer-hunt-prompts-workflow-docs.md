@@ -2,6 +2,8 @@
 
 Ten dokument zawiera zestawienie ewolucji workflow `producer-hunt` po migracji z systemu Jarvis do Mastra. Służy jako punkt odniesienia przy przyszłych modyfikacjach promptów.
 
+> Powiązane: [producer-hunt-supplier-types.md](producer-hunt-supplier-types.md) — od PR A workflow nie szuka już tylko producentów, ale też hurtowni/dystrybutorów/grup producenckich/importerów. Klasyfikacja, scoring i segment CRM opisane są w tamtym dokumencie. Plan rozszerzenia: [ideas/producer-hunt-fix-v3.md](../ideas/producer-hunt-fix-v3.md).
+
 ## 0. Tożsamość i Instrukcje Bazowe (System Prompt)
 
 | Element | Jarvis (Legacy) | Mastra (New) | Cel zmiany |

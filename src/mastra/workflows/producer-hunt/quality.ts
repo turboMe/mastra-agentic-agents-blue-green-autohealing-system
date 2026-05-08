@@ -1,7 +1,32 @@
+export type SupplierType =
+  | 'producer'
+  | 'manufacturer'
+  | 'cooperative'
+  | 'producer_group'
+  | 'wholesaler'
+  | 'distributor'
+  | 'importer'
+  | 'farm_aggregator'
+  | 'unknown';
+
+export type DirectToHoreca = 'yes' | 'limited' | 'no' | 'unknown';
+
+export const ACCEPTABLE_SUPPLIER_TYPES: SupplierType[] = [
+  'producer',
+  'manufacturer',
+  'cooperative',
+  'producer_group',
+  'wholesaler',
+  'distributor',
+  'importer',
+  'farm_aggregator',
+];
+
 export type LeadQuality = {
   score: number;
   decision: 'draft_candidate' | 'research_needed' | 'reject';
   reasons: string[];
+  inferredSupplierType: SupplierType;
 };
 
 type LeadForScoring = {
@@ -18,7 +43,25 @@ type LeadForScoring = {
   emailSource?: string | null;
   isProducer?: boolean | null;
   confidence?: number | null;
+  supplierType?: SupplierType | null;
+  directToHoreca?: DirectToHoreca | null;
+  servesRegions?: string[] | null;
+  brandsOrPortfolio?: string[] | null;
 };
+
+export function mapToCrmSegment(type: SupplierType): string {
+  switch (type) {
+    case 'wholesaler':       return 'wholesaler';
+    case 'distributor':      return 'distributor';
+    case 'importer':         return 'importer';
+    case 'cooperative':
+    case 'producer_group':   return 'cooperative';
+    case 'farm_aggregator':  return 'aggregator';
+    case 'manufacturer':     return 'manufacturer';
+    case 'producer':         return 'producer';
+    default:                 return 'unknown';
+  }
+}
 
 const MISSING_VALUES = new Set([
   '',
@@ -139,6 +182,80 @@ const NEGATIVE_RESEARCH_SIGNALS = [
   'wymaga weryfikacji tozsamosci',
 ];
 
+const WHOLESALE_KEYWORDS = [
+  'hurt',
+  'hurtow',
+  'cash and carry',
+  'cash&carry',
+  'cash & carry',
+  'b2b',
+  'dla gastronomii',
+  'dla horeca',
+  'horeca',
+  'sprzedaz hurtowa',
+  'oferta dla restauracji',
+  'sprzedaz dla restauracji',
+];
+
+const DISTRIBUTION_KEYWORDS = [
+  'dystrybut',
+  'dostawca do restauracji',
+  'dostawca do gastronomii',
+  'dostawy do horeca',
+  'sprzedaz do gastronomii',
+  'foodservice',
+  'food service',
+  'logistyka spozywcz',
+];
+
+const IMPORTER_KEYWORDS = [
+  'import',
+  'importer',
+  'wylaczny przedstawiciel',
+  'wlosk',
+  'hiszpansk',
+  'francusk',
+  'azjatyck',
+  'sprowadzamy',
+  'specjalnosci kulinarne',
+];
+
+const COOPERATIVE_KEYWORDS = [
+  'spoldziel',
+  'kooperaty',
+  'grupa producenck',
+  'zrzeszenie',
+  'lokalna inicjatywa',
+  'platforma producentow',
+  'agregator producent',
+  'czlonkow gospodarstw',
+];
+
+const END_CONSUMER_KEYWORDS = [
+  'restauracja',
+  'restauracje',
+  'hotel',
+  'pizzeria',
+  'bistro',
+  'kawiarnia',
+  'pub',
+  'bar mleczny',
+  'food truck',
+];
+
+const RETAIL_CHAIN_KEYWORDS = [
+  'biedronka',
+  'lidl',
+  'auchan',
+  'tesco',
+  'kaufland',
+  'carrefour',
+  'netto',
+  'aldi',
+  'dino',
+  'stokrotka',
+];
+
 const REGION_TOKENS: Record<string, string[]> = {
   slaskie: [
     'slaskie',
@@ -236,6 +353,68 @@ function getRegionTokens(region: string): string[] {
   return matched ? matched[1] : [region];
 }
 
+function aggregatedText(lead: LeadForScoring): string {
+  return [
+    lead.reason,
+    lead.rawAnalysis,
+    lead.personalizationHook,
+    lead.city,
+    lead.productCategory,
+    lead.emailSource,
+    lead.company,
+    lead.companyName,
+    lead.website,
+    sourceUrlsText(lead.sourceUrls),
+    Array.isArray(lead.brandsOrPortfolio) ? lead.brandsOrPortfolio.join(' ') : '',
+  ]
+    .map((part) => normalizeForMatch(part))
+    .filter(Boolean)
+    .join(' ');
+}
+
+function textConfirms(lead: LeadForScoring, type: SupplierType): boolean {
+  const text = aggregatedText(lead);
+  switch (type) {
+    case 'wholesaler':       return hasAny(text, WHOLESALE_KEYWORDS);
+    case 'distributor':      return hasAny(text, DISTRIBUTION_KEYWORDS);
+    case 'importer':         return hasAny(text, IMPORTER_KEYWORDS);
+    case 'cooperative':
+    case 'producer_group':
+    case 'farm_aggregator':  return hasAny(text, COOPERATIVE_KEYWORDS);
+    case 'manufacturer':
+    case 'producer':         return hasAny(text, PRODUCTION_KEYWORDS) || lead.isProducer === true;
+    default:                 return false;
+  }
+}
+
+export function inferSupplierType(
+  lead: LeadForScoring,
+  declared?: SupplierType | null,
+): SupplierType {
+  if (declared && declared !== 'unknown' && textConfirms(lead, declared)) {
+    return declared;
+  }
+
+  const text = aggregatedText(lead);
+
+  if (hasAny(text, WHOLESALE_KEYWORDS))     return 'wholesaler';
+  if (hasAny(text, DISTRIBUTION_KEYWORDS))  return 'distributor';
+  if (hasAny(text, IMPORTER_KEYWORDS))      return 'importer';
+  if (hasAny(text, COOPERATIVE_KEYWORDS)) {
+    if (text.includes('grupa producenck') || text.includes('zrzeszenie')) return 'producer_group';
+    if (text.includes('agregator producent') || text.includes('platforma producentow')) return 'farm_aggregator';
+    return 'cooperative';
+  }
+  if (hasAny(text, PRODUCTION_KEYWORDS) || lead.isProducer === true) {
+    if (text.includes('zaklad') || text.includes('przetwor') || text.includes('manufaktur')) return 'manufacturer';
+    return 'producer';
+  }
+
+  if (declared && declared !== 'unknown') return declared;
+
+  return 'unknown';
+}
+
 function sourceUrlsText(sourceUrls?: string[] | string | null): string {
   if (!sourceUrls) return '';
   if (Array.isArray(sourceUrls)) return sourceUrls.join(' ');
@@ -257,15 +436,11 @@ export function scoreLead(lead: LeadForScoring, region: string): LeadQuality {
 
   const email = normalizeOptionalText(lead.email);
   const website = normalizeOptionalText(lead.website);
-  const text = [
-    lead.reason,
-    lead.rawAnalysis,
-    lead.personalizationHook,
-    lead.city,
-    lead.productCategory,
-    lead.emailSource,
-    sourceUrlsText(lead.sourceUrls),
-  ].map((part) => normalizeForMatch(part)).filter(Boolean).join(' ');
+  const text = aggregatedText(lead);
+
+  const inferredSupplierType = inferSupplierType(lead, lead.supplierType);
+  const isProducerLike = inferredSupplierType === 'producer' || inferredSupplierType === 'manufacturer';
+  reasons.push(`type: ${inferredSupplierType}`);
 
   if (isValidEmail(email)) {
     score += 25;
@@ -296,9 +471,45 @@ export function scoreLead(lead: LeadForScoring, region: string): LeadQuality {
   }
 
   const hasProductionSignal = hasAny(text, PRODUCTION_KEYWORDS);
-  if (hasProductionSignal) {
-    score += 15;
-    reasons.push('+15: reason zawiera słowa produkcyjne');
+  const hasWholesaleSignal = hasAny(text, WHOLESALE_KEYWORDS);
+  const hasDistributionSignal = hasAny(text, DISTRIBUTION_KEYWORDS);
+  const hasImporterSignal = hasAny(text, IMPORTER_KEYWORDS);
+  const hasCooperativeSignal = hasAny(text, COOPERATIVE_KEYWORDS);
+
+  switch (inferredSupplierType) {
+    case 'producer':
+    case 'manufacturer':
+      if (hasProductionSignal) {
+        score += 15;
+        reasons.push('+15: sygnał produkcji/wytwórstwa');
+      }
+      break;
+    case 'wholesaler':
+      if (hasWholesaleSignal) {
+        score += 15;
+        reasons.push('+15: sygnał hurtowni / sprzedaży B2B');
+      }
+      break;
+    case 'distributor':
+      if (hasDistributionSignal || hasWholesaleSignal) {
+        score += 15;
+        reasons.push('+15: sygnał dystrybucji do HoReCa');
+      }
+      break;
+    case 'importer':
+      if (hasImporterSignal) {
+        score += 15;
+        reasons.push('+15: sygnał importera specjalistycznego');
+      }
+      break;
+    case 'cooperative':
+    case 'producer_group':
+    case 'farm_aggregator':
+      if (hasCooperativeSignal) {
+        score += 15;
+        reasons.push('+15: sygnał kooperatywy / grupy producenckiej');
+      }
+      break;
   }
 
   const hasFoodSignal = hasAny(text, FOOD_KEYWORDS);
@@ -312,9 +523,20 @@ export function scoreLead(lead: LeadForScoring, region: string): LeadQuality {
     reasons.push('+10: podana kategoria produktu');
   }
 
-  if (lead.isProducer === true) {
-    score += 20;
-    reasons.push('+20: oznaczone jako producent');
+  if (lead.isProducer === true && isProducerLike) {
+    score += 10;
+    reasons.push('+10: oznaczone jako producent (zgodne z typem)');
+  }
+
+  if (lead.directToHoreca === 'yes') {
+    score += 15;
+    reasons.push('+15: bezpośrednia sprzedaż do HoReCa');
+  } else if (lead.directToHoreca === 'limited') {
+    score += 5;
+    reasons.push('+5: ograniczona sprzedaż do HoReCa');
+  } else if (lead.directToHoreca === 'no' && inferredSupplierType === 'wholesaler') {
+    score -= 20;
+    reasons.push('-20: hurtownia bez sprzedaży do HoReCa');
   }
 
   if (typeof lead.confidence === 'number') {
@@ -357,14 +579,30 @@ export function scoreLead(lead: LeadForScoring, region: string): LeadQuality {
     reasons.push('-20: brak słów kluczowych branży spożywczej');
   }
 
-  if (!hasProductionSignal && lead.isProducer !== true) {
+  if (isProducerLike && !hasProductionSignal && lead.isProducer !== true) {
     score -= 15;
     reasons.push('-15: brak jasnego sygnału produkcji/wytwórstwa');
   }
 
-  if (lead.isProducer === false) {
+  if (
+    inferredSupplierType === 'unknown'
+    && lead.directToHoreca !== 'yes'
+    && lead.directToHoreca !== 'limited'
+  ) {
     score -= 50;
-    reasons.push('-50: oznaczone jako nie-producent');
+    reasons.push('-50: typ dostawcy nieznany i brak potwierdzenia HoReCa');
+  }
+
+  const hasEndConsumerSignal = hasAny(text, END_CONSUMER_KEYWORDS);
+  const hasSupplierSignal = hasProductionSignal || hasWholesaleSignal || hasDistributionSignal || hasImporterSignal || hasCooperativeSignal;
+  if (hasEndConsumerSignal && !hasSupplierSignal && inferredSupplierType === 'unknown') {
+    score -= 30;
+    reasons.push('-30: tekst wskazuje końcowego konsumenta (restauracja/hotel) bez sygnału dostawcy');
+  }
+
+  if (hasAny(text, RETAIL_CHAIN_KEYWORDS)) {
+    score -= 25;
+    reasons.push('-25: dotyczy sieci handlowej B2C');
   }
 
   if (hasAny(text, NEGATIVE_RESEARCH_SIGNALS)) {
@@ -376,7 +614,7 @@ export function scoreLead(lead: LeadForScoring, region: string): LeadQuality {
   if (score >= 55) decision = 'draft_candidate';
   else if (score >= 25) decision = 'research_needed';
 
-  return { score, decision, reasons };
+  return { score, decision, reasons, inferredSupplierType };
 }
 
 export type IdentityCheck = {
@@ -389,11 +627,17 @@ export function validateEnrichmentIdentity(lead: any, enriched: any): IdentityCh
   const reasons: string[] = [];
   let confidence = 1.0;
 
+  const enrichedSupplierType = (enriched?.supplierType as SupplierType | undefined) ?? undefined;
+  const declaredType = enrichedSupplierType ?? (lead?.supplierType as SupplierType | undefined);
+  const distributionLikeType = declaredType === 'wholesaler'
+    || declaredType === 'distributor'
+    || declaredType === 'importer';
+
   // 1. Token matching, only when the model explicitly returned a company name.
   if (enriched.companyName) {
     const leadTokens = normalizeForMatch(lead.company).replace(/[^a-z0-9 ]/g, '').split(' ').filter((t: string) => t.length > 2);
     const enrichedTokens = normalizeForMatch(enriched.companyName).replace(/[^a-z0-9 ]/g, '').split(' ').filter((t: string) => t.length > 2) || [];
-    
+
     const commonTokens = leadTokens.filter((t: string) => enrichedTokens.includes(t));
     if (commonTokens.length === 0 && leadTokens.length > 0) {
       confidence -= 0.6;
@@ -401,13 +645,14 @@ export function validateEnrichmentIdentity(lead: any, enriched: any): IdentityCh
     }
   }
 
-  // 2. Domain check
+  // 2. Domain check — hurtownie/dystrybutorzy często mają osobne domeny B2B/portalowe.
   if (lead.email && enriched.website) {
     const emailDomain = String(lead.email).split('@')[1]?.toLowerCase();
     const webDomain = getDomain(enriched.website);
     if (emailDomain && webDomain && !isPublicEmailDomain(emailDomain) && !emailDomain.includes(webDomain) && !webDomain.includes(emailDomain)) {
-      confidence -= 0.6;
-      reasons.push('Domena website nie pasuje do domeny email');
+      const penalty = distributionLikeType ? 0.2 : 0.6;
+      confidence -= penalty;
+      reasons.push(`Domena website nie pasuje do domeny email (${distributionLikeType ? 'tolerancja dla hurtowni/dystrybutora' : 'pełna kara'})`);
     }
   }
 
@@ -415,6 +660,25 @@ export function validateEnrichmentIdentity(lead: any, enriched: any): IdentityCh
   if (webDomain && /\.(co\.uk|com\.au|ca|de|fr|it|es)$/.test(webDomain) && !webDomain.endsWith('.pl')) {
     confidence -= 0.2;
     reasons.push('Domena wygląda na zagraniczny podmiot');
+  }
+
+  // 3. Supplier-type drift — model klasyfikuje inny typ niż heurystyka.
+  if (enrichedSupplierType) {
+    const heuristicType = inferSupplierType(
+      {
+        company: lead?.company ?? '',
+        companyName: enriched?.companyName ?? lead?.companyName ?? null,
+        reason: lead?.reason ?? null,
+        rawAnalysis: enriched?.rawAnalysis && typeof enriched.rawAnalysis === 'string' ? enriched.rawAnalysis : null,
+        productCategory: lead?.productCategory ?? null,
+        website: enriched?.website ?? lead?.website ?? null,
+      },
+      enrichedSupplierType,
+    );
+    if (heuristicType !== 'unknown' && heuristicType !== enrichedSupplierType) {
+      confidence -= 0.2;
+      reasons.push(`Model klasyfikuje typ jako ${enrichedSupplierType}, heurystyka jako ${heuristicType}`);
+    }
   }
 
   return {

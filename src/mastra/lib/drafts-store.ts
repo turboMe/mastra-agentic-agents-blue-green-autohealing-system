@@ -30,6 +30,7 @@ export interface DraftMetadata {
   company?: string;
   region?: string;
   segment?: string;
+  supplierType?: string;
   sourceContact?: string;
   personalizationElements?: string[];
   enrichment?: unknown;
