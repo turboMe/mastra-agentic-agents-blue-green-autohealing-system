@@ -32,10 +32,11 @@ Aktualny postep:
 - [ ] Etap 1: bezpieczny lokalny MVP `codingAgent`.
 - [ ] Etap 2: realny artifact + change ledger + rollback.
 - [ ] Etap 3: `codeReviewAgent` i `repo-maintenance` workflow.
-- [ ] Etap 4: self-healing z logow/testow, bez auto-deploy.
-- [ ] Etap 5: subagenci codingowi, routing modeli i tryb offline fallback.
-- [ ] Etap 6: GitHub/PR/CI integracja.
-- [ ] Etap 7: kontrolowane podpiecie wlasnego repo agenta, z approval i rollback.
+- [ ] Etap 4: staging/worktree mode dla self-healing, z restart-safe resume.
+- [ ] Etap 5: self-healing z logow/testow, bez auto-deploy w trybie manualnym.
+- [ ] Etap 6: subagenci codingowi, routing modeli i tryb offline fallback.
+- [ ] Etap 7: GitHub/PR/CI integracja.
+- [ ] Etap 8: kontrolowane podpiecie wlasnego repo agenta, z approval, rollback i health-checkami.
 
 Pierwszy naturalny krok:
 
@@ -50,6 +51,10 @@ Definition of done Etapu 0:
 - `codingAgent` potrafi uruchomic `npx tsc --noEmit` albo zwrocic konkretny blad srodowiska.
 - Proba komendy sieciowej typu `npm install` wymaga approval.
 - `metaAgent` jeszcze nie dostaje terminala do repo.
+
+Kluczowa zasada dla self-healing:
+
+Agent nie powinien edytowac live checkoutu, z ktorego aktualnie dziala Mastra, jezeli zadanie moze dotyczyc kodu Mastry, agentow, workflowow albo narzedzi runtime. Najpierw przygotowuje patch w staging worktree, zapisuje stan zadania, testuje, a dopiero finalny approved/apply step przenosi zmiany do live i restartuje uslugi.
 
 ## 1. Aktualny stan
 
@@ -1235,7 +1240,333 @@ Mitigacja:
 - kazda komenda sieciowa musi byc zapisana w artifact z powodem i wynikiem,
 - lockfile/dependency changes wymagaja review.
 
-## 20. Test manualny po wdrozeniu
+## 20. Self-healing staging, restart i resume
+
+To jest krytyczna czesc architektury, jesli agent ma kiedys naprawiac swoje wlasne repo.
+
+Zasada:
+
+- live runtime nie jest miejscem pracy agenta,
+- live runtime tylko uruchamia aktualnie zatwierdzona wersje,
+- agent przygotowuje zmiany w osobnym staging worktree,
+- apply/restart jest osobnym etapem z approval albo jawnie wlaczonym trybem automatycznym.
+
+### 20.1 Warstwy pracy
+
+1. Live repo:
+   - katalog, z ktorego dziala Mastra,
+   - nieedytowany bezposrednio przez self-healing,
+   - restartowany dopiero po zatwierdzeniu patcha.
+
+2. Staging worktree:
+   - np. `/projekty/.agent-worktrees/<taskId>`,
+   - agent czyta, edytuje, testuje i reviewuje zmiany tutaj,
+   - moze miec osobny branch `agent/self-heal/<taskId>`.
+
+3. Runtime supervisor:
+   - skrypt/systemd/n8n/docker entrypoint poza kodem agenta,
+   - potrafi zatrzymac Mastrę, zastosowac patch, uruchomic build/test/health-check, zrestartowac kontenery,
+   - po restarcie uruchamia resume pending tasks.
+
+Dlaczego:
+
+- jezeli agent zmieni kod live w trakcie `mastra dev`, watcher moze przeładowac uszkodzony kod i agent przestanie odpowiadac,
+- jezeli zmiana zepsuje import/startup, agent nie bedzie w stanie sam cofnac zmiany,
+- osobny supervisor musi byc prosty i odporny, bo to on ratuje system po blednym patchu.
+
+### 20.2 Resume po restarcie
+
+Kazdy self-healing task musi miec zapisany stan poza procesem Node:
+
+```ts
+type ResumableMaintenanceTask = {
+  id: string;
+  status:
+    | 'planning'
+    | 'patching'
+    | 'testing'
+    | 'reviewing'
+    | 'waiting_apply'
+    | 'applying'
+    | 'restarting'
+    | 'verifying_after_restart'
+    | 'done'
+    | 'failed'
+    | 'rollback_required';
+  workflowRunId?: string;
+  worktreePath: string;
+  branchName: string;
+  baseCommit: string;
+  patchCommit?: string;
+  liveCommitBeforeApply?: string;
+  lastCompletedStep: string;
+  nextStep: string;
+  lastCommand?: string;
+  restartRequested: boolean;
+  resumeAfterRestart: boolean;
+  healthCheckUrl?: string;
+  rollbackCommand?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+```
+
+Po starcie Mastry uruchamia sie lekki bootstrap:
+
+```txt
+resume-maintenance-pending
+```
+
+Ten bootstrap:
+
+- szuka zadan `status in ['restarting', 'verifying_after_restart', 'rollback_required']`,
+- sprawdza health endpointy,
+- jezeli system wstal, wznawia workflow od `nextStep`,
+- jezeli system nie wstal, oznacza task jako `rollback_required` i uruchamia bezpieczny rollback przez supervisora albo prosi usera o interwencje.
+
+### 20.3 Apply/restart jako osobny protokol
+
+Finalny apply nie powinien byc zwyklym `execute_command` od agenta.
+
+Potrzebny jest osobny, maly i przewidywalny mechanizm:
+
+```txt
+agent-apply-patch --task <taskId>
+agent-restart-stack --task <taskId>
+agent-verify-health --task <taskId>
+agent-rollback --task <taskId>
+```
+
+Minimalny flow:
+
+1. Agent tworzy patch/commit w staging worktree.
+2. Testy przechodza w staging.
+3. Review agent zatwierdza albo wskazuje poprawki.
+4. Task przechodzi w `waiting_apply`.
+5. W trybie manualnym user zatwierdza apply.
+6. Supervisor:
+   - zapisuje `liveCommitBeforeApply`,
+   - zatrzymuje dev server/kontenery wymagajace restartu,
+   - aplikuje patch do live repo albo przelacza branch/symlink,
+   - odpala build/test smoke,
+   - restartuje serwery/kontenery,
+   - zapisuje `resumeAfterRestart: true`.
+7. Po restarcie bootstrap wznawia task i robi health-check.
+8. Jezeli health-check przejdzie, task = `done`.
+9. Jezeli health-check nie przejdzie, supervisor rollbackuje do `liveCommitBeforeApply`.
+
+### 20.4 Poziomy automatyzacji przez ENV
+
+Pelna automatyzacja powinna byc mozliwa, ale domyslnie wylaczona.
+
+```txt
+CODING_AUTONOMY_LEVEL=manual|assisted|autonomous
+CODING_ALLOW_SELF_MODIFY=false
+CODING_ALLOW_RESTART=false
+CODING_ALLOW_NETWORK=false
+CODING_MAX_REPAIR_ITERATIONS=3
+CODING_MAX_CHANGED_FILES=20
+CODING_REQUIRE_REVIEW=true
+CODING_REQUIRE_HEALTHCHECK=true
+```
+
+Interpretacja:
+
+- `manual`:
+  - agent przygotowuje patch, test i review,
+  - apply/restart/rollback tylko po user approval.
+
+- `assisted`:
+  - agent moze sam wykonac drobne, niskiego ryzyka apply w dozwolonym scope,
+  - restart dalej wymaga approval,
+  - network/dependencies/DB migracje wymagaja approval.
+
+- `autonomous`:
+  - agent moze zatwierdzac patch, restartowac i kontynuowac naprawe,
+  - tylko jesli `CODING_ALLOW_SELF_MODIFY=true` i `CODING_ALLOW_RESTART=true`,
+  - wymagany staging worktree, review, health-check i rollback,
+  - nadal blokowac destructive operations bez osobnego allowlist.
+
+Autonomous mode jest sensowny dla lokalnego/dev env. Nie traktowac go jako produkcyjnego defaultu.
+
+### 20.5 Jak rosnie jakosc wraz z modelami
+
+Architektura powinna zakladac, ze modele beda coraz lepsze.
+
+Dlatego:
+
+- modele sa aliasami w configu, nie zaszyte w agentach,
+- task artifacts, testy, review i health-checki zostaja takie same niezaleznie od modelu,
+- lepszy model dostaje te same narzedzia i guardrails, ale robi lepsze diagnozy i patche,
+- lokalny fallback daje ci ciaglosc pracy offline, nawet jezeli chmurowy model nie jest dostepny.
+
+To jest poprawny kierunek: inwestujemy w runtime, narzedzia, pamiec, rollback i ewaluacje, a jakosc rozumowania bedzie rosla wraz z podmienianymi modelami.
+
+### 20.6 Dual repo / blue-green runtime
+
+Jeszcze bezpieczniejszy wariant self-healing to dwa sloty repo/runtime:
+
+```txt
+/projekty/agent-runtime-a   # aktualnie aktywny slot
+/projekty/agent-runtime-b   # pasywny slot do patchowania
+/projekty/agent-current -> /projekty/agent-runtime-a
+```
+
+Zasada:
+
+- system dziala z aktywnego slotu,
+- agent pracuje na pasywnym slotcie,
+- po testach supervisor przelacza `agent-current` albo kontener na nowy slot,
+- stary slot zostaje nietkniety jako rollback target.
+
+Minimalny flow:
+
+1. Runtime dziala ze slotu A.
+2. Agent dostaje blad/logi.
+3. Supervisor synchronizuje slot B do aktualnego commita slotu A.
+4. Agent przygotowuje patch w slotcie B.
+5. Slot B przechodzi testy, build i review.
+6. Supervisor zapisuje:
+   - aktywny slot przed zmiana,
+   - commit slotu A,
+   - commit slotu B,
+   - health-check URL,
+   - timeout rollbacku, np. 120 sekund.
+7. Supervisor przelacza runtime na slot B i restartuje uslugi.
+8. Watchdog czeka maksymalnie 120 sekund na health-check.
+9. Jezeli slot B wstanie:
+   - status taska = `verifying_after_restart`,
+   - agent dostaje logi startowe i kontynuuje zadanie.
+10. Jezeli slot B nie wstanie:
+   - supervisor automatycznie wraca na slot A,
+   - status taska = `rollback_required` albo `failed_after_switch`,
+   - logi z nieudanego startu slotu B sa zapisywane do task artifact,
+   - agent po powrocie dostaje te logi jako material do kolejnej proby.
+
+To jest lepsze niz praca w live repo, bo:
+
+- stary runtime zostaje gotowy do natychmiastowego powrotu,
+- nie trzeba odtwarzac plikow przez reczny revert,
+- restart moze byc traktowany jak transakcja z timeoutem,
+- agent moze uczyc sie z logow nieudanego slotu bez utraty dzialajacej wersji.
+
+To jest w praktyce lokalny blue-green deployment. Dla self-modifying agenta to powinien byc docelowy tryb autonomiczny.
+
+Przyklady ENV dla tego trybu:
+
+```txt
+CODING_DEPLOY_STRATEGY=worktree|blue_green
+CODING_ACTIVE_SLOT=/projekty/agent-runtime-a
+CODING_PASSIVE_SLOT=/projekty/agent-runtime-b
+CODING_CURRENT_SYMLINK=/projekty/agent-current
+CODING_HEALTHCHECK_TIMEOUT_SECONDS=120
+CODING_AUTO_ROLLBACK=true
+```
+
+Wazne ograniczenia:
+
+- przelaczenie slotu musi robic supervisor, nie LLM,
+- health-check musi byc deterministyczny,
+- rollback nie moze zalezec od dzialania nowego kodu,
+- logi z nieudanego slotu musza byc zapisane poza slotem, np. Mongo albo `/projekty/agent-runtime-logs/<taskId>`.
+
+### 20.7 Promocja slotu i synchronizacja repo
+
+Po przelaczeniu na nowy slot nie nalezy od razu uznawac go za nowa baze pracy. Potrzebne jest okno stabilnosci.
+
+Proponowany warunek promocji:
+
+```txt
+CODING_PROMOTION_STABILITY_SECONDS=300
+CODING_PROMOTION_ERROR_THRESHOLD=0
+```
+
+Slot moze zostac promowany, jezeli przez 5 minut:
+
+- health-check odpowiada poprawnie,
+- proces Mastry nie restartuje sie w petli,
+- logi nie zawieraja bledow poziomu `error`/`fatal`,
+- kluczowe endpointy API/Studio odpowiadaja,
+- pending workflow resume nie konczy sie bledem.
+
+Flow po udanym switchu:
+
+1. Slot A byl aktywny.
+2. Agent przygotowal poprawke w slocie B.
+3. Supervisor przelaczyl runtime na slot B.
+4. Watchdog potwierdzil szybki health-check, np. po 120 sekundach.
+5. System wchodzi w `stabilization_window`.
+6. Przez 300 sekund supervisor zbiera:
+   - logi startowe,
+   - health-checki,
+   - exit codes,
+   - najwazniejsze trace errors.
+7. Jezeli okno stabilnosci przejdzie, supervisor robi `promote_slot`.
+8. Slot B staje sie oficjalnym aktywnym baseline.
+9. Slot A zostaje zsynchronizowany z B i staje sie nowym pasywnym slotem do kolejnych zmian.
+10. Agent moze kontynuowac prace tylko na pasywnym slocie A.
+
+Synchronizacja slotow:
+
+```txt
+active_slot=B
+passive_slot=A
+baseline_commit=<commit_B_po_promocji>
+```
+
+Supervisor powinien wykonac synchronizacje deterministycznie, bez LLM:
+
+- upewnic sie, ze pasywny slot nie ma niezapisanych zmian,
+- jesli ma zmiany z niezakonczonego taska, oznaczyc task jako `conflict` i nie nadpisywac,
+- ustawic pasywny slot na `baseline_commit`,
+- odtworzyc dependencies/cache tylko jezeli potrzebne,
+- zapisac w Mongo, ktory slot jest aktywny i jaki commit jest baseline.
+
+Mozliwe implementacje:
+
+1. Git branch/worktree:
+   - sloty sa worktree tego samego repo,
+   - promocja = commit/merge fast-forward na branch baseline,
+   - sync pasywnego = reset pasywnego worktree do baseline,
+   - wymaga ostroznego blokowania `git reset` tylko dla supervisora, nie dla agenta.
+
+2. Rsync/copy:
+   - slot pasywny jest kopiowany z aktywnego po promocji,
+   - prostsze mentalnie,
+   - wolniejsze i latwiej przypadkiem skopiowac smieci, jezeli nie ma dobrej listy exclude.
+
+Rekomendacja:
+
+- dla kodu uzywac git worktree + baseline branch,
+- dla logow, artifactow, Mongo i cache trzymac dane poza slotami,
+- agent nie wykonuje `git reset`; robi to tylko supervisor w kontrolowanym kroku sync.
+
+Blokada rownoleglych zmian:
+
+- w danym momencie tylko jeden self-healing task moze miec status `applying`, `restarting`, `stabilization_window` albo `promoting`,
+- kolejne taski moga byc kolejkowane, ale nie moga edytowac slotu, ktory jest w trakcie promocji,
+- po promocji wszystkie nowe taski startuja z aktualnego baseline.
+
+Jezeli w 5-minutowym oknie pojawia sie blad:
+
+- nie promowac slotu,
+- jezeli blad jest krytyczny, rollback na poprzedni slot,
+- jezeli blad jest niekrytyczny, status `needs_repair_on_passive_slot`,
+- przekazac agentowi:
+  - logi z okna stabilnosci,
+  - commit nowego slotu,
+  - informacje, czy rollback zostal wykonany,
+  - ostatni dobry baseline.
+
+To pozwala agentowi pracowac w cyklu:
+
+```txt
+patch passive -> switch -> observe 5 min -> promote -> sync old slot -> patch passive
+```
+
+To jest wlasciwy kierunek dla autonomicznej naprawy, bo agent zawsze pracuje na nieaktywnym slocie, a aktywny slot pozostaje chroniony przez health-check, rollback i promocje.
+
+## 21. Test manualny po wdrozeniu
 
 Po restarcie Mastry:
 
@@ -1298,7 +1629,7 @@ Oczekiwane:
 - blokuje albo wymaga bardzo jawnego approval,
 - rekomenduje bezpieczniejsza alternatywe.
 
-## 21. Decyzje projektowe
+## 22. Decyzje projektowe
 
 Rekomendowane decyzje:
 
@@ -1308,8 +1639,9 @@ Rekomendowane decyzje:
 - Terminal legacy zostaje tylko dla izolowanych eksperymentow albo zostaje usuniety z meta-agent pool.
 - Self-healing przygotowuje poprawki, ale nie deployuje bez czlowieka.
 - GitHub MCP dopiero po lokalnym MVP.
+- Self-modification dziala przez staging worktree i supervisor, nie przez edycje live runtime w trakcie pracy.
 
-## 22. Zrodla
+## 23. Zrodla
 
 Mastra Workspaces:
 
