@@ -718,7 +718,17 @@ export function validateDraft(draft: { subject: string, body: string }, lead: an
     const matched = analysisWords.slice(0, 30).some((word) => body.toLowerCase().includes(word));
     if (!matched) softWarnings.push('Draft może nie używać konkretów z researchu');
   }
-  
+
+  // Neutralny check — czy mail nawiązuje do oferty firmy (różne dla producent/hurtownia/dystrybutor)
+  const offerKeywords = [
+    'produkt', 'asortyment', 'portfolio', 'marki', 'oferta',
+    'dostarcza', 'dystrybu', 'importu', 'członkow', 'członków',
+    'zrzesz', 'wytwarza', 'horeca', 'gastronom',
+  ];
+  if (body.length > 0 && !offerKeywords.some((kw) => body.toLowerCase().includes(kw))) {
+    softWarnings.push('Draft nie odwołuje się do oferty/asortymentu/portfolio firmy');
+  }
+
   return {
     ok: hardFailures.length === 0,
     hardFailures,

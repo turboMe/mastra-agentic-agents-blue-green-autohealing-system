@@ -69,6 +69,10 @@ import {
   researchQuestionFor,
   finalEnrichmentPromptFor,
 } from './producer-hunt/enrichment-prompts.js';
+import {
+  draftPromptFor,
+  fallbackDraftFor,
+} from './producer-hunt/draft-prompts.js';
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 const supplierTypeSchema = z.enum([
@@ -1148,42 +1152,25 @@ const draftColdEmailsStep = createStep({
         continue;
       }
 
-      console.log(`[producer-hunt:${taskId}] drafting email for ${lead.company} (${lead.email})...`);
+      const draftType: SupplierType = (lead.inferredSupplierType
+        ?? lead.supplierType
+        ?? 'producer') as SupplierType;
 
-      const fallbackDraft = () => ({
-        subject: `Współpraca GastroBridge x ${lead.company}`,
-        body: `Dzień dobry,\n\nKontaktuję się w sprawie potencjalnej współpracy z Państwa firmą. Buduję GastroBridge – platformę, która pomaga lokalnym producentom z regionu ${region} docierać bezpośrednio do restauracji, z pominięciem zbędnych pośredników.\n\nChętnie sprawdzę, czy nasz model współpracy (obecnie w darmowym pilotażu) mógłby pasować do Państwa asortymentu.\n\nCzy możemy umówić krótką rozmowę?\n\nPozdrawiam,\nPatryk (GastroBridge)\n\n---\nAdministratorem danych jest GastroBridge. Cel: Nawiązanie relacji B2B. Źródło: Publiczne dane z sieci (research). Odpisz "NIE", aby usunąć dane.`
+      console.log(`[producer-hunt:${taskId}] drafting email for ${lead.company} (${lead.email}) type=${draftType}...`);
+
+      const fallbackDraft = () => fallbackDraftFor(draftType, { company: lead.company, region });
+
+      const prompt = draftPromptFor(draftType, {
+        company: lead.company,
+        email: lead.email,
+        region,
+        rawAnalysis: lead.rawAnalysis,
+        personalizationHook: lead.personalizationHook,
+        city: lead.city ?? null,
+        productCategory: lead.productCategory ?? null,
+        brandsOrPortfolio: lead.brandsOrPortfolio ?? null,
+        servesRegions: lead.servesRegions ?? null,
       });
-
-      const prompt = `Jesteś Patrykiem, chefem który koduje i buduje GastroBridge. 
-Napisz krótki, profesjonalny cold-email do producenta: "${lead.company}".
-
-KONTEKST O FIRMIE (Deep Research):
-${lead.rawAnalysis}
-
-DEDYKOWANY HOOK:
-${lead.personalizationHook}
-
-ZASADY PATRYKA:
-1. Treść do 180 słów. Konkret, zero "waty" sprzedażowej.
-2. ZERO emoji. Profesjonalny, ale bezpośredni ton.
-3. Cel: Zaproponowanie krótkiej rozmowy o dostawach bezpośrednich do restauracji przez GastroBridge (skrócenie łańcucha dostaw, lepsze marże dla nich). Wspomnij, że obecnie prowadzimy darmowy pilotaż dla wybranych producentów (zaznacz, że jest darmowy tylko w ramach trwającego pilotażu).
-4. Hook musi być na samym początku.
-
-ZASADY PERSONALIZACJI:
-1. Wykorzystaj minimum dwa konkretne elementy z researchu, aby pokazać, że znasz firmę:
-   - konkretny produkt lub kategorię (np. "Wasze sery kozie"),
-   - region lub miejscowość,
-   - odniesienie do informacji ze strony WWW lub sukcesu firmy.
-
-WYMOGI PRAWNE (RODO):
-1. Nie obiecuj wysyłki oferty ani cennika bez zgody odbiorcy.
-2. Nie sugeruj, że kontakt pochodzi z kupionej listy (zawsze odnoś się do researchu).
-3. Na końcu maila (po podpisie) dodaj obowiązkową stopkę:
-   ---
-   Administratorem danych jest GastroBridge. Cel: Nawiązanie relacji B2B. Źródło: Publiczne dane z sieci (research). Odpisz "NIE", aby usunąć dane.
-
-Zwróć WYŁĄCZNIE JSON: { "subject": "Temat maila", "body": "Treść maila" }`;
 
       try {
         const parsed = await generateJsonWithFallback({

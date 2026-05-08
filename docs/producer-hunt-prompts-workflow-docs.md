@@ -9,6 +9,8 @@ Ten dokument zawiera zestawienie ewolucji workflow `producer-hunt` po migracji z
 > Prompty discovery (NotebookLM + fallback po snippetach z klasyfikacją supplierType) — [producer-hunt-discovery-prompts.md](producer-hunt-discovery-prompts.md) (PR C).
 >
 > Enrichment dopasowany do typu (multi-source NotebookLM, per-typ pytania, per-typ final prompt, default hook) — [producer-hunt-enrichment.md](producer-hunt-enrichment.md) (PR D).
+>
+> Drafty cold-mail per typ + segment CRM per typ + neutralny `validateDraft` — [producer-hunt-drafts.md](producer-hunt-drafts.md) (PR E).
 
 ## 0. Tożsamość i Instrukcje Bazowe (System Prompt)
 
