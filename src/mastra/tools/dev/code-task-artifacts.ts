@@ -1,7 +1,12 @@
+import { exec } from 'child_process';
 import { randomUUID } from 'crypto';
+import { promisify } from 'util';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb } from '../../lib/mongo.js';
+import { getWorkspacePath } from '../../workspaces/code-workspace.js';
+
+const execAsync = promisify(exec);
 
 const CODE_TASK_STATUSES = [
   'planning',
@@ -53,6 +58,8 @@ const codeTaskArtifactSchema = z.object({
   filesChanged: z.array(fileChangeSchema),
   commandsRun: z.array(commandRunSchema),
   approvalsRequested: z.array(approvalRequestSchema),
+  worktreePath: z.string().optional(),
+  branchName: z.string().optional(),
   diffSummary: z.string(),
   testResult: testResultSchema.optional(),
   reviewVerdict: z.enum(REVIEW_VERDICTS).optional(),
@@ -94,6 +101,8 @@ function normalizeArtifact(doc: Record<string, unknown>): CodeTaskArtifact {
     approvalsRequested: Array.isArray(doc.approvalsRequested)
       ? doc.approvalsRequested as CodeTaskArtifact['approvalsRequested']
       : [],
+    worktreePath: typeof doc.worktreePath === 'string' ? doc.worktreePath : undefined,
+    branchName: typeof doc.branchName === 'string' ? doc.branchName : undefined,
     diffSummary: String(doc.diffSummary ?? ''),
     testResult: doc.testResult as CodeTaskArtifact['testResult'],
     reviewVerdict: doc.reviewVerdict as CodeTaskArtifact['reviewVerdict'],
@@ -276,6 +285,95 @@ export const getCodeTaskArtifactTool = createTool({
         success: false,
         taskId: context.taskId,
         message: 'Nie udalo sie pobrac artifactu zadania kodowego.',
+        error: (error as Error).message,
+      };
+    }
+  },
+});
+
+export const runTestCommandTool = createTool({
+  id: 'coding.run_test',
+  description: 'Uruchamia polecenie testowe (np. npm test, npx tsc) w glownym katalogu repozytorium i zapisuje wynik do artifact.testResult oraz commandsRun.',
+  inputSchema: z.object({
+    taskId: z.string(),
+    command: z.string().describe('Komenda do uruchomienia, np. npx tsc --noEmit'),
+    summary: z.string().describe('Krotki cel testu, np. Weryfikacja skladni'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    taskId: z.string(),
+    exitCode: z.number().optional(),
+    output: z.string(),
+    message: z.string(),
+    error: z.string().optional(),
+  }),
+  execute: async (context) => {
+    try {
+      const db = await getDb();
+      const artifact = await db.collection('code_task_artifacts').findOne({ taskId: context.taskId });
+
+      if (!artifact) {
+        return {
+          success: false,
+          taskId: context.taskId,
+          output: '',
+          message: `Artifact ${context.taskId} nie istnieje.`,
+        };
+      }
+
+      let exitCode = 0;
+      let output = '';
+      let status: 'passed' | 'failed' = 'passed';
+
+      try {
+        const workspacePath = await getWorkspacePath(context.taskId);
+        const { stdout, stderr } = await execAsync(context.command, { cwd: workspacePath, timeout: 60000 });
+        output = stdout || stderr;
+      } catch (err: any) {
+        exitCode = err.code ?? 1;
+        output = err.stdout || err.stderr || err.message;
+        status = 'failed';
+      }
+
+      const timestamp = nowIso();
+
+      const newCommandRun = {
+        command: context.command,
+        approvalRequired: false,
+        exitCode,
+        summary: context.summary,
+      };
+
+      const testResult = {
+        command: context.command,
+        status,
+        summary: output.substring(0, 1000) + (output.length > 1000 ? '...' : ''),
+      };
+
+      await db.collection('code_task_artifacts').updateOne(
+        { taskId: context.taskId },
+        {
+          $push: { commandsRun: newCommandRun } as any,
+          $set: {
+            testResult,
+            updatedAt: timestamp,
+          },
+        }
+      );
+
+      return {
+        success: exitCode === 0,
+        taskId: context.taskId,
+        exitCode,
+        output: testResult.summary,
+        message: exitCode === 0 ? 'Test zakonczony sukcesem.' : 'Test zwrocil bledy.',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        taskId: context.taskId,
+        output: '',
+        message: 'Nie udalo sie wykonac testu.',
         error: (error as Error).message,
       };
     }

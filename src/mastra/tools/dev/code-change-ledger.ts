@@ -6,7 +6,7 @@ import { promisify } from 'util';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb } from '../../lib/mongo.js';
-import { AGENTIC_AGENTS_REPO } from '../../workspaces/code-workspace.js';
+import { getWorkspacePath } from '../../workspaces/code-workspace.js';
 
 const execAsync = promisify(exec);
 
@@ -57,12 +57,12 @@ function hashContent(content: string): string {
   return createHash('sha256').update(content).digest('hex');
 }
 
-function normalizeRepoPath(inputPath: string): { absolutePath: string; relativePath: string } {
+function normalizeRepoPath(inputPath: string, workspacePath: string): { absolutePath: string; relativePath: string } {
   const trimmed = inputPath.trim();
   if (!trimmed) throw new Error('Path is required.');
 
   const relativeCandidate = isAbsolute(trimmed)
-    ? relative(AGENTIC_AGENTS_REPO, trimmed)
+    ? relative(workspacePath, trimmed)
     : trimmed;
 
   const relativePath = normalize(relativeCandidate).replace(/\\/g, '/');
@@ -83,9 +83,9 @@ function normalizeRepoPath(inputPath: string): { absolutePath: string; relativeP
     throw new Error(`Path is blocked for coding ledger: ${relativePath}`);
   }
 
-  const absolutePath = resolve(AGENTIC_AGENTS_REPO, relativePath);
-  const repoWithSep = AGENTIC_AGENTS_REPO.endsWith(sep) ? AGENTIC_AGENTS_REPO : `${AGENTIC_AGENTS_REPO}${sep}`;
-  if (absolutePath !== AGENTIC_AGENTS_REPO && !absolutePath.startsWith(repoWithSep)) {
+  const absolutePath = resolve(workspacePath, relativePath);
+  const repoWithSep = workspacePath.endsWith(sep) ? workspacePath : `${workspacePath}${sep}`;
+  if (absolutePath !== workspacePath && !absolutePath.startsWith(repoWithSep)) {
     throw new Error(`Path is outside coding workspace: ${inputPath}`);
   }
 
@@ -162,7 +162,8 @@ async function upsertArtifactFileChange(snapshot: SnapshotDoc, afterHash: string
 
 async function rejectSnapshot(snapshot: SnapshotDoc) {
   const db = await getDb();
-  const { absolutePath } = normalizeRepoPath(snapshot.path);
+  const workspacePath = await getWorkspacePath(snapshot.taskId);
+  const { absolutePath } = normalizeRepoPath(snapshot.path, workspacePath);
   const current = await readFileState(absolutePath);
 
   if (!snapshot.afterHash) {
@@ -202,7 +203,8 @@ async function rejectSnapshot(snapshot: SnapshotDoc) {
 
 async function acceptSnapshot(snapshot: SnapshotDoc) {
   const db = await getDb();
-  const { absolutePath } = normalizeRepoPath(snapshot.path);
+  const workspacePath = await getWorkspacePath(snapshot.taskId);
+  const { absolutePath } = normalizeRepoPath(snapshot.path, workspacePath);
   const current = await readFileState(absolutePath);
 
   if (snapshot.afterHash && current.hash !== snapshot.afterHash) {
@@ -242,7 +244,8 @@ export const recordBeforeChangeTool = createTool({
   execute: async (context) => {
     try {
       const db = await getDb();
-      const { absolutePath, relativePath } = normalizeRepoPath(context.path);
+      const workspacePath = await getWorkspacePath(context.taskId);
+      const { absolutePath, relativePath } = normalizeRepoPath(context.path, workspacePath);
       const existing = await db.collection<SnapshotDoc>('code_change_snapshots').findOne({
         taskId: context.taskId,
         path: relativePath,
@@ -312,7 +315,8 @@ export const recordAfterChangeTool = createTool({
   execute: async (context) => {
     try {
       const db = await getDb();
-      const { absolutePath, relativePath } = normalizeRepoPath(context.path);
+      const workspacePath = await getWorkspacePath(context.taskId);
+      const { absolutePath, relativePath } = normalizeRepoPath(context.path, workspacePath);
       const snapshot = await db.collection<SnapshotDoc>('code_change_snapshots').findOne({
         taskId: context.taskId,
         path: relativePath,
@@ -385,7 +389,8 @@ export const rejectFileChangeTool = createTool({
   execute: async (context) => {
     try {
       const db = await getDb();
-      const { relativePath } = normalizeRepoPath(context.path);
+      const workspacePath = await getWorkspacePath(context.taskId);
+      const { relativePath } = normalizeRepoPath(context.path, workspacePath);
       const snapshot = await db.collection<SnapshotDoc>('code_change_snapshots').findOne({
         taskId: context.taskId,
         path: relativePath,
@@ -499,7 +504,8 @@ export const acceptFileChangeTool = createTool({
   execute: async (context) => {
     try {
       const db = await getDb();
-      const { relativePath } = normalizeRepoPath(context.path);
+      const workspacePath = await getWorkspacePath(context.taskId);
+      const { relativePath } = normalizeRepoPath(context.path, workspacePath);
       const snapshot = await db.collection<SnapshotDoc>('code_change_snapshots').findOne({
         taskId: context.taskId,
         path: relativePath,
@@ -622,7 +628,8 @@ export const writeFileTrackedTool = createTool({
         };
       }
 
-      const { absolutePath, relativePath } = normalizeRepoPath(context.path);
+      const workspacePath = await getWorkspacePath(context.taskId);
+      const { absolutePath, relativePath } = normalizeRepoPath(context.path, workspacePath);
       
       const existingSnapshot = await db.collection<SnapshotDoc>('code_change_snapshots').findOne({
         taskId: context.taskId,
@@ -692,7 +699,7 @@ export const writeFileTrackedTool = createTool({
       let checkMessage = '';
       if (relativePath.endsWith('.ts') || relativePath.endsWith('.tsx')) {
         try {
-          await execAsync('npx tsc --noEmit', { cwd: AGENTIC_AGENTS_REPO, timeout: 15000 });
+          await execAsync('npx tsc --noEmit', { cwd: workspacePath, timeout: 15000 });
           checkMessage = ' (tsc passed)';
         } catch (execError: any) {
           const stdout = execError.stdout || '';

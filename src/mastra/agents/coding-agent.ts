@@ -6,6 +6,7 @@ import {
   createCodeTaskArtifactTool,
   getCodeTaskArtifactTool,
   updateCodeTaskArtifactTool,
+  runTestCommandTool,
 } from '../tools/dev/code-task-artifacts.js';
 import {
   acceptAllChangesTool,
@@ -28,6 +29,7 @@ export const codingAgent: Agent = new Agent({
     createCodeTaskArtifactTool,
     updateCodeTaskArtifactTool,
     getCodeTaskArtifactTool,
+    runTestCommandTool,
     recordBeforeChangeTool,
     recordAfterChangeTool,
     rejectFileChangeTool,

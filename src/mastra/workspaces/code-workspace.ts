@@ -1,7 +1,17 @@
 import { Workspace, LocalFilesystem, LocalSandbox, WORKSPACE_TOOLS } from '@mastra/core/workspace';
 import type { IsolationBackend } from '@mastra/core/workspace';
+import { getDb } from '../lib/mongo.js';
 
 export const AGENTIC_AGENTS_REPO = '/projekty/mastra-agentic-environment/agentic-agents';
+
+export async function getWorkspacePath(taskId: string): Promise<string> {
+  const db = await getDb();
+  const artifact = await db.collection('code_task_artifacts').findOne({ taskId });
+  if (artifact && typeof artifact.worktreePath === 'string') {
+    return artifact.worktreePath;
+  }
+  return AGENTIC_AGENTS_REPO;
+}
 
 const CODE_SANDBOX_ISOLATION: IsolationBackend =
   process.env.CODING_SANDBOX_ISOLATION === 'bwrap' ||

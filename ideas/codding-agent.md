@@ -87,13 +87,14 @@ Status Etapu 2:
 
 - [x] Dodac tracked write tool, np. `coding.write_file_tracked(taskId, path, content, summary)`, ktory wymusza artifact + snapshot before + zapis + snapshot after w jednej sciezce.
 - [x] Zostawic surowe `write_file` tylko jako awaryjne narzedzie z approval, a codzienna prace agenta przeniesc na tracked write.
-- [ ] Dodac tracking komend weryfikacyjnych do artifactu, zeby `commandsRun` i `testResult` nie zalezal tylko od recznej aktualizacji przez model.
-- [ ] Dodac test narzedziowy dla tracked write: nowy plik, edycja istniejacego pliku, `reject_file`, konflikt po zmianie usera.
+- [x] Dodac tracking komend weryfikacyjnych do artifactu, zeby `commandsRun` i `testResult` nie zalezal tylko od recznej aktualizacji przez model.
+- [x] Dodac test narzedziowy dla tracked write: nowy plik, edycja istniejacego pliku, `reject_file`, konflikt po zmianie usera.
 - [x] Zaktualizowac prompt `coding/base.md`, zeby Etap 2 byl domyslna sciezka pracy.
 
 Nastepny naturalny krok:
 
-Rozpocząć przygotowania do wdrożenia **Staging Worktree zamiast Modyfikacji Na Żywo**. Jest to kluczowa, docelowa innowacja w architekturze "Self-Healing". Wykorzystamy `git worktree add`, dzięki czemu operacje (nawet wadliwe) nie zepsują repozytorium uruchomionej Mastry. Alternatywnie (jako domknięcie Etapu 2), dodanie automatycznego przypisywania wyników komend testowych bezpośrednio do `testResult` w obiekcie `artifact`, by zmniejszyć poleganie na ręcznym wpisywaniu ich przez agenta.
+**Rozpocząć przygotowania do wdrożenia Staging Worktree (Etap 3/4).** 
+Ponieważ agenty otrzymały hermetyczne i bezpieczne narzędzia do edycji plików (tracked write, snapshots, automatyczna weryfikacja), pora na zabezpieczenie samego środowiska. Agent musi otrzymać możliwość sklonowania lokalnego repozytorium przez `git worktree add`, by móc swobodnie testować i naprawiać kod w izolowanym "kontenerze" działającym na innym porcie. Po pozytywnej weryfikacji w Worktree, meta-agent zastosuje wygenerowany patch na żywym repozytorium. Taka izolacja zapewni w 100% "Self-Healing" bez ryzyka awarii samej Mastry podczas eksperymentów agenta.
 
 ---
 
