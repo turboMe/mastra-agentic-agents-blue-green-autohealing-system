@@ -341,7 +341,7 @@ function hasAny(text: string, keywords: string[]): boolean {
   return keywords.some((keyword) => text.includes(normalizeForMatch(keyword)));
 }
 
-function getRegionTokens(region: string): string[] {
+export function getRegionTokens(region: string): string[] {
   const normalizedRegion = normalizeForMatch(region);
   const direct = REGION_TOKENS[normalizedRegion];
   if (direct) return direct;

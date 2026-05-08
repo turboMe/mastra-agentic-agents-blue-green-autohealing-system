@@ -52,8 +52,16 @@ import {
   normalizeOptionalText,
   mapToCrmSegment,
   ACCEPTABLE_SUPPLIER_TYPES,
+  getRegionTokens,
   type SupplierType,
 } from './producer-hunt/quality.js';
+import {
+  DISCOVERY_PROFILES,
+  EXCLUDED_DOMAIN_HINTS,
+  SOCIAL_AND_NLM_INCOMPATIBLE_HINTS,
+  TAVILY_QUERY_BUDGET,
+  MAX_QUERIES_PER_PROFILE_ROUND_1,
+} from './producer-hunt/discovery-queries.js';
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 const supplierTypeSchema = z.enum([
@@ -279,40 +287,78 @@ const discoverLeadsStep = createStep({
     assertSafeProducerHuntModel(models.enrichment, 'enrichment', taskId);
     assertSafeProducerHuntModel(models.draftEmail, 'draftEmail', taskId);
 
-    // 1. Multi-Search (rozszerzona lista kategorii)
-    const baseQueries = [
-      `producenci ${productType ?? 'żywności'} ${region} kontakt email`,
-      `lokalni dostawcy do restauracji ${region} ${productType ?? ''}`,
-      `gospodarstwo rolne ${region} sprzedaż bezpośrednia do restauracji`,
-      `rolniczy handel detaliczny ${region} ${productType ?? ''} lista kontakt`,
-      `zakład przetwórstwa spożywczego ${region} ${productType ?? ''} www`,
-    ];
+    // 1. Multi-profile, multi-round Tavily search z twardym budżetem.
+    type SearchHit = { title: string; url: string; content: string; score: number };
+    const accumulatedHits = new Map<string, SearchHit>();
+    let queriesIssued = 0;
 
-    const nicheQueries = !productType ? [
-      `sery rzemieślnicze nabiał kozi owczy ${region} producent`,
-      `wędliny ekologiczne rzemieślnicze masarnia ${region}`,
-      `tłocznia soków przetwory owoce warzywa ${region} kontakt`,
-      `piekarnia rzemieślnicza chleb na zakwasie ${region} producent`,
-      `produkty regionalne certyfikowane ${region} producenci`,
-    ] : [];
+    const runQueries = async (queries: string[], roundLabel: string) => {
+      const remaining = Math.max(0, TAVILY_QUERY_BUDGET - queriesIssued);
+      const slice = queries.slice(0, remaining);
+      if (slice.length === 0) {
+        console.log(`[producer-hunt:${taskId}] ${roundLabel}: query budget exhausted`);
+        return;
+      }
+      queriesIssued += slice.length;
+      const responses = await Promise.all(
+        slice.map((q) => searchWebTool.execute!({ query: q, maxResults: 5 }, {} as any)),
+      );
+      for (const res of responses) {
+        if (!res || !('success' in res) || !res.success) continue;
+        for (const hit of res.results as SearchHit[]) {
+          if (!accumulatedHits.has(hit.url)) accumulatedHits.set(hit.url, hit);
+        }
+      }
+    };
 
-    const queries = [...baseQueries, ...nicheQueries];
+    const activeProfiles = acceptableSupplierTypes
+      .map((t) => DISCOVERY_PROFILES[t as Exclude<SupplierType, 'unknown'>])
+      .filter(Boolean);
 
-    console.log(`[producer-hunt:${taskId}] multi-search start (${queries.length} queries)`);
-    const searchResults = await Promise.all(
-      queries.map(q => searchWebTool.execute!({ query: q, maxResults: 5 }, {} as any))
-    );
-    
-    // Konsolidacja i deduplikacja wyników po URL
-    const allResults = searchResults.flatMap(r => (r && 'success' in r && r.success) ? r.results : []);
-    const uniqueResults = Array.from(new Map(allResults.map(r => [r.url, r])).values());
+    // Runda 1: bazowe + niszowe (limit per profil)
+    const round1Queries: string[] = [];
+    for (const profile of activeProfiles) {
+      const base = profile.baseQueries(region, productType);
+      const niche = profile.nicheQueries(region, productType);
+      const merged = [...base, ...niche].slice(0, MAX_QUERIES_PER_PROFILE_ROUND_1);
+      round1Queries.push(...merged);
+    }
+    console.log(`[producer-hunt:${taskId}] discover round1: ${round1Queries.length} queries across ${activeProfiles.length} profiles`);
+    await runQueries(round1Queries, 'discover round1');
 
-    // Wybieramy top 12 najbardziej obiecujących linków (pominając social media dla lepszej jakości źródeł)
-    const topUrls = uniqueResults
-      .filter(r => !r.url.includes('facebook.com') && !r.url.includes('linkedin.com') && !r.url.includes('instagram.com'))
-      .slice(0, 12);
+    // Runda 2: city-level fallback gdy mamy < count*2 surowych hitów
+    if (accumulatedHits.size < count * 2 && queriesIssued < TAVILY_QUERY_BUDGET) {
+      const regionTokens = getRegionTokens(region);
+      // bierz tylko miasta (skip warianty regionu typu "slask", "slaskie")
+      const cities = regionTokens.filter((t) => t.length > 4 && !t.includes('skie') && !t.includes('slask')).slice(0, 4);
+      const round2Queries: string[] = [];
+      for (const profile of activeProfiles) {
+        for (const city of cities) {
+          round2Queries.push(...profile.cityQueries(region, city, productType));
+        }
+      }
+      if (round2Queries.length > 0) {
+        console.log(`[producer-hunt:${taskId}] discover round2: ${round2Queries.length} city-level queries (cities=${cities.join(',')})`);
+        await runQueries(round2Queries, 'discover round2');
+      }
+    }
 
-    console.log(`[producer-hunt:${taskId}] total unique links: ${uniqueResults.length}, using top ${topUrls.length} for NotebookLM.`);
+    const uniqueResults = Array.from(accumulatedHits.values());
+
+    // Filtr URL przed NotebookLM:
+    //  - odrzuć NLM-incompatible (social, video)
+    //  - odrzuć B2C marketplaces / sieci handlowe
+    //  - dopuść hurtownie/dystrybutorów (nie odrzucamy domen typu hurtownia.pl)
+    const isUsableForNotebook = (url: string) => {
+      const lower = url.toLowerCase();
+      if (SOCIAL_AND_NLM_INCOMPATIBLE_HINTS.some((d) => lower.includes(d))) return false;
+      if (EXCLUDED_DOMAIN_HINTS.some((d) => lower.includes(d))) return false;
+      return true;
+    };
+
+    const topUrls = uniqueResults.filter((r) => isUsableForNotebook(r.url)).slice(0, 12);
+
+    console.log(`[producer-hunt:${taskId}] total unique links: ${uniqueResults.length}, queries issued: ${queriesIssued}/${TAVILY_QUERY_BUDGET}, top ${topUrls.length} → NotebookLM.`);
 
     let leads: Lead[] = [];
     let notebookId = '';
