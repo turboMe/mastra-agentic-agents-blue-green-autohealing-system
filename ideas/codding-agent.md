@@ -15,7 +15,7 @@ Decyzja:
 - `codingAgent` dostaje agent-specific workspace repo i moze pozniej miec wlasnych subagentow/workerow do researchu, patchowania, review i testow.
 - Nie dawac meta-agentowi bezposredniego terminala do repo. To miesza odpowiedzialnosci i zwieksza ryzyko przypadkowej edycji.
 - Modele traktowac jako aliasy konfiguracyjne, nie jako hardcode w promptach. Docelowo: mocny model chmurowy dla glownego coding supervisora, tanszy/szybszy model dla subagentow, fallback lokalny typu Qwen Coder/Gemma dla pracy offline.
-
+- agent chmurowy powinien tez umiec powoływac subagentów do małych prostych zadań z modeli lokalnych  aby oszczedzać tokeny modeli hmurówych . oczywiscie damy mu mozliwosc powoływania też modeli chmurowych do pomocy ale aby wykorzystywał dostępne modele lokalne też jest wazne, tymbardziej ze malutkich modeli moze postawić kilka instancji i do tego tez dodać inne modele chmurowe.
 Dlaczego osobny `codingAgent`:
 
 - latwiej ustawic inny model, memory, workspace, approval policy i scorery,
@@ -29,7 +29,7 @@ Aktualny postep:
 - [x] Potwierdzono, ze zainstalowane `@mastra/core 1.31.0` wspiera `AgentConfig.workspace`.
 - [x] Potwierdzono, ze workspace tools wspieraja `requireApproval` i `requireReadBeforeWrite`.
 - [x] Etap 0: spike techniczny workspace + minimalny `codingAgent` kodowo.
-- [ ] Etap 1: bezpieczny lokalny MVP `codingAgent`.
+- [ ] Etap 1: bezpieczny lokalny MVP `codingAgent` (kodowo: artifact + ledger dodane; pending manual Studio smoke).
 - [ ] Etap 2: realny artifact + change ledger + rollback.
 - [ ] Etap 3: `codeReviewAgent` i `repo-maintenance` workflow.
 - [ ] Etap 4: staging/worktree mode dla self-healing, z restart-safe resume.
@@ -63,6 +63,19 @@ Status Etapu 0:
 - [x] `npm run build` przechodzi.
 - [x] Import z `.mastra/output/mastra.mjs` potwierdza `codingAgent`.
 - [ ] Manualny smoke test w Mastra Studio: `find_files`, `search_content`, `view`, `execute_command`.
+
+Status Etapu 1:
+
+- [x] Dodano narzedzia `coding.create_artifact`, `coding.update_artifact`, `coding.get_artifact`.
+- [x] Dodano minimalny change ledger: `coding.record_before_change`, `coding.record_after_change`.
+- [x] Dodano rollback/acceptance tools: `coding.reject_file`, `coding.reject_all`, `coding.accept_file`, `coding.accept_all`.
+- [x] Rollback chroni zmiany usera przez porownanie aktualnego hash z `afterHash`.
+- [x] Podpieto narzedzia artifact/ledger do `codingAgent`.
+- [x] Wlaczono `lsp_inspect` w `codeWorkspace`.
+- [x] Dodano runtime dependencies LSP: `typescript-language-server`, `vscode-jsonrpc`, `vscode-languageserver-protocol`.
+- [x] Dodano indeksy Mongo dla `code_task_artifacts`, `code_change_snapshots`, `maintenance_tasks`.
+- [x] Dodano dokumentacje zmian: `docs/CODING-AGENT-MVP.md`.
+- [ ] Manualny smoke test w Mastra Studio: artifact + ledger + `reject_all(taskId)`.
 
 Kluczowa zasada dla self-healing:
 

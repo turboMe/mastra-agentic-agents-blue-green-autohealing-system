@@ -67,6 +67,16 @@ export async function ensureIndexes(): Promise<void> {
     // Approvals
     db.collection('approvals').createIndex({ status: 1 }),
     db.collection('approvals').createIndex({ createdAt: -1 }),
+    // Coding agent artifacts / rollback ledger
+    db.collection('code_task_artifacts').createIndex({ taskId: 1 }, { unique: true }),
+    db.collection('code_task_artifacts').createIndex({ status: 1, updatedAt: -1 }),
+    db.collection('code_task_artifacts').createIndex({ agentId: 1, updatedAt: -1 }),
+    db.collection('code_change_snapshots').createIndex({ taskId: 1, path: 1 }, { unique: true }),
+    db.collection('code_change_snapshots').createIndex({ taskId: 1, status: 1 }),
+    db.collection('code_change_snapshots').createIndex({ status: 1, updatedAt: -1 }),
+    db.collection('maintenance_tasks').createIndex({ id: 1 }, { unique: true, sparse: true }),
+    db.collection('maintenance_tasks').createIndex({ status: 1, updatedAt: -1 }),
+    db.collection('maintenance_tasks').createIndex({ source: 1, createdAt: -1 }),
     // Memory / signals (TTL)
     db.collection('signals').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
     db.collection('shared_memory').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),

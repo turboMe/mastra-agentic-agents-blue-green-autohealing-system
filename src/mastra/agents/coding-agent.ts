@@ -2,6 +2,19 @@ import { Agent } from '@mastra/core/agent';
 import { Memory } from '@mastra/memory';
 import { workflowModels } from '../config/workflow-models.js';
 import { loadPrompt } from '../lib/prompt-loader.js';
+import {
+  createCodeTaskArtifactTool,
+  getCodeTaskArtifactTool,
+  updateCodeTaskArtifactTool,
+} from '../tools/dev/code-task-artifacts.js';
+import {
+  acceptAllChangesTool,
+  acceptFileChangeTool,
+  recordAfterChangeTool,
+  recordBeforeChangeTool,
+  rejectAllChangesTool,
+  rejectFileChangeTool,
+} from '../tools/dev/code-change-ledger.js';
 import { codeWorkspace } from '../workspaces/code-workspace.js';
 
 export const codingAgent: Agent = new Agent({
@@ -10,6 +23,17 @@ export const codingAgent: Agent = new Agent({
   instructions: await loadPrompt('coding/base'),
   model: workflowModels.coding.default,
   workspace: codeWorkspace,
+  tools: {
+    createCodeTaskArtifactTool,
+    updateCodeTaskArtifactTool,
+    getCodeTaskArtifactTool,
+    recordBeforeChangeTool,
+    recordAfterChangeTool,
+    rejectFileChangeTool,
+    rejectAllChangesTool,
+    acceptFileChangeTool,
+    acceptAllChangesTool,
+  },
   memory: new Memory({
     options: {
       lastMessages: 20,

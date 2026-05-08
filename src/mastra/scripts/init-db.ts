@@ -43,6 +43,23 @@ async function main() {
     { expireAfterSeconds: 30 * 24 * 3600 },  // TTL: 30 days
   );
 
+  // ── coding agent artifacts / rollback ledger ─────────────────────────────
+  console.log('🛠️  code_task_artifacts / code_change_snapshots / maintenance_tasks...');
+  const codeTaskArtifacts = db.collection('code_task_artifacts');
+  await codeTaskArtifacts.createIndex({ taskId: 1 }, { unique: true });
+  await codeTaskArtifacts.createIndex({ status: 1, updatedAt: -1 });
+  await codeTaskArtifacts.createIndex({ agentId: 1, updatedAt: -1 });
+
+  const codeChangeSnapshots = db.collection('code_change_snapshots');
+  await codeChangeSnapshots.createIndex({ taskId: 1, path: 1 }, { unique: true });
+  await codeChangeSnapshots.createIndex({ taskId: 1, status: 1 });
+  await codeChangeSnapshots.createIndex({ status: 1, updatedAt: -1 });
+
+  const maintenanceTasks = db.collection('maintenance_tasks');
+  await maintenanceTasks.createIndex({ id: 1 }, { unique: true, sparse: true });
+  await maintenanceTasks.createIndex({ status: 1, updatedAt: -1 });
+  await maintenanceTasks.createIndex({ source: 1, createdAt: -1 });
+
   // ── shared_memory ─────────────────────────────────────────────────────────
   console.log('🧠 shared_memory...');
   const mem = db.collection('shared_memory');

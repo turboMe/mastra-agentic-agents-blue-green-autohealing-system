@@ -100,6 +100,7 @@ export const codeWorkspace = new Workspace({
     },
   }),
 
+  lsp: true,
   bm25: true,
   autoIndexPaths: [
     'src',
@@ -141,6 +142,10 @@ export const codeWorkspace = new Workspace({
       enabled: true,
       name: 'index_content',
       requireApproval: true,
+    },
+    [WORKSPACE_TOOLS.LSP.LSP_INSPECT]: {
+      enabled: true,
+      name: 'lsp_inspect',
     },
     [WORKSPACE_TOOLS.SANDBOX.EXECUTE_COMMAND]: {
       enabled: true,
