@@ -3,7 +3,8 @@
  *
  * Tools:
  * - architect.sync_patterns — jednorazowo lub po edycji catalog.ts. Zapisuje
- *   do `automation_patterns` z embeddingami (Google text-embedding-004).
+ *   do `automation_patterns` z embeddingami (domyślnie lokalny Ollama bge-m3,
+ *   1024 dim, multilingual; provider sterowany przez EMBEDDING_PROVIDER).
  * - architect.match_pattern — szuka top-K patternów dla zadanego AutomationSpec.
  */
 import { createTool } from '@mastra/core/tools';
@@ -148,6 +149,8 @@ export const matchPatternTool = createTool({
 
       const executableCount = scored.filter((s) => s.pattern.executable !== false).length;
 
+      const ALLOWED_MATURITY = new Set(['draft', 'tested', 'production']);
+
       return {
         matches: scored.map(({ pattern, score }) => ({
           id: pattern.id,
@@ -158,7 +161,11 @@ export const matchPatternTool = createTool({
           requiredCredentials: pattern.requiredCredentials,
           forbiddenWithoutApproval: pattern.forbiddenWithoutApproval,
           executable: pattern.executable !== false,
-          maturity: pattern.maturity,
+          // MongoDB persists missing fields as `null`; the schema's
+          // `z.enum(...).optional()` accepts `undefined` but rejects `null`.
+          // Strip null + any unexpected legacy values back to undefined.
+          maturity:
+            pattern.maturity && ALLOWED_MATURITY.has(pattern.maturity) ? pattern.maturity : undefined,
           score,
         })),
         message:

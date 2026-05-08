@@ -118,13 +118,20 @@ export class N8nService {
     if (!this.apiKey) throw new Error('N8N_API_KEY required for createWorkflow');
 
     try {
+      // n8n API rejects `active` (read-only) and `tags` (must be set via dedicated
+      // endpoint) on POST. Strip them; workflows are always created inactive.
+      const data: Record<string, unknown> = { ...workflowData };
+      delete data.active;
+      delete data.tags;
+      delete data.id;
+
       const res = await fetch(`${this.baseUrl}/api/v1/workflows`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'X-N8N-API-KEY': this.apiKey
         },
-        body: JSON.stringify(workflowData),
+        body: JSON.stringify(data),
         signal: AbortSignal.timeout(10_000)
       });
 

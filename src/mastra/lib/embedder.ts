@@ -1,26 +1,60 @@
 /**
  * Singleton embedder for semantic search and RAG.
- * Uses Google text-embedding-004 via REST API (no @ai-sdk/google required).
- * Falls back gracefully if GOOGLE_GENERATIVE_AI_API_KEY is not set.
+ * Default provider: local Ollama (bge-m3, 1024 dim, multilingual PL/EN).
+ * Optional fallback: Google Generative AI text-embedding-* via REST.
+ *
+ * Provider selection (env):
+ *   EMBEDDING_PROVIDER=ollama (default) | google
+ *   EMBEDDING_MODEL=bge-m3 (default for ollama) | text-embedding-005 (google)
+ *   OLLAMA_BASE_URL=http://localhost:11434
  *
  * Used by: chef notes semantic search, automation-architect pattern RAG.
+ *
+ * Note: changing the model changes vector dimensions. Existing embeddings in
+ * MongoDB must be cleared and re-generated when switching providers/models.
  */
 
 export type EmbeddingVector = number[];
 
-const EMBEDDING_MODEL = 'text-embedding-004';
+type Provider = 'ollama' | 'google';
+
+const PROVIDER: Provider = (process.env.EMBEDDING_PROVIDER as Provider) || 'ollama';
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+const OLLAMA_MODEL = process.env.EMBEDDING_MODEL || 'bge-m3';
+const GOOGLE_MODEL = process.env.EMBEDDING_MODEL || 'text-embedding-005';
 const GOOGLE_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
-async function fetchEmbedding(text: string): Promise<EmbeddingVector> {
-  const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-  if (!apiKey) throw new Error('GOOGLE_GENERATIVE_AI_API_KEY not set — embedder unavailable');
+async function fetchOllamaEmbedding(text: string): Promise<EmbeddingVector> {
+  const url = `${OLLAMA_BASE_URL}/api/embeddings`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: OLLAMA_MODEL, prompt: text }),
+    signal: AbortSignal.timeout(30_000),
+  });
 
-  const url = `${GOOGLE_API_BASE}/${EMBEDDING_MODEL}:embedContent?key=${apiKey}`;
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Ollama embeddings error ${response.status} (model=${OLLAMA_MODEL}): ${err}`);
+  }
+
+  const data = (await response.json()) as { embedding?: number[] };
+  if (!Array.isArray(data.embedding) || data.embedding.length === 0) {
+    throw new Error(`Ollama returned empty embedding (model=${OLLAMA_MODEL})`);
+  }
+  return data.embedding;
+}
+
+async function fetchGoogleEmbedding(text: string): Promise<EmbeddingVector> {
+  const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  if (!apiKey) throw new Error('GOOGLE_GENERATIVE_AI_API_KEY not set — google embedder unavailable');
+
+  const url = `${GOOGLE_API_BASE}/${GOOGLE_MODEL}:embedContent?key=${apiKey}`;
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: `models/${EMBEDDING_MODEL}`,
+      model: `models/${GOOGLE_MODEL}`,
       content: { parts: [{ text }] },
     }),
     signal: AbortSignal.timeout(15_000),
@@ -31,22 +65,45 @@ async function fetchEmbedding(text: string): Promise<EmbeddingVector> {
     throw new Error(`Google Embeddings API error ${response.status}: ${err}`);
   }
 
-  const data = await response.json() as { embedding: { values: number[] } };
+  const data = (await response.json()) as { embedding: { values: number[] } };
   return data.embedding.values;
 }
 
-async function fetchEmbeddingBatch(texts: string[]): Promise<EmbeddingVector[]> {
-  const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-  if (!apiKey) throw new Error('GOOGLE_GENERATIVE_AI_API_KEY not set — embedder unavailable');
+async function fetchEmbedding(text: string): Promise<EmbeddingVector> {
+  return PROVIDER === 'google' ? fetchGoogleEmbedding(text) : fetchOllamaEmbedding(text);
+}
 
-  // batchEmbedContents endpoint
-  const url = `${GOOGLE_API_BASE}/${EMBEDDING_MODEL}:batchEmbedContents?key=${apiKey}`;
+/**
+ * Embed a single text. Returns a float vector.
+ */
+export async function generateEmbedding(text: string): Promise<EmbeddingVector> {
+  return fetchEmbedding(text);
+}
+
+/**
+ * Embed multiple texts. Ollama has no batch endpoint, so we run sequentially
+ * to avoid hammering the local server. Google batchEmbedContents is used when
+ * provider=google.
+ */
+export async function generateEmbeddings(texts: string[]): Promise<EmbeddingVector[]> {
+  if (texts.length === 0) return [];
+  if (PROVIDER === 'google') return fetchGoogleBatch(texts);
+  const out: EmbeddingVector[] = [];
+  for (const t of texts) out.push(await fetchOllamaEmbedding(t));
+  return out;
+}
+
+async function fetchGoogleBatch(texts: string[]): Promise<EmbeddingVector[]> {
+  const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  if (!apiKey) throw new Error('GOOGLE_GENERATIVE_AI_API_KEY not set — google embedder unavailable');
+
+  const url = `${GOOGLE_API_BASE}/${GOOGLE_MODEL}:batchEmbedContents?key=${apiKey}`;
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      requests: texts.map(text => ({
-        model: `models/${EMBEDDING_MODEL}`,
+      requests: texts.map((text) => ({
+        model: `models/${GOOGLE_MODEL}`,
         content: { parts: [{ text }] },
       })),
     }),
@@ -58,24 +115,8 @@ async function fetchEmbeddingBatch(texts: string[]): Promise<EmbeddingVector[]> 
     throw new Error(`Google Embeddings batch API error ${response.status}: ${err}`);
   }
 
-  const data = await response.json() as { embeddings: Array<{ values: number[] }> };
-  return data.embeddings.map(e => e.values);
-}
-
-/**
- * Embed a single text. Returns a float32 vector.
- */
-export async function generateEmbedding(text: string): Promise<EmbeddingVector> {
-  return fetchEmbedding(text);
-}
-
-/**
- * Embed multiple texts in batches.
- */
-export async function generateEmbeddings(texts: string[]): Promise<EmbeddingVector[]> {
-  if (texts.length === 0) return [];
-  if (texts.length === 1) return [await fetchEmbedding(texts[0])];
-  return fetchEmbeddingBatch(texts);
+  const data = (await response.json()) as { embeddings: Array<{ values: number[] }> };
+  return data.embeddings.map((e) => e.values);
 }
 
 /**
@@ -83,7 +124,9 @@ export async function generateEmbeddings(texts: string[]): Promise<EmbeddingVect
  */
 export function cosineSimilarity(a: EmbeddingVector, b: EmbeddingVector): number {
   if (a.length !== b.length) throw new Error('Vector length mismatch');
-  let dot = 0, normA = 0, normB = 0;
+  let dot = 0,
+    normA = 0,
+    normB = 0;
   for (let i = 0; i < a.length; i++) {
     dot += a[i] * b[i];
     normA += a[i] * a[i];
@@ -102,7 +145,7 @@ export function findTopK<T extends { embedding: EmbeddingVector }>(
   k: number,
 ): Array<T & { score: number }> {
   return items
-    .map(item => ({ ...item, score: cosineSimilarity(query, item.embedding) }))
+    .map((item) => ({ ...item, score: cosineSimilarity(query, item.embedding) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, k);
 }

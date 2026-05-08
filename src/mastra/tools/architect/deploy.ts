@@ -2,7 +2,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { N8nService } from '../n8n/client.js';
 import { getDb } from '../../lib/mongo.js';
-import { validateWorkflow } from './validation/workflow-validator.js';
+import { validateWorkflow, normalizeConnectionKeys } from './validation/workflow-validator.js';
 import { analyzeWorkflow } from './risk-scoring.js';
 import { randomUUID } from 'crypto';
 
@@ -30,9 +30,20 @@ export const deployAutomationTool = createTool({
   execute: async (context) => {
     const automationId = context.automationId || randomUUID();
 
-    // 1. Deterministic validation. Missing credentials may still allow an inactive
+    // 1. Best-effort fixup of obvious LLM mistakes in connection keys
+    // (e.g. {"'Set Vars'": …} → {"Set Vars": …}). Runs before validation so
+    // an otherwise correct workflow isn't rejected for cosmetic reasons.
+    const normalizationWarnings = normalizeConnectionKeys(context.workflow);
+
+    // 2. Deterministic validation. Missing credentials may still allow an inactive
     // draft, but structural and security errors never pass deploy.
     const validation = validateWorkflow(context.workflow, 'draft');
+    if (normalizationWarnings.length > 0) {
+      validation.warnings = [
+        ...validation.warnings,
+        ...normalizationWarnings.map((message) => ({ message, severity: 'warning' as const })),
+      ];
+    }
     const hasRequiredMissingCredentials = validation.missingCredentials.some((credential) => credential.required);
     const blocksDeploy =
       validation.errors.length > 0 ||
@@ -48,7 +59,7 @@ export const deployAutomationTool = createTool({
       };
     }
 
-    // 2. Risk scoring is always recalculated server-side.
+    // 3. Risk scoring is always recalculated server-side.
     const riskResult = analyzeWorkflow(context.workflow);
     const score = riskResult.score;
     const verdict: 'approve' | 'review' | 'block' = score >= 80 ? 'block' : score >= 20 ? 'review' : 'approve';
@@ -73,7 +84,7 @@ export const deployAutomationTool = createTool({
 
     const db = await getDb();
 
-    // 3. Ownership check (for updates). Legacy or unmanaged workflows are read-only.
+    // 4. Ownership check (for updates). Legacy or unmanaged workflows are read-only.
     if (context.workflowId) {
       const existing = await db.collection('automation_requests').findOne({ n8nWorkflowId: context.workflowId });
       if (!existing) {
@@ -101,7 +112,7 @@ export const deployAutomationTool = createTool({
       }
     }
 
-    // 4. Approval check (jeśli review)
+    // 5. Approval check (jeśli review)
     if (verdict === 'review' && context.approvalToken) {
       const approval = await db.collection('approvals').findOne({ id: context.approvalToken });
       if (!approval || approval.status !== 'approved') {
@@ -113,7 +124,7 @@ export const deployAutomationTool = createTool({
       }
     }
 
-    // 5. Deploy to n8n (inactive=true)
+    // 6. Deploy to n8n (inactive=true)
     const payload = {
       ...context.workflow,
       name: context.workflow.name.startsWith('Mastra - ') ? context.workflow.name : `Mastra - ${context.workflow.name}`,
@@ -134,7 +145,7 @@ export const deployAutomationTool = createTool({
         n8nId = created.id;
       }
 
-      // 6. Audit Trail in Mongo
+      // 7. Audit Trail in Mongo
       await db.collection('automation_requests').updateOne(
         { automationId },
         {

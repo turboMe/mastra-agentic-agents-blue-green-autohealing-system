@@ -24,7 +24,13 @@ export const automationArchitect = new Agent({
   id: 'automation-architect',
   name: 'Automation Architect',
   instructions: await loadPrompt('automation/base'),
+  // gemini-2.5-pro: best reasoning for n8n JSON synthesis. Flash sometimes
+  // emits Python-style booleans (`True`/`False`) and bails to empty text on
+  // tool errors, so it's a poor fallback for this agent.
+  // maxRetries handles the occasional AGENT_STREAM_ERROR (finishReason="error"
+  // with no payload) that Gemini Pro produces in long tool-call chains.
   model: 'google/gemini-2.5-pro',
+  maxRetries: 3,
   memory: new Memory({
     options: {
       lastMessages: 20,

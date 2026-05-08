@@ -22,7 +22,8 @@
     "cron": "npx tsx src/mastra/scripts/cron-runner.ts",
     "check:n8n-runtime": "npx tsx src/mastra/scripts/check-n8n-runtime.ts",
     "check:automation-patterns": "npx tsx src/mastra/scripts/check-automation-patterns.ts",
-    "check:automation": "npm run check:n8n-runtime && npm run check:automation-patterns"
+    "check:automation": "npm run check:n8n-runtime && npm run check:automation-patterns",
+    "e2e:webhook": "npx tsx src/mastra/scripts/e2e-webhook-validate.ts"
   },
   "keywords": [],
   "author": "",

@@ -2,6 +2,72 @@ import { ValidationFinding, ValidationResult, MissingCredential, MissingConfig }
 import { KNOWN_NODE_TYPES, TRIGGER_TYPES, FORBIDDEN_NODE_TYPES } from './node-registry.js';
 import { getRuntimeTopology } from '../../../config/runtime-topology.js';
 
+/**
+ * Strip enclosing single/double quotes and trim whitespace from a string.
+ * Used to recover from LLM mistakes like "'Set Vars'" → "Set Vars".
+ */
+function stripEnclosingQuotes(s: string): string {
+  const t = s.trim();
+  if (t.length >= 2 && (t[0] === "'" || t[0] === '"' || t[0] === '`') && t[t.length - 1] === t[0]) {
+    return t.slice(1, -1).trim();
+  }
+  return t;
+}
+
+/**
+ * Normalize connection source keys and target node refs by stripping accidental
+ * enclosing quotes/whitespace, when the cleaned name matches an actual node.name.
+ * Mutates the workflow in-place. Returns a list of normalizations performed
+ * (each entry is one warning to surface to the caller).
+ *
+ * Why: LLMs (notably gemini-2.5-pro) sometimes emit n8n connections with keys
+ * like {"'Set Vars'": …}. n8n is strict — these silently fail to wire. We fix
+ * up obvious typos rather than rejecting an otherwise correct workflow.
+ */
+export function normalizeConnectionKeys(workflowJson: any): string[] {
+  const fixes: string[] = [];
+  if (!workflowJson || typeof workflowJson !== 'object') return fixes;
+
+  const nodes: any[] = Array.isArray(workflowJson.nodes) ? workflowJson.nodes : [];
+  const nodeNames = new Set(
+    nodes.map((n) => n?.name).filter((n): n is string => typeof n === 'string' && n.length > 0),
+  );
+
+  const conns = workflowJson.connections;
+  if (!conns || typeof conns !== 'object' || Array.isArray(conns)) return fixes;
+
+  // Fix source-key typos.
+  for (const key of Object.keys(conns)) {
+    if (nodeNames.has(key)) continue;
+    const cleaned = stripEnclosingQuotes(key);
+    if (cleaned !== key && nodeNames.has(cleaned)) {
+      conns[cleaned] = conns[key];
+      delete conns[key];
+      fixes.push(`Connections: znormalizowano klucz "${key}" → "${cleaned}"`);
+    }
+  }
+
+  // Fix target-node typos inside connections[*].main[*][*].node.
+  for (const [sourceName, sourceConnections] of Object.entries(conns)) {
+    const main = (sourceConnections as any)?.main;
+    if (!Array.isArray(main)) continue;
+    for (const outputGroup of main) {
+      if (!Array.isArray(outputGroup)) continue;
+      for (const conn of outputGroup) {
+        if (!conn || typeof conn !== 'object' || typeof conn.node !== 'string') continue;
+        if (nodeNames.has(conn.node)) continue;
+        const cleaned = stripEnclosingQuotes(conn.node);
+        if (cleaned !== conn.node && nodeNames.has(cleaned)) {
+          fixes.push(`Connections z "${sourceName}": cel "${conn.node}" → "${cleaned}"`);
+          conn.node = cleaned;
+        }
+      }
+    }
+  }
+
+  return fixes;
+}
+
 export function validateWorkflow(
   workflowJson: any,
   profile: 'draft' | 'strict' | 'activation' = 'strict',

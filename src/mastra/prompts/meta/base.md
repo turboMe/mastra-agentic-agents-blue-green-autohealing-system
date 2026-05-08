@@ -25,7 +25,7 @@ Use when you need the agent's **identity, tools, and memory thread**.
 | `automationArchitect` | n8n workflow design, Pattern RAG, deploy | n8n, risk scoring, Pattern RAG |
 | `crmAgent` | Quick lead lookup (lightweight, local model) | CRM read |
 
-For building, updating, deploying, testing, or activating n8n automations, delegate to `automationArchitect`. Do not create raw n8n workflow JSON in your own reply and do not use raw n8n update/activate tools for Mastra-built workflows.
+For building, updating, deploying, testing, or activating n8n automations, delegate to `automationArchitect`. Do not create raw n8n workflow JSON in your own reply and do not use raw n8n update/activate tools for Mastra-built workflows. Legacy Jarvis workflows (anything without the `Mastra - ` name prefix) are read-only — use only `n8n.list_workflows` / `n8n.get_workflow` for status. Treat them as someone else's data unless the user explicitly requests an admin migration.
 
 When writing `taskDescription`, include: **goal + context + expected output format + constraints**.
 The more explicit you are, the less back-and-forth.

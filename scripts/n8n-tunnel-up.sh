@@ -140,9 +140,56 @@ if [ "$N8N_MANAGED_BY_MASTRA" = "true" ]; then
     else
         err "n8n recreate nie powiodlo sie. Sprawdz: docker logs $N8N_CONTAINER"
     fi
+    exit 0
+fi
+
+# n8n nalezy do innego compose (typowo: jarvis-dashboard-agent). W tej sytuacji
+# Mastra .env zaktualizowala sie, ale kontener n8n nadal trzyma stary WEBHOOK_URL
+# w runtime env — bo jego compose czyta swoj wlasny .env (jarvis), a nie ten
+# tutaj. Bez tego fallbacku za kazdym razem trzeba bylo recznie aktualizowac
+# jarvis .env i robic compose up --force-recreate n8n.
+OWNER_LABELS="$(docker inspect "$N8N_CONTAINER" \
+    --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}|{{index .Config.Labels "com.docker.compose.project.working_dir"}}' \
+    2>/dev/null || true)"
+OWNER_COMPOSE_FILE="${OWNER_LABELS%%|*}"
+OWNER_WORKDIR="${OWNER_LABELS##*|}"
+
+if [ -z "$OWNER_COMPOSE_FILE" ] || [ ! -f "$OWNER_COMPOSE_FILE" ]; then
+    warn "URL tunelu sie zmienil, ale nie udalo sie ustalic ownera kontenera $N8N_CONTAINER."
+    warn "Zaktualizuj WEBHOOK_URL recznie: docker rm -f $N8N_CONTAINER && (twoja procedura up)."
+    exit 0
+fi
+
+OWNER_ENV_FILE="$OWNER_WORKDIR/.env"
+log "n8n nalezy do compose: $OWNER_COMPOSE_FILE — synchronizuje jego .env i robie recreate."
+
+# Aktualizuj env owner-compose tak samo jak nasz .env (te same nazwy zmiennych
+# uzywa jarvis compose; jezeli inny compose ma inne nazwy, sed nie znajdzie i
+# nie ruszy nic).
+if [ -f "$OWNER_ENV_FILE" ]; then
+    update_owner_env() {
+        local key="$1" value="$2"
+        if grep -q "^${key}=" "$OWNER_ENV_FILE"; then
+            sed -i "s|^${key}=.*|${key}=${value}|" "$OWNER_ENV_FILE"
+        fi
+    }
+    update_owner_env "N8N_WEBHOOK_URL"             "$TUNNEL_URL"
+    update_owner_env "N8N_PUBLIC_WEBHOOK_BASE_URL" "$TUNNEL_URL"
+    update_owner_env "N8N_HOST"                    "$TUNNEL_HOST"
+    update_owner_env "N8N_PROTOCOL"                "https"
+    update_owner_env "N8N_PROXY_HOPS"              "1"
+    ok "$OWNER_ENV_FILE zaktualizowany."
 else
-    warn "URL tunelu sie zmienil, ale n8n jest zarzadzany przez inny compose (jarvis?)."
-    warn "Zeby n8n uzywal nowego WEBHOOK_URL, zrestartuj go recznie albo przejmij zarzadzanie:"
-    warn "  docker rm -f $N8N_CONTAINER  &&  npm run n8n:up"
-    warn "Volume jarvis-dashboard-agent_n8n_data jest zachowany — zadne dane nie zostana stracone."
+    warn "$OWNER_ENV_FILE nie istnieje — zostawiam env owner-compose bez zmian."
+fi
+
+if docker compose -f "$OWNER_COMPOSE_FILE" up -d --force-recreate n8n >/dev/null 2>&1; then
+    ok "n8n zrestartowany przez owner-compose ze swiezym tunelem."
+    warn "UWAGA: Twoja sesja n8n w przegladarce wygasla (cookie z poprzedniego URL)."
+    warn "Zaloguj sie ponownie na: $TUNNEL_URL"
+    warn "Pamietaj rowniez zaktualizowac OAuth Redirect URI w Google Cloud Console:"
+    warn "  $TUNNEL_URL/rest/oauth2-credential/callback"
+else
+    err "Recreate n8n przez $OWNER_COMPOSE_FILE nie powiodl sie."
+    err "Sprawdz: docker logs $N8N_CONTAINER"
 fi

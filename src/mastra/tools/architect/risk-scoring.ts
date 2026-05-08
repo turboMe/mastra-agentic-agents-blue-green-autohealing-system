@@ -206,14 +206,25 @@ export const riskScoringTool = createTool({
     try {
       parsed = JSON.parse(context.workflowJson);
     } catch {
-      return {
-        score: 100,
-        riskLevel: 'critical' as const,
-        verdict: 'block' as const,
-        findings: [{ severity: 'critical' as const, code: 'INVALID_JSON', message: 'Cannot parse workflow JSON' }],
-        summary: 'Workflow JSON jest nieprawidłowy — nie można go przeanalizować.',
-        approvalRequired: true,
-      };
+      // LLMs (especially gemini-2.5-flash) sometimes emit Python-style
+      // booleans/null inside the JSON string. Try a best-effort recovery
+      // by translating the obvious tokens before failing the deploy.
+      try {
+        const sanitized = context.workflowJson
+          .replace(/(:\s*)True(\s*[,}\]])/g, '$1true$2')
+          .replace(/(:\s*)False(\s*[,}\]])/g, '$1false$2')
+          .replace(/(:\s*)None(\s*[,}\]])/g, '$1null$2');
+        parsed = JSON.parse(sanitized);
+      } catch {
+        return {
+          score: 100,
+          riskLevel: 'critical' as const,
+          verdict: 'block' as const,
+          findings: [{ severity: 'critical' as const, code: 'INVALID_JSON', message: 'Cannot parse workflow JSON' }],
+          summary: 'Workflow JSON jest nieprawidłowy — nie można go przeanalizować.',
+          approvalRequired: true,
+        };
+      }
     }
 
     const { score, findings } = analyzeWorkflow(parsed);

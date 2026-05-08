@@ -4,6 +4,53 @@ Cel: zbudowac w Mastrze lokalnego agenta developerskiego, ktory moze pracowac na
 
 Ten dokument jest instrukcja wdrozeniowa dla deva. Nie zaklada pelnego zaufania do agenta. Agent moze przygotowac zmiane, ale operacje ryzykowne musza miec approval.
 
+## 0. Status wdrozenia i decyzja architektoniczna
+
+Aktualizacja: 2026-05-08.
+
+Decyzja:
+
+- `codingAgent` ma byc osobnym agentem developerskim, wolanym przez `metaAgent`, a nie kolejnym zestawem terminal tools w meta-agencie.
+- `metaAgent` zostaje managerem: rozpoznaje intencje, deleguje, zbiera wynik i pilnuje approvali.
+- `codingAgent` dostaje agent-specific workspace repo i moze pozniej miec wlasnych subagentow/workerow do researchu, patchowania, review i testow.
+- Nie dawac meta-agentowi bezposredniego terminala do repo. To miesza odpowiedzialnosci i zwieksza ryzyko przypadkowej edycji.
+- Modele traktowac jako aliasy konfiguracyjne, nie jako hardcode w promptach. Docelowo: mocny model chmurowy dla glownego coding supervisora, tanszy/szybszy model dla subagentow, fallback lokalny typu Qwen Coder/Gemma dla pracy offline.
+
+Dlaczego osobny `codingAgent`:
+
+- latwiej ustawic inny model, memory, workspace, approval policy i scorery,
+- latwiej testowac go bez calego meta-agenta,
+- latwiej ograniczyc zakres narzedzi tylko do repo,
+- latwiej pozniej dac mu subagentow bez rozdmuchiwania meta-agenta.
+
+Aktualny postep:
+
+- [x] Plan przeczytany i porownany z aktualnym repo.
+- [x] Potwierdzono, ze zainstalowane `@mastra/core 1.31.0` wspiera `AgentConfig.workspace`.
+- [x] Potwierdzono, ze workspace tools wspieraja `requireApproval` i `requireReadBeforeWrite`.
+- [ ] Etap 0: spike techniczny workspace + minimalny `codingAgent` w Studio.
+- [ ] Etap 1: bezpieczny lokalny MVP `codingAgent`.
+- [ ] Etap 2: realny artifact + change ledger + rollback.
+- [ ] Etap 3: `codeReviewAgent` i `repo-maintenance` workflow.
+- [ ] Etap 4: self-healing z logow/testow, bez auto-deploy.
+- [ ] Etap 5: subagenci codingowi, routing modeli i tryb offline fallback.
+- [ ] Etap 6: GitHub/PR/CI integracja.
+- [ ] Etap 7: kontrolowane podpiecie wlasnego repo agenta, z approval i rollback.
+
+Pierwszy naturalny krok:
+
+Zrobic Etap 0 jako maly, odwracalny spike. Celem nie jest jeszcze pelny agent naprawiajacy repo, tylko potwierdzenie, ze Mastra Studio widzi osobnego `codingAgent`, workspace wskazuje na dobre repo, narzedzia sa nazwane poprawnie, approval dziala, a agent potrafi wykonac read/search/tsc bez legacy terminal tools.
+
+Definition of done Etapu 0:
+
+- `codingAgent` widoczny w Studio.
+- Workspace wskazuje na `/projekty/mastra-agentic-environment/agentic-agents`.
+- `codingAgent` potrafi znalezc `src/mastra/agents/meta-agent.ts`.
+- `codingAgent` potrafi przeczytac plik przez workspace tool.
+- `codingAgent` potrafi uruchomic `npx tsc --noEmit` albo zwrocic konkretny blad srodowiska.
+- Proba komendy sieciowej typu `npm install` wymaga approval.
+- `metaAgent` jeszcze nie dostaje terminala do repo.
+
 ## 1. Aktualny stan
 
 Repo:

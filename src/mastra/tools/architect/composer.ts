@@ -211,10 +211,30 @@ export const composeWorkflowTool = createTool({
 
       const built = pattern.build(context.spec as unknown as AutomationSpec);
 
+      const nodes = (built.nodes as Array<{ name?: string }>) ?? [];
+      const rawConnections =
+        built.connections && typeof built.connections === 'object' && !Array.isArray(built.connections)
+          ? (built.connections as Record<string, unknown>)
+          : {};
+
+      // Sanity check: connection source keys MUST match a node name exactly.
+      // n8n is strict — even a stray apostrophe or space mismatch makes the
+      // workflow unrunnable. Fail loud here so the agent doesn't ship junk.
+      const nodeNames = new Set(nodes.map((n) => n?.name).filter(Boolean));
+      const danglingKeys = Object.keys(rawConnections).filter((k) => !nodeNames.has(k));
+      if (danglingKeys.length > 0) {
+        return {
+          success: false,
+          patternId: context.patternId,
+          message: `Pattern builder "${pattern.id}" wyprodukowal connections wskazujace na nieistniejace nody: ${danglingKeys.join(', ')}. Nazwy w connections musza dokladnie pasowac do node.name (bez cudzyslowow, apostrofow, dodatkowych spacji).`,
+          error: 'connection_keys_do_not_match_node_names',
+        };
+      }
+
       const workflow = {
         name: context.workflowName ?? context.spec.name,
-        nodes: (built.nodes as unknown[]) ?? [],
-        connections: (built.connections as Record<string, unknown>) ?? {},
+        nodes,
+        connections: rawConnections,
         settings: (built.settings as Record<string, unknown>) ?? {},
         active: false, // ZAWSZE inactive — patrz prompt automation/base.md
       };
