@@ -52,4 +52,15 @@ export const workflowModels = {
     jsonRepair: modelPresets.localMarketing,
     cloudFallback: modelPresets.googleFlash,
   },
+
+  coding: {
+    // Local-first for MVP. Switch default/review to cloud presets when stronger
+    // coding models are connected.
+    default: modelPresets.localReasoning,
+    patch: modelPresets.localReasoning,
+    review: modelPresets.googlePro,
+    selfHealingPlanner: modelPresets.localReasoning,
+    selfHealingReview: modelPresets.googlePro,
+    jsonRepair: modelPresets.localMarketing,
+  },
 } as const;

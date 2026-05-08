@@ -156,6 +156,10 @@ async function main() {
   automationId = randomUUID();
   const payload = { ...workflow, name: workflow.name, active: false };
   const created = await n8n.createWorkflow(payload);
+  if (!created.id) {
+    failLog('n8n createWorkflow nie zwrocil workflow id');
+    process.exit(1);
+  }
   workflowId = created.id;
   okLog(`n8n created workflowId=${workflowId}`);
   exitCleanup.push(async () => {

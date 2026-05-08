@@ -28,7 +28,7 @@ Aktualny postep:
 - [x] Plan przeczytany i porownany z aktualnym repo.
 - [x] Potwierdzono, ze zainstalowane `@mastra/core 1.31.0` wspiera `AgentConfig.workspace`.
 - [x] Potwierdzono, ze workspace tools wspieraja `requireApproval` i `requireReadBeforeWrite`.
-- [ ] Etap 0: spike techniczny workspace + minimalny `codingAgent` w Studio.
+- [x] Etap 0: spike techniczny workspace + minimalny `codingAgent` kodowo.
 - [ ] Etap 1: bezpieczny lokalny MVP `codingAgent`.
 - [ ] Etap 2: realny artifact + change ledger + rollback.
 - [ ] Etap 3: `codeReviewAgent` i `repo-maintenance` workflow.
@@ -51,6 +51,18 @@ Definition of done Etapu 0:
 - `codingAgent` potrafi uruchomic `npx tsc --noEmit` albo zwrocic konkretny blad srodowiska.
 - Proba komendy sieciowej typu `npm install` wymaga approval.
 - `metaAgent` jeszcze nie dostaje terminala do repo.
+
+Status Etapu 0:
+
+- [x] Dodano agent-specific workspace dla repo.
+- [x] Dodano `codingAgent` i prompt bazowy.
+- [x] Zarejestrowano `codingAgent` w Mastra runtime.
+- [x] Dodano `codingAgent` do `system.delegate_task`.
+- [x] Usunieto legacy terminal tools z `metaAgent` ToolSearchProcessor.
+- [x] `npx tsc --noEmit` przechodzi.
+- [x] `npm run build` przechodzi.
+- [x] Import z `.mastra/output/mastra.mjs` potwierdza `codingAgent`.
+- [ ] Manualny smoke test w Mastra Studio: `find_files`, `search_content`, `view`, `execute_command`.
 
 Kluczowa zasada dla self-healing:
 

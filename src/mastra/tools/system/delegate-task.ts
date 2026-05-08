@@ -9,6 +9,7 @@ import { salesAgent } from '../../agents/sales-agent.js';
 import { analyticsAgent } from '../../agents/analytics-agent.js';
 import { automationArchitect } from '../../agents/automation-architect.js';
 import { crmAgent } from '../../agents/crm-agent.js';
+import { codingAgent } from '../../agents/coding-agent.js';
 
 const AGENTS_MAP = {
   marketingAgent,
@@ -16,6 +17,7 @@ const AGENTS_MAP = {
   analyticsAgent,
   automationArchitect,
   crmAgent,
+  codingAgent,
 } as const;
 
 type AgentKey = keyof typeof AGENTS_MAP;
@@ -32,6 +34,7 @@ Agents and their domains:
 - analyticsAgent  → KPI reports, ROI, anomalies, trend analysis (has n8n monitoring + shared memory tools)
 - automationArchitect → n8n workflow design, Pattern RAG, risk scoring, deploy with guardrails (has full n8n + Pattern RAG tools)
 - crmAgent        → quick lead lookup only, runs on local model (read-only CRM, fast)
+- codingAgent     → local repo work: read/search files, prepare patches, run safe verification commands (workspace tools with approval)
 
 taskDescription should include:
   GOAL: what success looks like
@@ -41,7 +44,7 @@ taskDescription should include:
 
 CAN be called multiple times in parallel when tasks are independent.`,
   inputSchema: z.object({
-    targetAgent: z.enum(['marketingAgent', 'salesAgent', 'analyticsAgent', 'automationArchitect', 'crmAgent'])
+    targetAgent: z.enum(['marketingAgent', 'salesAgent', 'analyticsAgent', 'automationArchitect', 'crmAgent', 'codingAgent'])
       .describe('Nazwa sub-agenta do którego delegujemy zadanie'),
     taskDescription: z.string().min(20).describe('Full task brief IN ENGLISH: GOAL + CONTEXT + OUTPUT FORMAT + CONSTRAINTS. The more explicit, the better the result from the sub-agent.'),
     threadId: z.string().optional().describe('ThreadId z Mastra Memory — przekaż gdy chcesz zachować ciągłość rozmowy z sub-agentem'),

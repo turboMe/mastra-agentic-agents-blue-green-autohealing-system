@@ -13,7 +13,6 @@ import { triggerWorkflowTool } from '../tools/system/trigger-workflow.js';
 import { requestApprovalTool } from '../tools/system/request-approval.js';
 import { runWorkerTool } from '../tools/system/run-worker.js';
 import { recallWorkerLessonsTool } from '../tools/system/recall-worker-lessons.js';
-import { readFileTool, writeFileTool, shellExecuteTool } from '../tools/terminal/terminal-tools.js';
 import {
   n8nTriggerWebhookTool,
   n8nHealthTool,
@@ -123,10 +122,6 @@ export const metaAgent: Agent = new Agent({
         addInteractionTool,
         updateLeadTool,
         recordEmailDraftTool,
-        // Terminal / sandbox
-        readFileTool,
-        writeFileTool,
-        shellExecuteTool,
         // n8n automation
         n8nTriggerWebhookTool,
         n8nHealthTool,
