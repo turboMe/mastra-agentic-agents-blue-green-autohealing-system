@@ -46,7 +46,12 @@ async function main() {
   // ── shared_memory ─────────────────────────────────────────────────────────
   console.log('🧠 shared_memory...');
   const mem = db.collection('shared_memory');
-  await mem.createIndex({ key: 1 }, { unique: true });
+  // partialFilter pomija dokumenty bez `key` (z duplikatami null); zapewnia
+  // unikalnosc tylko dla rekordow z faktyczna wartoscia.
+  await mem.createIndex(
+    { key: 1 },
+    { unique: true, partialFilterExpression: { key: { $type: 'string' } } },
+  );
   await mem.createIndex({ type: 1 });
   await mem.createIndex({ sourceAgent: 1 });
   await mem.createIndex(
@@ -153,6 +158,37 @@ async function main() {
     { startedAt: 1 },
     { expireAfterSeconds: 90 * 24 * 3600 },
   );
+
+  // ── automation_requests / events / snapshots ──────────────────────────────
+  // Owned by automation-architect: rejestracja, audit trail i wersjonowanie
+  // workflowow Mastry. Klucz dostepu: automationId.
+  console.log('🤖 automation_requests / automation_events / automation_workflow_snapshots...');
+  const automationRequests = db.collection('automation_requests');
+  await automationRequests.createIndex({ automationId: 1 }, { unique: true });
+  await automationRequests.createIndex({ status: 1 });
+  await automationRequests.createIndex({ n8nWorkflowId: 1 }, { sparse: true });
+  await automationRequests.createIndex({ managedBy: 1, status: 1 });
+  await automationRequests.createIndex({ updatedAt: -1 });
+
+  const automationEvents = db.collection('automation_events');
+  await automationEvents.createIndex({ automationId: 1, createdAt: -1 });
+  await automationEvents.createIndex({ type: 1, createdAt: -1 });
+  await automationEvents.createIndex(
+    { createdAt: 1 },
+    { expireAfterSeconds: 180 * 24 * 3600 }, // 180 day audit retention
+  );
+
+  const automationSnapshots = db.collection('automation_workflow_snapshots');
+  await automationSnapshots.createIndex({ automationId: 1, version: -1 });
+  await automationSnapshots.createIndex({ n8nWorkflowId: 1 }, { sparse: true });
+  await automationSnapshots.createIndex({ createdAt: -1 });
+
+  // ── automation_patterns (semantic RAG) ────────────────────────────────────
+  console.log('📚 automation_patterns...');
+  const automationPatterns = db.collection('automation_patterns');
+  await automationPatterns.createIndex({ id: 1 }, { unique: true });
+  await automationPatterns.createIndex({ executable: 1, maturity: 1 });
+  await automationPatterns.createIndex({ updatedAt: -1 });
 
   // ── chef collections ──────────────────────────────────────────────────────
   console.log('👨‍🍳 chef_projects / chef_menus / chef_recipes / chef_notes...');

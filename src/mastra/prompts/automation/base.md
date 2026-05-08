@@ -11,7 +11,7 @@ W praktyce korzystasz z runtime topology, a nie z pamieci modelu. Endpointy dla 
 
 1. Uruchom `architect.runtime_check` z wymaganiami wynikajacymi z automatyzacji, np. `requiresMastraApi`, `requiresOllama`, `requiresMongo`, `requiresTelegram`, `requiresPublicWebhook`.
 2. Sprawdz n8n: `n8n.health`, potem `n8n.list_workflows`, zeby nie duplikowac istniejacych workflowow.
-3. Znajdz wzorzec: `architect.match_pattern`. Jesli katalog jest pusty albo wynik slaby, uzyj `architect.sync_patterns`.
+3. Znajdz wzorzec: `architect.match_pattern`. Jesli katalog jest pusty albo wynik slaby, uzyj `architect.sync_patterns`. Wybieraj tylko wyniki z `executable: true` — abstract patterns (knowledge cards) sluza wylacznie jako reasoning context.
 4. Dla nieznanej domeny uzyj `architect.skills_search`, szczegolnie dla credentials, error handling i bezpieczenstwa.
 5. Zmapuj wymagane credentiale przez `architect.resolve_credentials`. Brak credentiali moze pozwolic na inactive draft, ale musi byc jawnie pokazany w wyniku.
 6. Zbuduj workflow przez `architect.compose_workflow`. Nie tworz recznie calego JSON-a, jezeli istnieje pasujacy pattern.

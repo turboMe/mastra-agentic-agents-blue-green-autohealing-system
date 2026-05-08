@@ -151,6 +151,17 @@ export const composeWorkflowTool = createTool({
         };
       }
 
+      // Pattern governance: refuse to compose abstract / knowledge-only patterns.
+      // These exist as documentation in the catalog but do not produce a deployable
+      // workflow JSON. Treat undefined as executable=true (legacy default).
+      if (pattern.executable === false) {
+        return {
+          success: false,
+          patternId: context.patternId,
+          message: `Pattern "${pattern.id}" jest abstrakcyjny (executable=false, maturity=${pattern.maturity ?? 'draft'}). Uzyj go jako reasoning context, nie jako executable workflow. Wybierz inny pattern z architect.match_pattern.`,
+        };
+      }
+
       // Walidacja wymaganych inputow: kazdy alias z pattern.requiredInputs
       // powinien pasowac do nazwy ktoregos ze spec.inputs[].name (case-insensitive,
       // substring match — taka sama logika jak w jarvis findInput) I miec wartosc.

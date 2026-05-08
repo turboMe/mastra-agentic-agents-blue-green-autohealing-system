@@ -75,6 +75,8 @@ export type AutomationSpec = {
 
 export type AutomationPatternRisk = RiskLevel;
 
+export type PatternMaturity = 'draft' | 'tested' | 'production';
+
 export type AutomationPattern = {
   id: string;
   name: string;
@@ -84,6 +86,25 @@ export type AutomationPattern = {
   requiredInputs: string[];
   requiredCredentials: string[];
   forbiddenWithoutApproval: boolean;
+  /**
+   * Whether this pattern produces a deployable n8n workflow JSON.
+   * `false` = abstract / knowledge-only — usable as RAG context but
+   * `compose_workflow` and `match_pattern` will refuse to return it.
+   * Defaults to `true` if omitted — only set `false` explicitly for
+   * abstract / pattern-card-only entries.
+   */
+  executable?: boolean;
+  /**
+   * Lifecycle stage. `production` patterns are smoke-tested and safe;
+   * `tested` passed validation but not deployed often; `draft` is WIP.
+   * Defaults to `tested` if omitted (legacy).
+   */
+  maturity?: PatternMaturity;
+  /**
+   * Whether the pattern works on n8n Community Edition (no enterprise
+   * features). Defaults to `true`.
+   */
+  n8nCommunityCompatible?: boolean;
   build: (spec: AutomationSpec) => any;
   knowledgeCard?: PatternKnowledgeCard;
 };
@@ -104,7 +125,7 @@ export type PatternKnowledgeCard = {
   fallbackStrategy?: string[];
 };
 
-export type StoredAutomationPattern = Omit<AutomationPattern, 'build'> & {
+export type StoredAutomationPattern = Omit<AutomationPattern, 'build' | 'knowledgeCard'> & {
   builderId: string;
   embedding?: number[];
   createdAt: Date;

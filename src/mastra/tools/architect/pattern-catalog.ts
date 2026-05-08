@@ -612,7 +612,9 @@ export const automationPatterns: AutomationPattern[] = [
     requiredInputs: [],
     requiredCredentials: [],
     forbiddenWithoutApproval: false,
-    build: (_spec) => ({}), // Abstract
+    executable: false,
+    maturity: 'draft',
+    build: (_spec) => ({}), // Abstract — knowledge-only, not deployable
     knowledgeCard: {
       id: 'execute-subworkflow-llm-json-normalizer',
       name: 'Reusable LLM JSON Normalizer Sub-workflow',
@@ -636,7 +638,9 @@ export const automationPatterns: AutomationPattern[] = [
     requiredInputs: [],
     requiredCredentials: [],
     forbiddenWithoutApproval: false,
-    build: (_spec) => ({}), // Abstract
+    executable: false,
+    maturity: 'draft',
+    build: (_spec) => ({}), // Abstract — knowledge-only, not deployable
     knowledgeCard: {
       id: 'llm-json-retry-guard',
       name: 'LLM JSON Retry Guard',
@@ -660,7 +664,9 @@ export const automationPatterns: AutomationPattern[] = [
     requiredInputs: [],
     requiredCredentials: [],
     forbiddenWithoutApproval: false,
-    build: (_spec) => ({}), // Abstract
+    executable: false,
+    maturity: 'draft',
+    build: (_spec) => ({}), // Abstract — knowledge-only, not deployable
     knowledgeCard: {
       id: 'cache-before-llm',
       name: 'Cache Before LLM',
@@ -684,7 +690,9 @@ export const automationPatterns: AutomationPattern[] = [
     requiredInputs: [],
     requiredCredentials: [],
     forbiddenWithoutApproval: true,
-    build: (_spec) => ({}), // Abstract
+    executable: false,
+    maturity: 'draft',
+    build: (_spec) => ({}), // Abstract — knowledge-only, not deployable
     knowledgeCard: {
       id: 'gemini-escalation-approval',
       name: 'Gemini Escalation Approval',
@@ -708,7 +716,9 @@ export const automationPatterns: AutomationPattern[] = [
     requiredInputs: [],
     requiredCredentials: ['n8n_api_key'],
     forbiddenWithoutApproval: false,
-    build: (_spec) => ({}), // Abstract
+    executable: false,
+    maturity: 'draft',
+    build: (_spec) => ({}), // Abstract — knowledge-only, not deployable
     knowledgeCard: {
       id: 'workflow-drift-detector',
       name: 'Workflow Drift Detector',
@@ -797,6 +807,7 @@ export function scorePatternMatch(
 
 export function selectBestPattern(spec: AutomationSpec): AutomationPattern | null {
   const ranked = automationPatterns
+    .filter(pattern => pattern.executable !== false)
     .map(pattern => ({
       pattern,
       score: scorePatternMatch(pattern, spec)
@@ -808,4 +819,12 @@ export function selectBestPattern(spec: AutomationSpec): AutomationPattern | nul
   }
 
   return null;
+}
+
+export function getExecutablePatterns(): AutomationPattern[] {
+  return automationPatterns.filter(p => p.executable !== false);
+}
+
+export function getAbstractPatterns(): AutomationPattern[] {
+  return automationPatterns.filter(p => p.executable === false);
 }

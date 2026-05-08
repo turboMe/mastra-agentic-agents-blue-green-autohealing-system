@@ -72,6 +72,9 @@ export const syncPatternsTool = createTool({
         requiredInputs: p.requiredInputs,
         requiredCredentials: p.requiredCredentials,
         forbiddenWithoutApproval: p.forbiddenWithoutApproval,
+        executable: p.executable !== false,
+        maturity: p.maturity,
+        n8nCommunityCompatible: p.n8nCommunityCompatible,
         builderId: p.id,
         embedding,
         createdAt: existing?.createdAt ?? new Date(),
@@ -89,12 +92,16 @@ export const syncPatternsTool = createTool({
 export const matchPatternTool = createTool({
   id: 'architect.match_pattern',
   description:
-    'Wyszukuje top-K patternów najlepiej pasujących do specyfikacji automatyzacji (semantic search po embedingach). Zwraca patterny z `id`, `name`, `risk`, `requiredInputs`, `requiredCredentials`, `forbiddenWithoutApproval` i `score`.',
+    'Wyszukuje top-K patternów najlepiej pasujących do specyfikacji automatyzacji (semantic search po embedingach). Domyślnie zwraca tylko executable patterny. Każdy match zawiera `executable` i `maturity` — tylko `executable: true` mozna podac do architect.compose_workflow.',
   inputSchema: z.object({
     name: z.string().describe('Krótka nazwa zadania, np. "Webhook do CRM"'),
     description: z.string().describe('Opis czego ma robić workflow'),
     goal: z.string().describe('Cel biznesowy'),
     topK: z.number().default(3),
+    includeAbstract: z
+      .boolean()
+      .default(false)
+      .describe('Jezeli true, zwraca takze abstract patterns jako reasoning context (oznaczone executable: false).'),
   }),
   outputSchema: z.object({
     matches: z.array(
@@ -106,6 +113,8 @@ export const matchPatternTool = createTool({
         requiredInputs: z.array(z.string()),
         requiredCredentials: z.array(z.string()),
         forbiddenWithoutApproval: z.boolean(),
+        executable: z.boolean(),
+        maturity: z.enum(['draft', 'tested', 'production']).optional(),
         score: z.number(),
       }),
     ),
@@ -133,8 +142,11 @@ export const matchPatternTool = createTool({
           score: cosineSimilarity(queryEmbedding, p.embedding!),
         }))
         .filter((s) => s.score >= MIN_SIMILARITY)
+        .filter((s) => context.includeAbstract || s.pattern.executable !== false)
         .sort((a, b) => b.score - a.score)
         .slice(0, context.topK);
+
+      const executableCount = scored.filter((s) => s.pattern.executable !== false).length;
 
       return {
         matches: scored.map(({ pattern, score }) => ({
@@ -145,11 +157,13 @@ export const matchPatternTool = createTool({
           requiredInputs: pattern.requiredInputs,
           requiredCredentials: pattern.requiredCredentials,
           forbiddenWithoutApproval: pattern.forbiddenWithoutApproval,
+          executable: pattern.executable !== false,
+          maturity: pattern.maturity,
           score,
         })),
         message:
           scored.length > 0
-            ? `Znaleziono ${scored.length} patternów`
+            ? `Znaleziono ${scored.length} patternów (${executableCount} executable)`
             : 'Brak dopasowań > 0.35 — rozważ stworzenie nowego patternu lub uściślenie opisu',
       };
     } catch (error) {

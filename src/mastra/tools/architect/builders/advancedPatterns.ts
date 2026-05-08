@@ -1009,9 +1009,9 @@ return [{
     ],
     connections: {
       'Schedule Standup': {
-        main: [[{ node: 'Fetch Context', type: 'main', index: 0 }]]
+        main: [[{ node: 'Fetch Memory Context', type: 'main', index: 0 }]]
       },
-      'Fetch Context': {
+      'Fetch Memory Context': {
         main: [[{ node: 'Build Standup Prompt', type: 'main', index: 0 }]]
       },
       'Build Standup Prompt': {
