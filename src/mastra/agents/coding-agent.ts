@@ -14,6 +14,7 @@ import {
   recordBeforeChangeTool,
   rejectAllChangesTool,
   rejectFileChangeTool,
+  writeFileTrackedTool,
 } from '../tools/dev/code-change-ledger.js';
 import { codeWorkspace } from '../workspaces/code-workspace.js';
 
@@ -33,6 +34,7 @@ export const codingAgent: Agent = new Agent({
     rejectAllChangesTool,
     acceptFileChangeTool,
     acceptAllChangesTool,
+    writeFileTrackedTool,
   },
   memory: new Memory({
     options: {

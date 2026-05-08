@@ -1,10 +1,14 @@
+import { exec } from 'child_process';
 import { createHash, randomUUID } from 'crypto';
 import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
 import { dirname, isAbsolute, normalize, relative, resolve, sep } from 'path';
+import { promisify } from 'util';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb } from '../../lib/mongo.js';
 import { AGENTIC_AGENTS_REPO } from '../../workspaces/code-workspace.js';
+
+const execAsync = promisify(exec);
 
 const SNAPSHOT_STATUSES = ['open', 'accepted', 'rejected', 'conflict'] as const;
 const MISSING_HASH = 'missing';
@@ -584,6 +588,133 @@ export const acceptAllChangesTool = createTool({
         conflicts: 0,
         results: [],
         message: 'Nie udalo sie zaakceptowac zmian taska.',
+        error: (error as Error).message,
+      };
+    }
+  },
+});
+
+export const writeFileTrackedTool = createTool({
+  id: 'coding.write_file_tracked',
+  description:
+    'Zapisuje plik po weryfikacji artifactu i automatycznie dodaje snapshoty before/after dla pelnego trackingu i mozliwosci rollbacku. Glowne narzedzie edycyjne agenta.',
+  inputSchema: z.object({
+    taskId: z.string(),
+    path: z.string().describe('Sciezka wzgledem repo lub absolutna sciezka wewnatrz repo.'),
+    content: z.string().describe('Nowa zawartosc pliku.'),
+    summary: z.string().min(1).describe('Krotki opis zmiany w tym pliku.'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    snapshot: snapshotOutputSchema.optional(),
+    message: z.string(),
+    error: z.string().optional(),
+  }),
+  execute: async (context) => {
+    try {
+      const db = await getDb();
+      
+      const artifact = await db.collection('code_task_artifacts').findOne({ taskId: context.taskId });
+      if (!artifact) {
+        return {
+          success: false,
+          message: `Artifact dla taska ${context.taskId} nie istnieje. Utworz go najpierw przez coding.create_artifact.`,
+        };
+      }
+
+      const { absolutePath, relativePath } = normalizeRepoPath(context.path);
+      
+      const existingSnapshot = await db.collection<SnapshotDoc>('code_change_snapshots').findOne({
+        taskId: context.taskId,
+        path: relativePath,
+        status: 'open',
+      });
+
+      const timestamp = nowIso();
+      let currentSnapshot: SnapshotDoc;
+
+      if (!existingSnapshot) {
+        const before = await readFileState(absolutePath);
+        currentSnapshot = {
+          id: randomUUID(),
+          taskId: context.taskId,
+          path: relativePath,
+          beforeHash: before.hash,
+          beforeContent: before.content,
+          beforeExists: before.exists,
+          status: 'open',
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        };
+        await db.collection('code_change_snapshots').insertOne(currentSnapshot);
+        await db.collection('code_task_artifacts').updateOne(
+          { taskId: context.taskId },
+          {
+            $addToSet: { filesRead: relativePath },
+            $set: { updatedAt: timestamp },
+          },
+        );
+      } else {
+        const { _id, ...rest } = existingSnapshot as any;
+        currentSnapshot = rest;
+      }
+
+      await mkdir(dirname(absolutePath), { recursive: true });
+      await writeFile(absolutePath, context.content, 'utf8');
+
+      const after = await readFileState(absolutePath);
+      
+      const updatedSnapshot: SnapshotDoc = {
+        ...currentSnapshot,
+        afterHash: after.hash,
+        afterContent: after.content,
+        afterExists: after.exists,
+        summary: context.summary,
+        status: 'open',
+        updatedAt: nowIso(),
+      };
+
+      await db.collection('code_change_snapshots').updateOne(
+        { id: currentSnapshot.id },
+        {
+          $set: {
+            afterHash: updatedSnapshot.afterHash,
+            afterContent: updatedSnapshot.afterContent,
+            afterExists: updatedSnapshot.afterExists,
+            summary: updatedSnapshot.summary,
+            status: updatedSnapshot.status,
+            updatedAt: updatedSnapshot.updatedAt,
+          },
+        },
+      );
+      await upsertArtifactFileChange(updatedSnapshot, after.hash, context.summary);
+
+      let checkMessage = '';
+      if (relativePath.endsWith('.ts') || relativePath.endsWith('.tsx')) {
+        try {
+          await execAsync('npx tsc --noEmit', { cwd: AGENTIC_AGENTS_REPO, timeout: 15000 });
+          checkMessage = ' (tsc passed)';
+        } catch (execError: any) {
+          const stdout = execError.stdout || '';
+          const lines = stdout.split('\n');
+          const fileErrors = lines.filter((l: string) => l.includes(relativePath));
+          if (fileErrors.length > 0) {
+            checkMessage = `\nUWAGA: Wprowadzono błędy kompilacji w tym pliku:\n${fileErrors.slice(0, 5).join('\n')}`;
+          } else {
+            checkMessage = `\nUWAGA: Projekt nie kompiluje się, ale błędy tsc mogą dotyczyć innych plików.`;
+          }
+        }
+      }
+
+      return {
+        success: true,
+        snapshot: toSnapshotOutput(updatedSnapshot),
+        message: `Plik ${relativePath} zostal pomyslnie zapisany i zablokowany w ledgerze.${checkMessage}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Nie udalo sie zapisac pliku przez tracked write.',
         error: (error as Error).message,
       };
     }

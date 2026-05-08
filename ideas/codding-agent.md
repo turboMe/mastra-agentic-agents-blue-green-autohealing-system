@@ -30,7 +30,7 @@ Aktualny postep:
 - [x] Potwierdzono, ze workspace tools wspieraja `requireApproval` i `requireReadBeforeWrite`.
 - [x] Etap 0: spike techniczny workspace + minimalny `codingAgent` kodowo.
 - [x] Etap 1: bezpieczny lokalny MVP `codingAgent` (artifact + ledger + rollback potwierdzone w smoke tescie).
-- [ ] Etap 2: realny artifact + change ledger + rollback.
+- [ ] Etap 2: realny artifact + change ledger + rollback jako wymuszona sciezka edycji.
 - [ ] Etap 3: `codeReviewAgent` i `repo-maintenance` workflow.
 - [ ] Etap 4: staging/blue-green runtime dla self-healing, z restart-safe resume.
 - [ ] Etap 5: self-healing z logow/testow, bez auto-deploy w trybie manualnym.
@@ -63,7 +63,7 @@ Status Etapu 0:
 - [x] `npm run build` przechodzi.
 - [x] Import z `.mastra/output/mastra.mjs` potwierdza `codingAgent`.
 - [x] Manualny smoke test w Mastra Studio: `find_files`/`view`, approval rejection, artifact + ledger + `reject_all`.
-- [ ] Po restarcie Mastry powtorzyc Studio smoke dla `execute_command npx tsc --noEmit` na nowym default `CODING_SANDBOX_ISOLATION=none`.
+- [x] Po restarcie Mastry powtorzono Studio smoke dla `execute_command npx tsc --noEmit` na nowym default `CODING_SANDBOX_ISOLATION=none`.
 
 Status Etapu 1:
 
@@ -81,10 +81,35 @@ Status Etapu 1:
 - [x] Manualny smoke test w Mastra Studio: artifact + ledger + `reject_all(taskId)`.
 - [x] Logi smoke testu potwierdzily: 2 artefakty, 1 snapshot rollback, `reject_all` bez konfliktow, proba `npm install lodash` odrzucona przez approval.
 - [x] Naprawiono blad smoke testu: lokalny `bwrap --unshare-net` blokowal `execute_command` dla `npx tsc --noEmit`; domyslny lokalny backend izolacji to teraz `none`.
+- [x] Smoke po restarcie Mastry potwierdzil, ze `execute_command npx tsc --noEmit` dziala poprawnie w runtime.
 
-Kluczowa zasada dla self-healing:
+Status Etapu 2:
 
-Agent nie powinien edytowac live checkoutu, z ktorego aktualnie dziala Mastra, jezeli zadanie moze dotyczyc kodu Mastry, agentow, workflowow albo narzedzi runtime. Najpierw przygotowuje patch w staging worktree, zapisuje stan zadania, testuje, a dopiero finalny approved/apply step przenosi zmiany do live i restartuje uslugi.
+- [x] Dodac tracked write tool, np. `coding.write_file_tracked(taskId, path, content, summary)`, ktory wymusza artifact + snapshot before + zapis + snapshot after w jednej sciezce.
+- [x] Zostawic surowe `write_file` tylko jako awaryjne narzedzie z approval, a codzienna prace agenta przeniesc na tracked write.
+- [ ] Dodac tracking komend weryfikacyjnych do artifactu, zeby `commandsRun` i `testResult` nie zalezal tylko od recznej aktualizacji przez model.
+- [ ] Dodac test narzedziowy dla tracked write: nowy plik, edycja istniejacego pliku, `reject_file`, konflikt po zmianie usera.
+- [x] Zaktualizowac prompt `coding/base.md`, zeby Etap 2 byl domyslna sciezka pracy.
+
+Nastepny naturalny krok:
+
+Wdrożyć **Dekompozycję Stanu (Ledger vs Artifact)**. Ponieważ Inline Verification jest już dodane do `tracked_write`, możemy teraz zająć się ulepszeniem przepływu wiedzy do agenta. Należy zmodyfikować narzędzie `coding.get_artifact`, aby kompresowało zawartość zwracanego JSON-a w locie (np. redukowało historię `filesChanged` do samej listy plików bez surowych hashy i dużych komentarzy, generując tylko lekkie streszczenie). Zmniejszy to użycie okna kontekstu i zabezpieczy przed halucynacjami przy większych zadaniach. Alternatywnie, możemy dodać testy narzędziowe dla nowo powstałych funkcji.
+
+---
+
+### Strategiczne innowacje dla Coding Agenta (Maj 2026)
+
+Aby agent był jeszcze bardziej autonomiczny i stabilny w trudnych refaktorach, docelowo wdrażamy następujące ulepszenia:
+
+1. [x] **Inline Verification wewnątrz Tracked Write:** Narzędzie `write_file_tracked` nie tylko robi snapshot i zapisuje plik, ale asynchronicznie odpytuje kompilator/linter. Wynik natychmiast wraca w `outputSchema` (np. *"Plik zapisany pomyślnie. UWAGA: wprowadzono błąd składni na linii X"*). To diametralnie przyspiesza zjawisko self-correction.
+2. **Dekompozycja Stanu (Ledger vs Artifact):** Utrzymanie pełnego artefaktu w MongoDB jest świetne, ale agent nie powinien dostawać surowego gigantycznego JSON-a w operacji `Get Artifact`. Zbudujemy kompresję Diffów w locie, aby agent dostawał tylko streszczenie zamiast gigantycznych listingów, oszczędzając okno kontekstu i chroniąc LLM przed halucynacjami z hashami.
+3. **Staging Worktree zamiast Modyfikacji Na Żywo:** Zgodnie z koncepcjami "Self-Healing", agent kodujący (zwłaszcza naprawiający Mastra i siebie samego) musi działać w izolowanym środowisku. Będziemy przydzielać mu klon kodu przez `git worktree add`. Rollback i testowanie odbywają się w bezpiecznym klonie, a meta-agent po pozytywnym teście odpala `cherry-pick` i wdraża to na środowisko live.
+
+---
+
+Kluczowa zasada dla self-healing (wzmocniona przez Staging Worktree):
+
+Agent docelowo nie powinien edytować live checkoutu, z którego aktualnie działa Mastra, jeżeli zadanie dotyczy kodu samej Mastry. Najpierw przygotowuje zmianę w staging worktree, zapisuje stan, testuje go na izolowanym porcie, a dopiero finalny approved/apply step przenosi zmiany do live i restartuje usługi.
 
 ## 1. Aktualny stan
 
