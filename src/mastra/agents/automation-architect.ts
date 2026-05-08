@@ -16,6 +16,8 @@ import { activateAutomationTool } from '../tools/architect/activate.js';
 import { runtimeCheckTool } from '../tools/architect/runtime-check.js';
 import { resolveCredentialsTool } from '../tools/architect/credentials/credential-tools.js';
 import { validateWorkflowTool } from '../tools/architect/validation/validation-tool.js';
+import { testWorkflowTool } from '../tools/architect/testing/test-workflow.js';
+import { repairWorkflowTool } from '../tools/architect/testing/repair-workflow.js';
 import { loadPrompt } from '../lib/prompt-loader.js';
 
 export const automationArchitect = new Agent({
@@ -48,6 +50,9 @@ export const automationArchitect = new Agent({
     // Deploy with guardrails
     deployAutomationTool,
     activateAutomationTool,
+    // Test & repair loop
+    testWorkflowTool,
+    repairWorkflowTool,
     // Human approval gate
     requestApprovalTool,
   },
