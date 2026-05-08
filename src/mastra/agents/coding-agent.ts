@@ -17,6 +17,11 @@ import {
   rejectFileChangeTool,
   writeFileTrackedTool,
 } from '../tools/dev/code-change-ledger.js';
+import {
+  initWorktreeTool,
+  removeWorktreeTool,
+  applyWorktreePatchTool,
+} from '../tools/dev/code-worktree.js';
 import { codeWorkspace } from '../workspaces/code-workspace.js';
 
 export const codingAgent: Agent = new Agent({
@@ -30,6 +35,9 @@ export const codingAgent: Agent = new Agent({
     updateCodeTaskArtifactTool,
     getCodeTaskArtifactTool,
     runTestCommandTool,
+    initWorktreeTool,
+    removeWorktreeTool,
+    applyWorktreePatchTool,
     recordBeforeChangeTool,
     recordAfterChangeTool,
     rejectFileChangeTool,

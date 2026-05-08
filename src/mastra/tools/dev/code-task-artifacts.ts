@@ -379,3 +379,59 @@ export const runTestCommandTool = createTool({
     }
   },
 });
+
+export const submitReviewTool = createTool({
+  id: 'coding.submit_review',
+  description: 'Zapisuje wynik code review w artifact (approve, needs_changes, block). Używane przez CodeReviewAgenta.',
+  inputSchema: z.object({
+    taskId: z.string(),
+    verdict: z.enum(REVIEW_VERDICTS),
+    summary: z.string().describe('Uzasadnienie decyzji (wymagane)'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    taskId: z.string(),
+    message: z.string(),
+    error: z.string().optional(),
+  }),
+  execute: async (context) => {
+    try {
+      const db = await getDb();
+      const artifact = await db.collection('code_task_artifacts').findOne({ taskId: context.taskId });
+
+      if (!artifact) {
+        return {
+          success: false,
+          taskId: context.taskId,
+          message: `Artifact ${context.taskId} nie istnieje.`,
+        };
+      }
+
+      await db.collection('code_task_artifacts').updateOne(
+        { taskId: context.taskId },
+        {
+          $set: {
+            reviewVerdict: context.verdict,
+            updatedAt: nowIso(),
+          },
+          $push: {
+            plan: `[REVIEW] ${context.verdict}: ${context.summary}`,
+          } as any,
+        }
+      );
+
+      return {
+        success: true,
+        taskId: context.taskId,
+        message: `Zapisano review verdict: ${context.verdict}.`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        taskId: context.taskId,
+        message: 'Nie udalo sie zapisac review.',
+        error: (error as Error).message,
+      };
+    }
+  },
+});

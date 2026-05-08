@@ -30,10 +30,11 @@ Aktualny postep:
 - [x] Potwierdzono, ze workspace tools wspieraja `requireApproval` i `requireReadBeforeWrite`.
 - [x] Etap 0: spike techniczny workspace + minimalny `codingAgent` kodowo.
 - [x] Etap 1: bezpieczny lokalny MVP `codingAgent` (artifact + ledger + rollback potwierdzone w smoke tescie).
-- [ ] Etap 2: realny artifact + change ledger + rollback jako wymuszona sciezka edycji.
-- [ ] Etap 3: `codeReviewAgent` i `repo-maintenance` workflow.
-- [ ] Etap 4: staging/blue-green runtime dla self-healing, z restart-safe resume.
-- [ ] Etap 5: self-healing z logow/testow, bez auto-deploy w trybie manualnym.
+- [x] Etap 2: realny artifact + change ledger + rollback jako wymuszona sciezka edycji (Ukonczone).
+- [x] Etap 3: Staging Worktree (izolacja modyfikacji i bezpieczny merge) + podstawy code review.
+- [x] Etap 4: codeReviewAgent i repo-maintenance workflow (Orkiestracja w Mastra).
+- [ ] Etap 5: staging/blue-green runtime dla self-healing, z restart-safe resume.
+- [ ] Etap 6: self-healing z logow/testow, bez auto-deploy w trybie manualnym.
 - [ ] Etap 6: subagenci codingowi, routing modeli i tryb offline fallback.
 - [ ] Etap 7: GitHub/PR/CI integracja.
 - [ ] Etap 8: kontrolowane podpiecie wlasnego repo agenta, z approval, rollback i health-checkami.
@@ -91,10 +92,27 @@ Status Etapu 2:
 - [x] Dodac test narzedziowy dla tracked write: nowy plik, edycja istniejacego pliku, `reject_file`, konflikt po zmianie usera.
 - [x] Zaktualizowac prompt `coding/base.md`, zeby Etap 2 byl domyslna sciezka pracy.
 
-Nastepny naturalny krok:
+Status Etapu 3:
 
-**Rozpocząć przygotowania do wdrożenia Staging Worktree (Etap 3/4).** 
-Ponieważ agenty otrzymały hermetyczne i bezpieczne narzędzia do edycji plików (tracked write, snapshots, automatyczna weryfikacja), pora na zabezpieczenie samego środowiska. Agent musi otrzymać możliwość sklonowania lokalnego repozytorium przez `git worktree add`, by móc swobodnie testować i naprawiać kod w izolowanym "kontenerze" działającym na innym porcie. Po pozytywnej weryfikacji w Worktree, meta-agent zastosuje wygenerowany patch na żywym repozytorium. Taka izolacja zapewni w 100% "Self-Healing" bez ryzyka awarii samej Mastry podczas eksperymentów agenta.
+- [x] Zbudowano narzędzia worktree (`init_worktree`, `remove_worktree`).
+- [x] Zastosowano resolver ścieżek `getWorkspacePath`.
+- [x] Zaimplementowano narzędzie The Merge (`coding.apply_patch`).
+- [x] Przeprowadzono walidację E2E Worktree.
+
+Nastepny naturalny krok: Etap 4 (CodeReview Agent & Orkiestracja Workflow)
+
+Jesteśmy w sytuacji, w której codingAgent tworzy kod "w piaskownicy" i potrafi bezpiecznie zaaplikować łatkę na żywo. Zamiast pozwalać codingAgent odpalać finalne `coding.apply_patch`, wprowadzimy `codeReviewAgent`. 
+
+Plan Etapu 4 (Separation of Concerns):
+1. `codingAgent` wykonuje zadanie w worktree, uruchamia linter/TSC i kończy pracę ze statusem `waiting_approval`.
+2. Tworzymy obiekt Mastra Workflow (`repo-maintenance`):
+   - Step 1: `codingAgent`
+   - Step 2: `codeReviewAgent`
+3. `codeReviewAgent` czyta diff z wygenerowanego worktree, weryfikuje kod i architekturę.
+4. `codeReviewAgent` wywołuje nowe narzędzie `coding.submit_review` ze statusem `approve` lub `needs_changes`.
+5. Jeśli `approve`, odpalamy `apply_patch`. Jeśli `needs_changes`, workflow wraca do `codingAgent`.
+
+Dzięki temu zamykamy temat Self-Healing – środowisko Mastry będzie mogło samo pisać łatki, weryfikować je, recenzować i integrować z kodem.
 
 ---
 
@@ -102,9 +120,11 @@ Ponieważ agenty otrzymały hermetyczne i bezpieczne narzędzia do edycji plikó
 
 Aby agent był jeszcze bardziej autonomiczny i stabilny w trudnych refaktorach, docelowo wdrażamy następujące ulepszenia:
 
-1. [x] **Inline Verification wewnątrz Tracked Write:** Narzędzie `write_file_tracked` nie tylko robi snapshot i zapisuje plik, ale asynchronicznie odpytuje kompilator/linter. Wynik natychmiast wraca w `outputSchema` (np. *"Plik zapisany pomyślnie. UWAGA: wprowadzono błąd składni na linii X"*). To diametralnie przyspiesza zjawisko self-correction.
-2. [x] **Dekompozycja Stanu (Ledger vs Artifact):** Utrzymanie pełnego artefaktu w MongoDB jest świetne, ale agent nie powinien dostawać surowego gigantycznego JSON-a w operacji `Get Artifact`. Zbudujemy kompresję Diffów w locie, aby agent dostawał tylko streszczenie zamiast gigantycznych listingów, oszczędzając okno kontekstu i chroniąc LLM przed halucynacjami z hashami.
-3. **Staging Worktree zamiast Modyfikacji Na Żywo:** Zgodnie z koncepcjami "Self-Healing", agent kodujący (zwłaszcza naprawiający Mastra i siebie samego) musi działać w izolowanym środowisku. Będziemy przydzielać mu klon kodu przez `git worktree add`. Rollback i testowanie odbywają się w bezpiecznym klonie, a meta-agent po pozytywnym teście odpala `cherry-pick` i wdraża to na środowisko live.
+1. [x] **Inline Verification wewnątrz Tracked Write:** Narzędzie `write_file_tracked` nie tylko robi snapshot i zapisuje plik, ale asynchronicznie odpytuje kompilator/linter.
+2. [x] **Dekompozycja Stanu (Ledger vs Artifact):** Kompresja JSON.
+3. [x] **Staging Worktree (Podstawa i Narzędzia):** Agent otrzymał resolver ścieżek `getWorkspacePath(taskId)` oraz dwa potężne narzędzia `coding.init_worktree` (kopiujące `.env` i separujące branch) oraz `coding.remove_worktree`. Operacje dyskowe lądują teraz w wyznaczonym worktree!
+4. [x] **The Merge (`coding.apply_patch`):** Narzędzie do finalizacji zadań. Commituje zmiany z worktree i wywołuje `git merge` w środowisku Live, z wbudowaną ochroną (automatyczny `--abort` na wypadek konfliktów).
+5. [x] **CodeReview & Workflow:** Podział obowiązków między codingAgent i codeReviewAgent w ramach Mastra Workflow.
 
 ---
 

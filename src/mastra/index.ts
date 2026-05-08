@@ -24,6 +24,7 @@ import { trendAnalysisWorkflow } from './workflows/analytics/trend-analysis';
 import { proposalGeneratorWorkflow } from './workflows/sales/proposal-generator';
 import { meetingSchedulerWorkflow } from './workflows/sales/meeting-scheduler';
 import { onboardingChecklistWorkflow } from './workflows/sales/onboarding-checklist';
+import { repoMaintenanceWorkflow } from './workflows/repo-maintenance';
 
 // Agents
 import { weatherAgent } from './agents/weather-agent';
@@ -42,6 +43,7 @@ import { salesAgent } from './agents/sales-agent';
 import { analyticsAgent } from './agents/analytics-agent';
 import { automationArchitect } from './agents/automation-architect';
 import { codingAgent } from './agents/coding-agent';
+import { codeReviewAgent } from './agents/code-review-agent';
 
 // Scorers
 import { toolCallAppropriatenessScorer, completenessScorer, translationScorer } from './scorers/weather-scorer';
@@ -67,6 +69,7 @@ export const mastra: Mastra = new Mastra({
     proposalGeneratorWorkflow,
     meetingSchedulerWorkflow,
     onboardingChecklistWorkflow,
+    repoMaintenanceWorkflow,
   },
   agents: {
     weatherAgent,
@@ -83,6 +86,7 @@ export const mastra: Mastra = new Mastra({
     analyticsAgent,
     automationArchitect,
     codingAgent,
+    codeReviewAgent,
   },
   scorers: {
     toolCallAppropriatenessScorer,

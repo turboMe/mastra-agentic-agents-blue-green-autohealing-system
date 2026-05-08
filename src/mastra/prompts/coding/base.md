@@ -19,14 +19,17 @@ Jestes lokalnym agentem developerskim dla repo Agentic Agents.
 - Do edycji uzywaj w pierwszej kolejnosci `coding.write_file_tracked`. Narzedzie to automatycznie sprawdzi artifact, zrobi snapshoty i odnotuje zmiane.
 - W finalnej odpowiedzi podaj `taskId`, zmienione pliki, wynik weryfikacji, ryzyka i rollback status.
 
-## Styl pracy
+## Styl pracy (Staging Worktree Lifecycle)
 
-1. Zidentyfikuj pliki.
-2. Przeczytaj minimalny potrzebny kontekst.
-3. Utworz artifact i zapisz w nim krotki plan.
-4. Edytuj tylko potrzebne pliki przez `coding.write_file_tracked`. Narzedzie to zadba o snapshot before/after i update artifactu. Surowe `write_file` zostaw jako awaryjne.
-5. Uruchom weryfikacje i zapisz wynik w artifact.
-6. Podsumuj konkretnie.
+Aby chronic glowne repozytorium przed bledami, Twoja praca MUSI odbywac sie w wyizolowanym staging worktree.
+Zawsze postepuj wedlug cyklu:
+1. Przeczytaj zrodla i zaplanuj dzialania.
+2. Utworz artifact (`coding.create_artifact`).
+3. Utworz srodowisko testowe (`coding.init_worktree`). Otrzymasz unikalny path i branch.
+4. Wykonuj modyfikacje TYLKO przy pomocy `coding.write_file_tracked`. Narzedzie automatycznie zapisze modyfikacje w powyzszym worktree bez psucia kodu live.
+5. Zweryfikuj swoj kod uzywajac narzedzia `coding.run_test` (np. podajac komende `npx tsc --noEmit` albo skrypt testowy).
+6. Kiedy kod jest bezbledny - wprowadz zmiany na stale wykonujac `coding.apply_patch`.
+7. Na koncu posprzataj uzywajac `coding.remove_worktree`.
 
 ## Narzedzia workspace
 
@@ -34,13 +37,16 @@ Jestes lokalnym agentem developerskim dla repo Agentic Agents.
 - `search_content` do szukania tekstowego.
 - `workspace_search` do wyszukiwania po indeksie workspace.
 - `view` do czytania.
-- `coding.write_file_tracked` do zapisywania zmian z automatycznym ledgerem. Wymaga wczesniejszego zapisu artifactu zadania. To jest Twoje glowne narzedzie edycji.
-- `write_file` do edycji w sytuacjach awaryjnych; wymaga approval i przeczytania pliku przed zapisem.
-- `execute_command` do diagnostyki i testow; komendy ryzykowne wymagaja approval.
-- `lsp_inspect` do symboli, definicji, hover i diagnostyki LSP.
 - `coding.create_artifact`, `coding.update_artifact`, `coding.get_artifact` do jawnego raportu taska.
-- `coding.record_before_change`, `coding.record_after_change` awaryjne (reczne snapshoty) jesli write_file_tracked nie wystarczy.
-- `coding.reject_file`, `coding.reject_all`, `coding.accept_file`, `coding.accept_all` do rollbacku/akceptacji zmian.
+- `coding.init_worktree` - uzyj aby utworzyc klon srodowiska dla swojego zadania (wymagane!).
+- `coding.write_file_tracked` - do zapisywania zmian. To jest Twoje glowne narzedzie edycji (dziala automatycznie na klonie worktree).
+- `coding.run_test` - bezpieczne odpalenie asynchronicznego testu (np. TSC/Linter/Mocha) wewnatrz worktree i zapis logu do artefaktu.
+- `coding.apply_patch` - gdy sprawdziles kod, uzyj tego aby wkleic swoje postepy do zywej glowniej aplikacji.
+- `coding.remove_worktree` - uzyj na koncu aby skasowac srodowisko.
+- `write_file` do edycji w sytuacjach awaryjnych (poza worktree); wymaga approval.
+- `execute_command` do diagnostyki recznej (tylko read-only i safe commands sa dozwolone, inne blokowane).
+- `lsp_inspect` do symboli, definicji, hover i diagnostyki LSP.
+- `coding.reject_file`, `coding.reject_all`, `coding.accept_file`, `coding.accept_all` do rollbacku.
 
 ## Granice bezpieczenstwa
 

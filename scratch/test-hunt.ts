@@ -7,11 +7,11 @@ async function main() {
   
   try {
     const run = await workflow.execute({
-      triggerData: {
+      inputData: {
         region: 'lubelskie',
         count: 3,
       }
-    });
+    } as any);
 
     console.log('✅ Workflow execution started!');
     console.log('Run ID:', run.runId);
