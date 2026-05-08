@@ -1,4 +1,6 @@
 import { AutomationSpec } from '../types.js';
+import { getRuntimeTopology } from '../../../config/runtime-topology.js';
+import { getCredentialFromRegistry } from '../credentials/credential-registry.js';
 
 /**
  * Runtime configuration for n8n workflow generation.
@@ -19,21 +21,22 @@ export interface N8nRuntimeConfig {
 }
 
 /**
- * Reads n8n config from environment variables.
+ * Reads n8n config from environment variables and runtime topology.
  * Called at workflow generation time — values are baked into the workflow JSON.
  */
 export function getN8nConfig(): N8nRuntimeConfig {
-  const dashboardUrl = process.env.DASHBOARD_URL || 'http://localhost:3000';
+  const topology = getRuntimeTopology();
+  const mastraApiBase = topology.mastraApiUrlForN8n.replace(/\/$/, '');
   return {
     telegramChatId: process.env.N8N_TELEGRAM_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '',
-    ollamaBaseUrl: process.env.OLLAMA_BASE_URL || 'http://localhost:11434',
+    ollamaBaseUrl: topology.ollamaBaseUrlForN8n,
     defaultLocalModel: process.env.OLLAMA_DEFAULT_MODEL || 'gemma4:26b',
     reasoningLocalModel: process.env.OLLAMA_REASONING_MODEL || 'huihui_ai/qwen3.5-abliterated:35b',
-    agentForgeTaskEndpoint: process.env.AGENTFORGE_TASK_ENDPOINT || `${dashboardUrl}/api/tasks`,
-    agentForgeMemoryEndpoint: process.env.AGENTFORGE_MEMORY_ENDPOINT || `${dashboardUrl}/api/shared-memory`,
-    agentForgeCrmEndpoint: process.env.AGENTFORGE_CRM_ENDPOINT || `${dashboardUrl}/api/crm`,
-    agentForgeApprovalEndpoint: process.env.AGENTFORGE_APPROVAL_ENDPOINT || `${dashboardUrl}/api/approvals`,
-    geminiGatewayEndpoint: process.env.GEMINI_GATEWAY_ENDPOINT || `${dashboardUrl}/api/agents/gemini`,
+    agentForgeTaskEndpoint: process.env.AGENTFORGE_TASK_ENDPOINT || `${mastraApiBase}/api/tasks`,
+    agentForgeMemoryEndpoint: process.env.AGENTFORGE_MEMORY_ENDPOINT || `${mastraApiBase}/api/shared-memory`,
+    agentForgeCrmEndpoint: process.env.AGENTFORGE_CRM_ENDPOINT || `${mastraApiBase}/api/crm`,
+    agentForgeApprovalEndpoint: process.env.AGENTFORGE_APPROVAL_ENDPOINT || `${mastraApiBase}/api/approvals`,
+    geminiGatewayEndpoint: process.env.GEMINI_GATEWAY_ENDPOINT || `${mastraApiBase}/api/agents/gemini`,
     webhookSharedSecret: process.env.WEBHOOK_SHARED_SECRET || process.env.JWT_SECRET || 'agentforge-dev',
   };
 }
@@ -45,12 +48,22 @@ export type AnyInput = {
   value?: unknown;
   defaultValue?: unknown;
   url?: unknown;
+  aliases?: string[];
 };
 
 export function findInput(spec: AutomationSpec, aliases: string[]): AnyInput | undefined {
-  return (spec.inputs as AnyInput[]).find(input => {
+  return (spec.inputs as AnyInput[]).find((input) => {
     const name = input.name.toLowerCase();
-    return aliases.some(alias => name.includes(alias.toLowerCase()));
+    const inputAliases = input.aliases || [];
+    return aliases.some(
+      (alias) => {
+        const a = alias.toLowerCase();
+        return name.includes(a) || a.includes(name) || inputAliases.some((al) => {
+          const inputAlias = al.toLowerCase();
+          return inputAlias.includes(a) || a.includes(inputAlias);
+        });
+      },
+    );
   });
 }
 
@@ -106,26 +119,90 @@ export function nodeId(name: string): string {
 
 export function settings() {
   return {
-    executionOrder: 'v1'
+    executionOrder: 'v1',
   };
 }
 
 export function telegramSendNode(name = 'Telegram Send', x = 700, y = 300) {
   const cfg = getN8nConfig();
-  return {
+  const cred = getCredentialFromRegistry('telegram');
+
+  const node: any = {
     parameters: {
       chatId: cfg.telegramChatId,
       text: '={{ $json.telegramMessage }}',
       additionalFields: {
-        parse_mode: 'Markdown'
-      }
+        parse_mode: 'Markdown',
+      },
     },
     id: nodeId(name),
     name,
     type: 'n8n-nodes-base.telegram',
     typeVersion: 1,
-    position: [x, y]
+    position: [x, y],
   };
+
+  if (cred) {
+    node.credentials = {
+      [cred.n8nCredentialType]: {
+        id: cred.id,
+        name: cred.name,
+      },
+    };
+  }
+
+  return node;
+}
+
+export function telegramTriggerNode(name = 'Telegram Trigger', x = 200, y = 300, typeVersion = 1.2) {
+  const cred = getCredentialFromRegistry('telegram');
+  const node: any = {
+    parameters: {
+      updates: ['message'],
+      additionalFields: {},
+    },
+    id: nodeId(name),
+    name,
+    type: 'n8n-nodes-base.telegramTrigger',
+    typeVersion,
+    position: [x, y],
+  };
+
+  if (cred) {
+    node.credentials = {
+      [cred.n8nCredentialType]: {
+        id: cred.id,
+        name: cred.name,
+      },
+    };
+  }
+
+  return node;
+}
+
+export function gmailTriggerNode(name = 'Gmail Trigger', x = 200, y = 300, typeVersion = 1) {
+  const cred = getCredentialFromRegistry('gmail');
+  const node: any = {
+    parameters: {
+      filters: {},
+    },
+    id: nodeId(name),
+    name,
+    type: 'n8n-nodes-base.gmailTrigger',
+    typeVersion,
+    position: [x, y],
+  };
+
+  if (cred) {
+    node.credentials = {
+      [cred.n8nCredentialType]: {
+        id: cred.id,
+        name: cred.name,
+      },
+    };
+  }
+
+  return node;
 }
 
 export function codeNode(name: string, jsCode: string, x: number, y: number) {

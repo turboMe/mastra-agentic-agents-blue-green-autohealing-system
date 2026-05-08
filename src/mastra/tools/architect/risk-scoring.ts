@@ -44,7 +44,7 @@ function scoreFromSeverity(sev: Finding['severity']): number {
   return { critical: 80, high: 30, medium: 15, low: 5, info: 0 }[sev];
 }
 
-function analyzeWorkflow(workflowJson: unknown): { score: number; findings: Finding[] } {
+export function analyzeWorkflow(workflowJson: unknown): { score: number; findings: Finding[] } {
   const findings: Finding[] = [];
   let score = 0;
 

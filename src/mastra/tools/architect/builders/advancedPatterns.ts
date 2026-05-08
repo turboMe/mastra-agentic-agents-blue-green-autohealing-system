@@ -1,5 +1,15 @@
 import { AutomationSpec } from '../types.js';
-import { codeNode, ollamaChatNode, telegramSendNode, agentForgePostNode, settings, getInputString, getN8nConfig } from './helpers.js';
+import {
+  codeNode,
+  ollamaChatNode,
+  telegramSendNode,
+  telegramTriggerNode,
+  gmailTriggerNode,
+  agentForgePostNode,
+  settings,
+  getInputString,
+  getN8nConfig,
+} from './helpers.js';
 
 /**
  * 2. Pattern: Error Workflow -> Ollama Explanation -> Telegram -> Memory
@@ -260,17 +270,7 @@ export function buildTelegramTaskTriageToAgentForgeQueue(spec: AutomationSpec): 
   const cfg = getN8nConfig();
   return {
     nodes: [
-      {
-        parameters: {
-          updates: ['message'],
-          additionalFields: {}
-        },
-        id: 'telegram_trigger',
-        name: 'Telegram Trigger',
-        type: 'n8n-nodes-base.telegramTrigger',
-        typeVersion: 1.2,
-        position: [200, 300]
-      },
+      telegramTriggerNode('Telegram Trigger', 200, 300, 1.2),
       codeNode(
         'Normalize Telegram Task',
         `
@@ -472,17 +472,7 @@ export function buildTelegramApprovalRouter(spec: AutomationSpec): any {
   const cfg = getN8nConfig();
   return {
     nodes: [
-      {
-        parameters: {
-          updates: ['message'],
-          additionalFields: {}
-        },
-        id: 'telegram_trigger',
-        name: 'Telegram Trigger',
-        type: 'n8n-nodes-base.telegramTrigger',
-        typeVersion: 1.2,
-        position: [200, 300]
-      },
+      telegramTriggerNode('Telegram Trigger', 200, 300, 1.2),
       codeNode(
         'Parse Approval Command',
         `
@@ -863,16 +853,7 @@ export function buildDraftOnlyEmailAssistant(spec: AutomationSpec): any {
   const cfg = getN8nConfig();
   return {
     nodes: [
-      {
-        parameters: {
-          filters: {}
-        },
-        id: 'gmail_trigger',
-        name: 'Gmail Trigger',
-        type: 'n8n-nodes-base.gmailTrigger',
-        typeVersion: 1,
-        position: [200, 300]
-      },
+      gmailTriggerNode('Gmail Trigger', 200, 300, 1),
       codeNode(
         'Normalize Email',
         `

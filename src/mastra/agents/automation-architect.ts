@@ -5,9 +5,6 @@ import {
   n8nHealthTool,
   n8nListWorkflowsTool,
   n8nGetWorkflowTool,
-  n8nUpdateWorkflowTool,
-  n8nActivateWorkflowTool,
-  n8nDeactivateWorkflowTool,
 } from '../tools/n8n/n8n-tools.js';
 import { requestApprovalTool } from '../tools/system/request-approval.js';
 import { riskScoringTool } from '../tools/architect/risk-scoring.js';
@@ -15,6 +12,10 @@ import { skillsSearchTool } from '../tools/architect/skills-search.js';
 import { syncPatternsTool, matchPatternTool } from '../tools/architect/pattern-rag.js';
 import { composeWorkflowTool } from '../tools/architect/composer.js';
 import { deployAutomationTool } from '../tools/architect/deploy.js';
+import { activateAutomationTool } from '../tools/architect/activate.js';
+import { runtimeCheckTool } from '../tools/architect/runtime-check.js';
+import { resolveCredentialsTool } from '../tools/architect/credentials/credential-tools.js';
+import { validateWorkflowTool } from '../tools/architect/validation/validation-tool.js';
 import { loadPrompt } from '../lib/prompt-loader.js';
 
 export const automationArchitect = new Agent({
@@ -32,9 +33,6 @@ export const automationArchitect = new Agent({
     n8nHealthTool,
     n8nListWorkflowsTool,
     n8nGetWorkflowTool,
-    n8nUpdateWorkflowTool,
-    n8nActivateWorkflowTool,
-    n8nDeactivateWorkflowTool,
     n8nTriggerWebhookTool,
     // Risk & knowledge
     riskScoringTool,
@@ -43,8 +41,13 @@ export const automationArchitect = new Agent({
     syncPatternsTool,
     matchPatternTool,
     composeWorkflowTool,
+    // Runtime validation
+    runtimeCheckTool,
+    resolveCredentialsTool,
+    validateWorkflowTool,
     // Deploy with guardrails
     deployAutomationTool,
+    activateAutomationTool,
     // Human approval gate
     requestApprovalTool,
   },

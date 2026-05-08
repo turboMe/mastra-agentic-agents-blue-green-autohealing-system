@@ -5,6 +5,7 @@ import {
   codeNode,
   agentForgePostNode,
   telegramSendNode,
+  telegramTriggerNode,
   ollamaChatNode,
   settings,
   getN8nConfig
@@ -152,17 +153,7 @@ export function buildTelegramMemorySearchOllamaAnswer(spec: AutomationSpec): any
   const cfg = getN8nConfig();
   return {
     nodes: [
-      {
-        parameters: {
-          updates: ['message'],
-          additionalFields: {}
-        },
-        id: 'telegram_trigger',
-        name: 'Telegram Trigger',
-        type: 'n8n-nodes-base.telegramTrigger',
-        typeVersion: 1.2,
-        position: [200, 300]
-      },
+      telegramTriggerNode('Telegram Trigger', 200, 300, 1.2),
       codeNode(
         'Parse Ask Command',
         `
@@ -769,7 +760,7 @@ return [{
 export function buildTelegramToOllamaReply(spec: AutomationSpec): any {
   return {
     nodes: [
-      { parameters: { updates: ['message'] }, id: 'telegram_trigger', name: 'Telegram Trigger', type: 'n8n-nodes-base.telegramTrigger', typeVersion: 1, position: [100, 300] },
+      telegramTriggerNode('Telegram Trigger', 100, 300, 1),
       ollamaChatNode('Ollama Reply', 400, 300, 'Be a helpful assistant.'),
       telegramSendNode('Telegram Send', 700, 300)
     ],
@@ -787,7 +778,7 @@ export function buildTelegramToOllamaReply(spec: AutomationSpec): any {
 export function buildTelegramModelRouter(spec: AutomationSpec): any {
   return {
     nodes: [
-      { parameters: { updates: ['message'] }, id: 'telegram_trigger', name: 'Telegram Trigger', type: 'n8n-nodes-base.telegramTrigger', typeVersion: 1, position: [100, 300] },
+      telegramTriggerNode('Telegram Trigger', 100, 300, 1),
       codeNode('Router', 'return [{ json: { model: $json.message.text.includes("/fast") ? "gemma" : "qwen" } }];', 350, 300),
       ollamaChatNode('Ollama Process', 600, 300, 'Task'),
       telegramSendNode('Telegram Reply', 850, 300)
@@ -808,7 +799,7 @@ export function buildTelegramAutomationRequestToAgentForge(spec: AutomationSpec)
   const cfg = getN8nConfig();
   return {
     nodes: [
-      { parameters: { updates: ['message'] }, id: 'telegram_trigger', name: 'Telegram Trigger', type: 'n8n-nodes-base.telegramTrigger', typeVersion: 1, position: [100, 300] },
+      telegramTriggerNode('Telegram Trigger', 100, 300, 1),
       agentForgePostNode('Request Automation', cfg.agentForgeTaskEndpoint, 400, 300),
       telegramSendNode('Confirm Request', 700, 300)
     ],
@@ -868,7 +859,7 @@ export function buildTelegramRememberToMemory(spec: AutomationSpec): any {
   const cfg = getN8nConfig();
   return {
     nodes: [
-      { parameters: { updates: ['message'] }, id: 'telegram_trigger', name: 'Telegram Trigger', type: 'n8n-nodes-base.telegramTrigger', typeVersion: 1, position: [100, 300] },
+      telegramTriggerNode('Telegram Trigger', 100, 300, 1),
       agentForgePostNode('Remember Info', cfg.agentForgeMemoryEndpoint, 400, 300),
       telegramSendNode('Confirm Saved', 700, 300)
     ],

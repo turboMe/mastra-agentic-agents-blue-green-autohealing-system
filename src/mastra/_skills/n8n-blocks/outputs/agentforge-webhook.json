@@ -20,7 +20,7 @@
     }
   ],
   "params": {
-    "agentForgeTaskEndpoint": { "description": "AgentForge task queue endpoint URL", "default": "http://localhost:3000/api/tasks", "required": false }
+    "agentForgeTaskEndpoint": { "description": "Mastra task queue endpoint URL", "default": "http://localhost:4111/api/tasks", "required": false }
   },
   "outputNode": "AgentForge API"
 }

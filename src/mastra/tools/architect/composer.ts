@@ -12,6 +12,11 @@ const inputItemSchema = z.object({
   type: z.enum(['string', 'number', 'boolean', 'url', 'secret', 'json']),
   required: z.boolean(),
   description: z.string(),
+  value: z.unknown().optional(),
+  defaultValue: z.unknown().optional(),
+  url: z.unknown().optional(),
+  source: z.enum(['user', 'env', 'runtime', 'derived', 'placeholder']).optional(),
+  aliases: z.array(z.string()).optional(),
 });
 
 const stepSchema = z.object({
@@ -125,6 +130,15 @@ export const composeWorkflowTool = createTool({
     patternId: z.string(),
     message: z.string(),
     error: z.string().optional(),
+    missingConfig: z
+      .array(
+        z.object({
+          key: z.string(),
+          description: z.string(),
+          required: z.boolean(),
+        }),
+      )
+      .optional(),
   }),
   execute: async (context) => {
     try {
@@ -139,17 +153,48 @@ export const composeWorkflowTool = createTool({
 
       // Walidacja wymaganych inputow: kazdy alias z pattern.requiredInputs
       // powinien pasowac do nazwy ktoregos ze spec.inputs[].name (case-insensitive,
-      // substring match — taka sama logika jak w jarvis findInput).
-      const specInputs = (context.spec.inputs ?? []) as Array<{ name: string }>;
+      // substring match — taka sama logika jak w jarvis findInput) I miec wartosc.
+      const specInputs = (context.spec.inputs ?? []) as Array<{
+        name: string;
+        value?: any;
+        defaultValue?: any;
+        url?: any;
+        aliases?: string[];
+      }>;
       const missing = pattern.requiredInputs.filter((alias) => {
         const a = alias.toLowerCase();
-        return !specInputs.some((i) => i.name.toLowerCase().includes(a));
+        const found = specInputs.find(
+          (i) => {
+            const name = i.name.toLowerCase();
+            return (
+              name.includes(a) ||
+              a.includes(name) ||
+              (i.aliases &&
+                i.aliases.some((al) => {
+                  const inputAlias = al.toLowerCase();
+                  return inputAlias.includes(a) || a.includes(inputAlias);
+                }))
+            );
+          },
+        );
+
+        if (!found) return true;
+
+        const val = found.value ?? found.defaultValue ?? found.url;
+        return val === undefined || val === null || val === '';
       });
+
       if (missing.length > 0) {
+        const missingConfig = missing.map((key) => ({
+          key,
+          description: `Required input value for pattern "${pattern.id}"`,
+          required: true,
+        }));
         return {
           success: false,
           patternId: context.patternId,
-          message: `Brak wymaganych inputow: ${missing.join(', ')}`,
+          message: `Brak wymaganych wartosci dla inputow: ${missing.join(', ')}`,
+          missingConfig,
         };
       }
 

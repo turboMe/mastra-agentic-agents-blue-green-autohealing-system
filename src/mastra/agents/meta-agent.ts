@@ -19,9 +19,6 @@ import {
   n8nHealthTool,
   n8nListWorkflowsTool,
   n8nGetWorkflowTool,
-  n8nUpdateWorkflowTool,
-  n8nActivateWorkflowTool,
-  n8nDeactivateWorkflowTool,
 } from '../tools/n8n/n8n-tools.js';
 import {
   gmailSearchTool,
@@ -135,9 +132,6 @@ export const metaAgent: Agent = new Agent({
         n8nHealthTool,
         n8nListWorkflowsTool,
         n8nGetWorkflowTool,
-        n8nUpdateWorkflowTool,
-        n8nActivateWorkflowTool,
-        n8nDeactivateWorkflowTool,
         // Gmail
         gmailSearchTool,
         gmailCreateDraftTool,

@@ -32,6 +32,10 @@ export type AutomationSpec = {
     type: 'string' | 'number' | 'boolean' | 'url' | 'secret' | 'json';
     required: boolean;
     description: string;
+    value?: unknown;
+    defaultValue?: unknown;
+    source?: 'user' | 'env' | 'runtime' | 'derived' | 'placeholder';
+    aliases?: string[];
   }>;
   steps: Array<{
     id: string;

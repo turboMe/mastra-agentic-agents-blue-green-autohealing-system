@@ -1,11 +1,13 @@
 import { AutomationSpec } from '../types.js';
 import { getInputString, codeNode, telegramSendNode, settings } from './helpers.js';
+import { getRuntimeTopology } from '../../../config/runtime-topology.js';
 
 export function buildHttpHealthMonitorToTelegram(spec: AutomationSpec): any {
+  const defaultHealthUrl = getRuntimeTopology().mastraApiUrlForN8n;
   const url = getInputString(
     spec,
     ['url', 'endpoint', 'health'],
-    'http://localhost:3000'
+    defaultHealthUrl
   );
 
   const expectedText = getInputString(

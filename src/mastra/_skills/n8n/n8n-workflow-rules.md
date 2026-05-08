@@ -73,23 +73,25 @@ IF nodes have TWO outputs:
 n8n uses `={{ }}` for expressions:
 - `={{ $json.fieldName }}` — access current item field
 - `={{ $('Node Name').item.json.field }}` — access another node's output
-- `={{ $vars.variableName }}` — access environment variables
 - `={{ $input.all() }}` — all items from previous node
 - `={{ $now.toISO() }}` — current timestamp
 
-## 6. Runtime Values (AgentForge Environment)
+## 6. Runtime Values (Mastra Environment)
 
 **NIE używaj `$vars.*`** — n8n Community Edition nie obsługuje zmiennych globalnych ($vars to funkcja Enterprise).
 
 Wartości środowiskowe są **wstrzykiwane automatycznie** przy generowaniu workflow przez system:
 - `telegramChatId` — z `N8N_TELEGRAM_CHAT_ID` w .env
-- `ollamaBaseUrl` — z `OLLAMA_BASE_URL` (domyślnie `http://localhost:11434`)
+- `ollamaBaseUrl` — z `OLLAMA_BASE_URL_FOR_N8N` albo `OLLAMA_BASE_URL` (domyślnie `http://localhost:11434`)
 - `defaultLocalModel` — z `OLLAMA_DEFAULT_MODEL` (domyślnie `gemma4:26b`)
 - `reasoningLocalModel` — z `OLLAMA_REASONING_MODEL`
-- `agentForgeTaskEndpoint` — z `AGENTFORGE_TASK_ENDPOINT` lub `DASHBOARD_URL/api/tasks`
-- `agentForgeMemoryEndpoint` — z `AGENTFORGE_MEMORY_ENDPOINT` lub `DASHBOARD_URL/api/shared-memory`
-- `agentForgeCrmEndpoint` — z `AGENTFORGE_CRM_ENDPOINT` lub `DASHBOARD_URL/api/crm`
-- `geminiGatewayEndpoint` — z `GEMINI_GATEWAY_ENDPOINT` lub `DASHBOARD_URL/api/agents/gemini`
+- `agentForgeTaskEndpoint` — z `AGENTFORGE_TASK_ENDPOINT` albo `MASTRA_API_URL_FOR_N8N/api/tasks`
+- `agentForgeMemoryEndpoint` — z `AGENTFORGE_MEMORY_ENDPOINT` albo `MASTRA_API_URL_FOR_N8N/api/shared-memory`
+- `agentForgeCrmEndpoint` — z `AGENTFORGE_CRM_ENDPOINT` albo `MASTRA_API_URL_FOR_N8N/api/crm`
+- `agentForgeApprovalEndpoint` — z `AGENTFORGE_APPROVAL_ENDPOINT` albo `MASTRA_API_URL_FOR_N8N/api/approvals`
+- `geminiGatewayEndpoint` — z `GEMINI_GATEWAY_ENDPOINT` albo `MASTRA_API_URL_FOR_N8N/api/agents/gemini`
+
+Nie używaj `DASHBOARD_URL` ani `localhost:3000` dla nowych workflowów Mastry.
 
 W wygenerowanych workflow te wartości są hardkodowane jako literały (nie wyrażenia).
 
