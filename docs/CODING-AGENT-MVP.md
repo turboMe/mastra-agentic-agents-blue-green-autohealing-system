@@ -34,6 +34,12 @@ approval tylko lokalne komendy diagnostyczne i weryfikacyjne z allowlisty, np.
 `rg`, `git diff`, `npx tsc --noEmit`, `npm run build`. Komendy sieciowe i
 destrukcyjne wymagaja approval.
 
+`CODING_SANDBOX_ISOLATION` pozwala wlaczyc natywna izolacje `bwrap` albo
+`seatbelt`. Domyslnie MVP uzywa `none`, bo lokalne `bwrap --unshare-net` w tym
+srodowisku blokuje nawet `npx tsc --noEmit` bledem `Failed RTM_NEWADDR:
+Operation not permitted`. To jest swiadomy kompromis MVP: approval i allowlista
+komend sa aktywne, a twardsza izolacja OS wraca w etapie supervisora/blue-green.
+
 LSP jest wlaczony przez `lsp: true` i ma zainstalowane runtime dependencies:
 
 - `typescript-language-server`

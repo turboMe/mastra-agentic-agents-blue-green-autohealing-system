@@ -29,7 +29,7 @@ Aktualny postep:
 - [x] Potwierdzono, ze zainstalowane `@mastra/core 1.31.0` wspiera `AgentConfig.workspace`.
 - [x] Potwierdzono, ze workspace tools wspieraja `requireApproval` i `requireReadBeforeWrite`.
 - [x] Etap 0: spike techniczny workspace + minimalny `codingAgent` kodowo.
-- [ ] Etap 1: bezpieczny lokalny MVP `codingAgent` (kodowo: artifact + ledger dodane; pending manual Studio smoke).
+- [x] Etap 1: bezpieczny lokalny MVP `codingAgent` (artifact + ledger + rollback potwierdzone w smoke tescie).
 - [ ] Etap 2: realny artifact + change ledger + rollback.
 - [ ] Etap 3: `codeReviewAgent` i `repo-maintenance` workflow.
 - [ ] Etap 4: staging/blue-green runtime dla self-healing, z restart-safe resume.
@@ -62,7 +62,8 @@ Status Etapu 0:
 - [x] `npx tsc --noEmit` przechodzi.
 - [x] `npm run build` przechodzi.
 - [x] Import z `.mastra/output/mastra.mjs` potwierdza `codingAgent`.
-- [ ] Manualny smoke test w Mastra Studio: `find_files`, `search_content`, `view`, `execute_command`.
+- [x] Manualny smoke test w Mastra Studio: `find_files`/`view`, approval rejection, artifact + ledger + `reject_all`.
+- [ ] Po restarcie Mastry powtorzyc Studio smoke dla `execute_command npx tsc --noEmit` na nowym default `CODING_SANDBOX_ISOLATION=none`.
 
 Status Etapu 1:
 
@@ -72,11 +73,14 @@ Status Etapu 1:
 - [x] Rollback chroni zmiany usera przez porownanie aktualnego hash z `afterHash`.
 - [x] Podpieto narzedzia artifact/ledger do `codingAgent`.
 - [x] Wlaczono `lsp_inspect` w `codeWorkspace`.
+- [x] Ustawiono `CODING_SANDBOX_ISOLATION` dla workspace; lokalny default to `none`, bo `bwrap --unshare-net` blokowal `npx tsc --noEmit` w smoke tescie.
 - [x] Dodano runtime dependencies LSP: `typescript-language-server`, `vscode-jsonrpc`, `vscode-languageserver-protocol`.
 - [x] Dodano `.nvmrc` i wrapper `scripts/with-node.sh`, zeby skrypty Mastry uzywaly Node `v22.20.0`.
 - [x] Dodano indeksy Mongo dla `code_task_artifacts`, `code_change_snapshots`, `maintenance_tasks`.
 - [x] Dodano dokumentacje zmian: `docs/CODING-AGENT-MVP.md`.
-- [ ] Manualny smoke test w Mastra Studio: artifact + ledger + `reject_all(taskId)`.
+- [x] Manualny smoke test w Mastra Studio: artifact + ledger + `reject_all(taskId)`.
+- [x] Logi smoke testu potwierdzily: 2 artefakty, 1 snapshot rollback, `reject_all` bez konfliktow, proba `npm install lodash` odrzucona przez approval.
+- [x] Naprawiono blad smoke testu: lokalny `bwrap --unshare-net` blokowal `execute_command` dla `npx tsc --noEmit`; domyslny lokalny backend izolacji to teraz `none`.
 
 Kluczowa zasada dla self-healing:
 
@@ -297,6 +301,18 @@ Przechowywanie:
 - kolekcja Mongo `code_task_artifacts`,
 - opcjonalnie kopia plikowa w `.mastra/code-runs/<taskId>/artifact.json`,
 - finalny raport agenta powinien linkowac/odnosic sie do tego `taskId`.
+
+Docelowo artefakt powinien byc kompatybilny z grafem zadan `codingMasterAgent`.
+Nie trzeba tego w pelni implementowac w MVP, ale schemat i indeksy powinny byc
+latwe do rozszerzenia o:
+
+- `rootTaskId` i `parentTaskId`,
+- `coordinatorAgentId` i `assignedAgentId`,
+- role workera, np. `frontend`, `backend`, `tester`, `reviewer`, `docs`, `repo-maintenance`,
+- `modelAlias` i opcjonalny `modelOverride`,
+- `workspaceId`, `repoId`, `repoSlot`,
+- zaleznosci miedzy subtasks,
+- liste dokumentow zaktualizowanych w ramach zadania.
 
 ## 3. Pliki do dodania
 
@@ -1592,6 +1608,62 @@ patch passive -> switch -> observe 5 min -> promote -> sync old slot -> patch pa
 
 To jest wlasciwy kierunek dla autonomicznej naprawy, bo agent zawsze pracuje na nieaktywnym slocie, a aktywny slot pozostaje chroniony przez health-check, rollback i promocje.
 
+### 20.8 Docelowa hierarchia coding master
+
+Strategiczny kierunek:
+
+```txt
+metaAgent
+  -> codingMasterAgent
+      -> codingWorkerAgent(frontend/backend/tester/reviewer/docs/maintenance)
+          -> codingSubAgent(lokalny tani model albo wybrany model chmurowy)
+```
+
+Znaczenie warstw:
+
+- `metaAgent` rozumie intencje usera i decyduje, ze to zadanie kodowe.
+- `codingMasterAgent` dostaje glowny cel operacji, rozbija go na mniejsze zadania, dobiera workerow, pilnuje kolejnosci, konfliktow, artifactow, approvali i finalnej weryfikacji.
+- `codingWorkerAgent` to rozwiniecie obecnego `codingAgent`: pracuje w przydzielonym repo/scope, moze czytac, edytowac, testowac i prosic o pomoc subagentow.
+- `codingSubAgent` wykonuje male, dobrze ograniczone zadania: research w jednym katalogu, analiza bledu, przygotowanie wariantu testu, review wycinka diffu.
+
+Decyzje na teraz:
+
+- Obecny `codingAgent` zostaje MVP hybryda supervisora i workera. Nie rozdzielac go jeszcze fizycznie, ale projektowac artifacty, memory i model config tak, zeby pozniej mozna bylo wydzielic `codingMasterAgent` bez migracji calego systemu.
+- Routing modeli ma byc konfiguracyjny. Domyslnie master uzywa mocniejszego modelu, workerzy moga uzywac modeli lokalnych/tanszych, a `modelOverride` pozwala recznie wlaczyc mocniejsze modele dla wszystkich warstw.
+- Subagenci nie dostaja pelnego repo bez powodu. Dostaja scope, zadanie, limit narzedzi i zapis wyniku do parent artifact.
+- Konflikty i scalanie wynikow workerow sa odpowiedzialnoscia `codingMasterAgent`, nie pojedynczego workera.
+- Dla self-modifying flow obowiazuje dual repo/blue-green. Autonomiczne zmiany w kodzie agenta nie powinny isc bezposrednio w aktywny runtime.
+
+### 20.9 Tworzenie nowych projektow przez coding master
+
+`codingMasterAgent` powinien docelowo umiec zakladac nowe repozytoria/projekty, ale tylko w jawnie dozwolonych lokalizacjach.
+
+Proponowane ENV:
+
+```txt
+CODING_PROJECTS_ROOT=/projekty/Jarvis-Projects
+CODING_ALLOW_PROJECT_CREATE=false
+```
+
+Zasady:
+
+- tworzenie projektu wymaga osobnego approval, dopoki nie ma zaufanej polityki automatyzacji,
+- agent nie moze tworzyc projektow poza `CODING_PROJECTS_ROOT`,
+- scaffold powinien inicjalizowac `README`, podstawowe docs, `.gitignore`, konfiguracje runtime i pierwszy artifact zadania,
+- jezeli projekt jest tworzony z szablonu, szablon musi byc jawnie wybrany albo pochodzic z allowlisty,
+- pierwszy commit/projektowy baseline robi deterministyczne narzedzie supervisora, nie swobodna komenda LLM,
+- dokumentacja projektu jest czescia definition of done, nie dodatkiem po fakcie.
+
+### 20.10 Dokumentacja jako wymagany artefakt
+
+Kazdy istotny task codingowy powinien zostawiac trzy warstwy dokumentacji:
+
+- task artifact: co agent zrobil, jakie pliki czytal/zmienial, jakie komendy uruchomil i jakie byly wyniki,
+- dokumentacja techniczna w repo, jezeli zmiana dotyka zachowania, konfiguracji albo procesu,
+- aktualizacja planu/decision logu, jezeli decyzja zmienia architekture albo kolejny etap prac.
+
+To jest szczegolnie wazne dla ukladu z masterem i workerami, bo bez jawnych artifactow trudno bedzie debugowac, ktory agent podjal dana decyzje i dlaczego.
+
 ## 21. Test manualny po wdrozeniu
 
 Po restarcie Mastry:
@@ -1666,6 +1738,11 @@ Rekomendowane decyzje:
 - Self-healing przygotowuje poprawki, ale nie deployuje bez czlowieka.
 - GitHub MCP dopiero po lokalnym MVP.
 - Self-modification dziala przez staging worktree i supervisor, nie przez edycje live runtime w trakcie pracy.
+- Docelowa hierarchia to `metaAgent -> codingMasterAgent -> codingWorkerAgent -> codingSubAgent`.
+- Obecny `codingAgent` jest MVP workera/supervisora; nie rozbijac go jeszcze, ale artifacty i memory projektowac pod przyszly task graph.
+- Dla autonomicznej pracy nad samym soba preferowany jest dual repo/blue-green z deterministycznym supervisorem i auto-rollbackiem.
+- Tworzenie nowych repo przez `codingMasterAgent` ma byc mozliwe tylko pod jawnie ustawionym `CODING_PROJECTS_ROOT` i z approval.
+- Dokumentacja zmian jest wymagana czescia flow codingowego.
 
 ## 23. Zrodla
 

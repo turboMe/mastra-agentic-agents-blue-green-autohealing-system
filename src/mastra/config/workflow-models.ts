@@ -7,7 +7,7 @@
 
 export const modelPresets = {
   // Local / private / cheapest
-  localMarketing: 'openai/gpt-5.2-mini',
+  localMarketing: 'openai/gpt-5.3-mini',
   localReasoning: 'ollama/local/gemma4:26b',
   localPowerful: 'ollama/local/gemma4:26b',
   //localReasoning: 'ollama/local/qwen3-coder:30b',
@@ -18,12 +18,12 @@ export const modelPresets = {
   googleFlash: 'google/gemini-2.5-flash',
 
   // OpenAI
-  openaiPro: 'openai/gpt-5.2',
-  openaiMini: 'openai/gpt-5.2-mini',
+  openaiPro: 'openai/gpt-5.5',
+  openaiMini: 'openai/gpt-5.3-mini',
 
   // Anthropic
-  anthropicSonnet: 'anthropic/claude-sonnet-4-5',
-  anthropicHaiku: 'anthropic/claude-haiku-4-5',
+  anthropicSonnet: 'anthropic/claude-sonnet-4-6',
+  anthropicHaiku: 'anthropic/claude-haiku-4-6',
 } as const;
 
 export const workflowModels = {
@@ -56,11 +56,11 @@ export const workflowModels = {
   coding: {
     // Local-first for MVP. Switch default/review to cloud presets when stronger
     // coding models are connected.
-    default: modelPresets.localReasoning,
-    patch: modelPresets.localReasoning,
-    review: modelPresets.googlePro,
-    selfHealingPlanner: modelPresets.localReasoning,
-    selfHealingReview: modelPresets.googlePro,
-    jsonRepair: modelPresets.localMarketing,
+    default: modelPresets.googlePro,
+    patch: modelPresets.openaiMini,
+    review: modelPresets.googleFlash,
+    selfHealingPlanner: modelPresets.openaiMini,
+    selfHealingReview: modelPresets.googleFlash,
+    jsonRepair: modelPresets.openaiMini,
   },
 } as const;

@@ -1,6 +1,13 @@
 import { Workspace, LocalFilesystem, LocalSandbox, WORKSPACE_TOOLS } from '@mastra/core/workspace';
+import type { IsolationBackend } from '@mastra/core/workspace';
 
 export const AGENTIC_AGENTS_REPO = '/projekty/mastra-agentic-environment/agentic-agents';
+
+const CODE_SANDBOX_ISOLATION: IsolationBackend =
+  process.env.CODING_SANDBOX_ISOLATION === 'bwrap' ||
+  process.env.CODING_SANDBOX_ISOLATION === 'seatbelt'
+    ? process.env.CODING_SANDBOX_ISOLATION
+    : 'none';
 
 function normalizeCommand(command: string): string {
   return command.trim().replace(/\s+/g, ' ');
@@ -94,7 +101,7 @@ export const codeWorkspace = new Workspace({
 
   sandbox: new LocalSandbox({
     workingDirectory: AGENTIC_AGENTS_REPO,
-    isolation: 'bwrap',
+    isolation: CODE_SANDBOX_ISOLATION,
     nativeSandbox: {
       allowNetwork: false,
     },
