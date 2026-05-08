@@ -61,6 +61,15 @@ const codeTaskArtifactSchema = z.object({
   updatedAt: z.string(),
 });
 
+const compressedFileChangeSchema = z.object({
+  path: z.string(),
+  summary: z.string(),
+});
+
+const compressedArtifactSchema = codeTaskArtifactSchema.omit({ filesChanged: true }).extend({
+  filesChanged: z.array(compressedFileChangeSchema),
+});
+
 type CodeTaskArtifact = z.infer<typeof codeTaskArtifactSchema>;
 
 function nowIso(): string {
@@ -223,14 +232,14 @@ export const updateCodeTaskArtifactTool = createTool({
 
 export const getCodeTaskArtifactTool = createTool({
   id: 'coding.get_artifact',
-  description: 'Pobiera artifact zadania kodowego po taskId.',
+  description: 'Pobiera artifact zadania kodowego po taskId. Artefakt jest kompresowany (pomija hashe ledgerowe), zeby chronic okno kontekstu LLM.',
   inputSchema: z.object({
     taskId: z.string(),
   }),
   outputSchema: z.object({
     success: z.boolean(),
     taskId: z.string(),
-    artifact: codeTaskArtifactSchema.optional(),
+    artifact: compressedArtifactSchema.optional(),
     message: z.string(),
     error: z.string().optional(),
   }),
@@ -247,11 +256,20 @@ export const getCodeTaskArtifactTool = createTool({
         };
       }
 
+      const normalized = normalizeArtifact(artifact);
+      const compressedArtifact = {
+        ...normalized,
+        filesChanged: normalized.filesChanged.map((f) => ({
+          path: f.path,
+          summary: f.summary,
+        })),
+      };
+
       return {
         success: true,
         taskId: context.taskId,
-        artifact: normalizeArtifact(artifact),
-        message: `Artifact ${context.taskId} pobrany.`,
+        artifact: compressedArtifact,
+        message: `Artifact ${context.taskId} pobrany i skompresowany.`,
       };
     } catch (error) {
       return {

@@ -93,7 +93,7 @@ Status Etapu 2:
 
 Nastepny naturalny krok:
 
-Wdrożyć **Dekompozycję Stanu (Ledger vs Artifact)**. Ponieważ Inline Verification jest już dodane do `tracked_write`, możemy teraz zająć się ulepszeniem przepływu wiedzy do agenta. Należy zmodyfikować narzędzie `coding.get_artifact`, aby kompresowało zawartość zwracanego JSON-a w locie (np. redukowało historię `filesChanged` do samej listy plików bez surowych hashy i dużych komentarzy, generując tylko lekkie streszczenie). Zmniejszy to użycie okna kontekstu i zabezpieczy przed halucynacjami przy większych zadaniach. Alternatywnie, możemy dodać testy narzędziowe dla nowo powstałych funkcji.
+Rozpocząć przygotowania do wdrożenia **Staging Worktree zamiast Modyfikacji Na Żywo**. Jest to kluczowa, docelowa innowacja w architekturze "Self-Healing". Wykorzystamy `git worktree add`, dzięki czemu operacje (nawet wadliwe) nie zepsują repozytorium uruchomionej Mastry. Alternatywnie (jako domknięcie Etapu 2), dodanie automatycznego przypisywania wyników komend testowych bezpośrednio do `testResult` w obiekcie `artifact`, by zmniejszyć poleganie na ręcznym wpisywaniu ich przez agenta.
 
 ---
 
@@ -102,7 +102,7 @@ Wdrożyć **Dekompozycję Stanu (Ledger vs Artifact)**. Ponieważ Inline Verific
 Aby agent był jeszcze bardziej autonomiczny i stabilny w trudnych refaktorach, docelowo wdrażamy następujące ulepszenia:
 
 1. [x] **Inline Verification wewnątrz Tracked Write:** Narzędzie `write_file_tracked` nie tylko robi snapshot i zapisuje plik, ale asynchronicznie odpytuje kompilator/linter. Wynik natychmiast wraca w `outputSchema` (np. *"Plik zapisany pomyślnie. UWAGA: wprowadzono błąd składni na linii X"*). To diametralnie przyspiesza zjawisko self-correction.
-2. **Dekompozycja Stanu (Ledger vs Artifact):** Utrzymanie pełnego artefaktu w MongoDB jest świetne, ale agent nie powinien dostawać surowego gigantycznego JSON-a w operacji `Get Artifact`. Zbudujemy kompresję Diffów w locie, aby agent dostawał tylko streszczenie zamiast gigantycznych listingów, oszczędzając okno kontekstu i chroniąc LLM przed halucynacjami z hashami.
+2. [x] **Dekompozycja Stanu (Ledger vs Artifact):** Utrzymanie pełnego artefaktu w MongoDB jest świetne, ale agent nie powinien dostawać surowego gigantycznego JSON-a w operacji `Get Artifact`. Zbudujemy kompresję Diffów w locie, aby agent dostawał tylko streszczenie zamiast gigantycznych listingów, oszczędzając okno kontekstu i chroniąc LLM przed halucynacjami z hashami.
 3. **Staging Worktree zamiast Modyfikacji Na Żywo:** Zgodnie z koncepcjami "Self-Healing", agent kodujący (zwłaszcza naprawiający Mastra i siebie samego) musi działać w izolowanym środowisku. Będziemy przydzielać mu klon kodu przez `git worktree add`. Rollback i testowanie odbywają się w bezpiecznym klonie, a meta-agent po pozytywnym teście odpala `cherry-pick` i wdraża to na środowisko live.
 
 ---
