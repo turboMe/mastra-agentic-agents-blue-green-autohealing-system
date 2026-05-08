@@ -32,7 +32,7 @@ Aktualny postep:
 - [ ] Etap 1: bezpieczny lokalny MVP `codingAgent` (kodowo: artifact + ledger dodane; pending manual Studio smoke).
 - [ ] Etap 2: realny artifact + change ledger + rollback.
 - [ ] Etap 3: `codeReviewAgent` i `repo-maintenance` workflow.
-- [ ] Etap 4: staging/worktree mode dla self-healing, z restart-safe resume.
+- [ ] Etap 4: staging/blue-green runtime dla self-healing, z restart-safe resume.
 - [ ] Etap 5: self-healing z logow/testow, bez auto-deploy w trybie manualnym.
 - [ ] Etap 6: subagenci codingowi, routing modeli i tryb offline fallback.
 - [ ] Etap 7: GitHub/PR/CI integracja.
@@ -73,6 +73,7 @@ Status Etapu 1:
 - [x] Podpieto narzedzia artifact/ledger do `codingAgent`.
 - [x] Wlaczono `lsp_inspect` w `codeWorkspace`.
 - [x] Dodano runtime dependencies LSP: `typescript-language-server`, `vscode-jsonrpc`, `vscode-languageserver-protocol`.
+- [x] Dodano `.nvmrc` i wrapper `scripts/with-node.sh`, zeby skrypty Mastry uzywaly Node `v22.20.0`.
 - [x] Dodano indeksy Mongo dla `code_task_artifacts`, `code_change_snapshots`, `maintenance_tasks`.
 - [x] Dodano dokumentacje zmian: `docs/CODING-AGENT-MVP.md`.
 - [ ] Manualny smoke test w Mastra Studio: artifact + ledger + `reject_all(taskId)`.

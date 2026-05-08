@@ -13,6 +13,10 @@ ledger zmian i podstawowy rollback.
 /projekty/mastra-agentic-environment/agentic-agents
 ```
 
+Repo wymaga Node `v22.20.0` przez `.nvmrc`. Skrypty `dev`, `build`, `start`,
+`init-db`, `cron` i checki uruchamiaja komendy przez `scripts/with-node.sh`,
+ktory robi `nvm use` przed startem Mastry albo narzedzi `tsx`.
+
 Agent ma agent-specific `codeWorkspace`, a nie globalny terminal meta-agenta.
 Workspace udostepnia:
 

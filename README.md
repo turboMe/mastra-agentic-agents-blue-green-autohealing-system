@@ -4,6 +4,13 @@ Welcome to your new [Mastra](https://mastra.ai/) project! We're excited to see w
 
 ## Getting Started
 
+Use the repo Node version:
+
+```shell
+nvm use
+npm run node:check
+```
+
 Start the development server:
 
 ```shell
