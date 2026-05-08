@@ -385,25 +385,73 @@ const discoverLeadsStep = createStep({
         console.log(`[producer-hunt:${taskId}] czekam 10s na indeksowanie...`);
         await new Promise(resolve => setTimeout(resolve, 10000));
 
-        const discoveryQuestion = `Na podstawie załadowanych źródeł, sporządź listę do ${count} lokalnych producentów żywności z województwa ${region}.
-        Specjalizacja: ${productType ?? 'ogólna (nabiał, mięso, warzywa, sery, przetwory)'}.
+        const acceptableTypesText = acceptableSupplierTypes.join(', ');
+        const discoveryQuestion = `Na podstawie załadowanych źródeł, sporządź listę do ${count} firm z województwa ${region},
+które mogą dostarczać żywność do restauracji w modelu B2B (cel: GastroBridge).
+Specjalizacja: ${productType ?? 'ogólna (nabiał, mięso, warzywa, sery, przetwory, mrożonki, suchy magazyn)'}.
 
-        Dla każdego producenta wyciągnij:
-        1. company: Pełna nazwa firmy
-        2. email: Adres e-mail lub null (szukaj w stopkach, kontaktach i oficjalnych źródłach)
-        3. website: Oficjalna strona WWW lub null
-        4. city: Miasto/miejscowość
-        5. productCategory: Konkretna kategoria produktu (np. pierogi, nabiał, kawa, przetwory)
-        6. sourceUrls: 1-3 źródła, z których wynika, że to producent
-        7. emailSource: źródło emaila, jeśli jest znane
-        8. isProducer: true tylko jeśli źródło wskazuje realne wytwarzanie/produkcję
-        9. confidence: liczba 0-1 określająca pewność dopasowania
-        10. reason: Krótki opis (1 zdanie) co konkretnie produkują i gdzie.
+Akceptowane typy dostawcy: ${acceptableTypesText}.
+Definicje:
+- producer        – producent / wytwórca, gospodarstwo, manufaktura, RHD
+- manufacturer    – większy zakład przetwórstwa
+- cooperative     – kooperatywa / spółdzielnia
+- producer_group  – grupa producencka, zrzeszenie hodowców
+- wholesaler      – hurtownia spożywcza, hurtownia HoReCa, cash & carry
+- distributor     – dystrybutor regionalny / krajowy do gastronomii (foodservice)
+- importer        – importer specjalistyczny (np. produkty włoskie, hiszpańskie, azjatyckie)
+- farm_aggregator – platforma agregująca rolników / marketplace producentów
+- unknown         – jeśli nie potrafisz dopasować — to też zwróć, oznacz "unknown"
 
-        Nie wpisuj "Brak danych" ani "brak" - używaj null.
-        Zwróć WYŁĄCZNIE JSON w formacie:
-        { "leads": [{ "company": "...", "email": null, "website": null, "city": "...", "productCategory": "...", "sourceUrls": ["..."], "emailSource": null, "isProducer": true, "confidence": 0.8, "reason": "..." }] }
-        Pomiń portale ogólne, bazy firm i sklepy pośredniczące. Skup się na REALNYCH wytwórcach.`;
+Pomiń:
+- portale ogłoszeniowe, katalogi firm (panoramafirm, gowork, pkt.pl, oferteo, aleo);
+- duże sieci handlowe B2C (Biedronka, Lidl, Auchan, Tesco, Kaufland, Carrefour);
+- restauracje, hotele, pizzerie, bary jako podmiot docelowy (to są nasi klienci, nie dostawcy);
+- gigantyczne sieci hurtowe (Selgros, Makro) — można je zostawić dla kontekstu, ale ICP to
+  ich potencjalni dostawcy/poddostawcy.
+
+Dla każdej firmy zwróć:
+1.  company: Pełna nazwa firmy
+2.  supplierType: jeden z typów wyżej
+3.  directToHoreca: "yes" | "limited" | "no" | "unknown" — czy sprzedają bezpośrednio do restauracji/hoteli/cateringu
+4.  brandsOrPortfolio: lista 2-5 marek lub kategorii w portfolio, jeśli wynika ze źródeł
+5.  servesRegions: lista województw / miast zasięgu dostaw, jeśli widać; w razie wątpliwości jedno województwo: ["${region}"]
+6.  email: adres e-mail lub null (szukaj w stopkach i podstronach kontaktu)
+7.  website: oficjalna strona WWW lub null
+8.  city: miasto / miejscowość siedziby
+9.  productCategory: konkretna kategoria (np. nabiał, mięso, warzywa, mrożonki, oliwa)
+10. sourceUrls: 1-3 źródła potwierdzające typ i ofertę
+11. emailSource: skąd pochodzi e-mail, jeśli jest
+12. isProducer: true tylko gdy źródło wskazuje realne wytwarzanie. Dla hurtowni/dystrybutorów/importerów — false.
+13. confidence: liczba 0-1 — pewność, że firma istnieje i pasuje do typu
+14. reason: 1 zdanie — co konkretnie oferują i komu sprzedają
+
+Zasady:
+- Nie wpisuj "Brak danych" ani "brak" — używaj null.
+- Jeśli firma jest restauracją/hotelem (końcowym konsumentem), nie umieszczaj jej na liście.
+- Jeśli widzisz hurtownię HoReCa lub dystrybutora foodservice — DOPISZ JĄ. To są wartościowi
+  partnerzy GastroBridge, nie filtruj ich jako "pośredników".
+- Jeśli nie potrafisz określić typu — supplierType: "unknown" (lead pójdzie do research_needed,
+  ale go nie odrzucamy automatycznie).
+
+Zwróć WYŁĄCZNIE JSON w formacie:
+{ "leads": [
+  {
+    "company": "...",
+    "supplierType": "wholesaler",
+    "directToHoreca": "yes",
+    "brandsOrPortfolio": ["..."],
+    "servesRegions": ["..."],
+    "email": null,
+    "website": null,
+    "city": "...",
+    "productCategory": "...",
+    "sourceUrls": ["..."],
+    "emailSource": null,
+    "isProducer": false,
+    "confidence": 0.8,
+    "reason": "..."
+  }
+] }`;
 
         console.log(`[producer-hunt:${taskId}] odpytuję NotebookLM o listę leadów...`);
         const queryRes = await knowledgeQueryTool.execute!({
@@ -432,14 +480,49 @@ const discoverLeadsStep = createStep({
     if (leads.length < minAcceptable) {
       console.log(`[producer-hunt:${taskId}] NotebookLM zwrócił mniej niż target (${leads.length}/${count}), używam fallbacku przez snippets...`);
       const searchContext = uniqueResults.slice(0, 20).map(r => `[${r.title}](${r.url}): ${r.content.slice(0, 400)}`).join('\n\n');
-      const fallbackPrompt = `Na podstawie snippetów, wybierz ${count} producentów żywności z ${region}.
+      const fallbackTypesText = acceptableSupplierTypes.join(', ');
+      const fallbackPrompt = `Na podstawie poniższych snippetów wybierz do ${count} firm z ${region},
+które mogą dostarczać żywność do restauracji w modelu B2B (cel: GastroBridge).
 
-Pamiętaj, aby pominąć katalogi firm i portale ogólne. Nie wpisuj "Brak danych" - używaj null.
+Akceptowane typy dostawcy: ${fallbackTypesText}.
+Klasyfikuj każdą firmę do jednego z typów:
+- producer / manufacturer (wytwórca / zakład przetwórstwa),
+- cooperative / producer_group / farm_aggregator (kooperatywa / grupa / platforma),
+- wholesaler (hurtownia HoReCa, cash & carry),
+- distributor (dystrybutor foodservice),
+- importer (importer specjalistyczny),
+- unknown (jeśli nie potrafisz dopasować).
 
+Pomiń:
+- katalogi firm i portale ogólne (panoramafirm, gowork, pkt.pl, aleo, oferteo);
+- sieci handlowe B2C (Biedronka, Lidl, Auchan, Tesco, Kaufland, Carrefour);
+- restauracje, hotele, pizzerie, bary mleczne (to nasi klienci, nie dostawcy).
+
+Nie odrzucaj hurtowni i dystrybutorów — to wartościowi partnerzy GastroBridge.
+Nie wpisuj "Brak danych" — używaj null.
+
+Snippety:
 ${searchContext}
 
-Zwróć JSON:
-{ "leads": [{ "company": "...", "email": null, "website": null, "city": "...", "productCategory": "...", "sourceUrls": ["..."], "emailSource": null, "isProducer": true, "confidence": 0.8, "reason": "..." }] }`;
+Zwróć WYŁĄCZNIE JSON:
+{ "leads": [
+  {
+    "company": "...",
+    "supplierType": "wholesaler",
+    "directToHoreca": "yes",
+    "brandsOrPortfolio": ["..."],
+    "servesRegions": ["..."],
+    "email": null,
+    "website": null,
+    "city": "...",
+    "productCategory": "...",
+    "sourceUrls": ["..."],
+    "emailSource": null,
+    "isProducer": false,
+    "confidence": 0.7,
+    "reason": "..."
+  }
+] }`;
       
       const res = await generateJsonWithFallback({
         taskId,

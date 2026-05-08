@@ -5,6 +5,8 @@ Ten dokument zawiera zestawienie ewolucji workflow `producer-hunt` po migracji z
 > Powiązane: [producer-hunt-supplier-types.md](producer-hunt-supplier-types.md) — od PR A workflow nie szuka już tylko producentów, ale też hurtowni/dystrybutorów/grup producenckich/importerów. Klasyfikacja, scoring i segment CRM opisane są w tamtym dokumencie. Plan rozszerzenia: [ideas/producer-hunt-fix-v3.md](../ideas/producer-hunt-fix-v3.md).
 >
 > Faza discovery (multi-profile zapytania Tavily, multi-round, budżet, filtrowanie URL) — [producer-hunt-discovery.md](producer-hunt-discovery.md) (PR B).
+>
+> Prompty discovery (NotebookLM + fallback po snippetach z klasyfikacją supplierType) — [producer-hunt-discovery-prompts.md](producer-hunt-discovery-prompts.md) (PR C).
 
 ## 0. Tożsamość i Instrukcje Bazowe (System Prompt)
 
