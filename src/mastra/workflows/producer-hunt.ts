@@ -62,6 +62,13 @@ import {
   TAVILY_QUERY_BUDGET,
   MAX_QUERIES_PER_PROFILE_ROUND_1,
 } from './producer-hunt/discovery-queries.js';
+import {
+  defaultHookForType,
+  additionalSourcePathsForType,
+  additionalSearchQueryForType,
+  researchQuestionFor,
+  finalEnrichmentPromptFor,
+} from './producer-hunt/enrichment-prompts.js';
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 const supplierTypeSchema = z.enum([
@@ -735,7 +742,7 @@ const enrichLeadsStep = createStep({
     try {
       const marketQuery = await knowledgeQueryTool.execute!({
         notebook: 'rynek',
-        question: `Jakie są najważniejsze trendy i wyzwania dla lokalnych producentów żywności w regionie ${region}?`,
+        question: `Jakie są najważniejsze trendy i wyzwania dla dostawców żywności (producentów, hurtowni, dystrybutorów) obsługujących HoReCa w regionie ${region}?`,
       }, {} as any);
       if (marketQuery && 'success' in marketQuery && marketQuery.success) {
         marketContext = (marketQuery as any).answer ?? '';
@@ -747,7 +754,8 @@ const enrichLeadsStep = createStep({
     const db = await getDb();
 
     for (const lead of validLeads) {
-      console.log(`[producer-hunt:${taskId}] enriching lead: ${lead.company}...`);
+      const declaredOrInferredType: SupplierType = (lead.supplierType as SupplierType | undefined) ?? 'unknown';
+      console.log(`[producer-hunt:${taskId}] enriching lead: ${lead.company} (type=${declaredOrInferredType})...`);
       let notebookId = '';
       try {
         // 1. Szukanie linków i głębszego kontekstu przez Tavily
@@ -757,16 +765,30 @@ const enrichLeadsStep = createStep({
         }, {} as any);
 
         const isSuccess = linksResult && 'success' in linksResult && linksResult.success;
-        const leadContext = isSuccess ? (linksResult as any).searchContext : '';
+        let leadContext = isSuccess ? (linksResult as any).searchContext : '';
         const website = normalizeOptionalText(isSuccess ? ((linksResult as any).website ?? lead.website) : lead.website);
         const researchWebsite = website
           ? (website.startsWith('http') ? website : `https://${website}`)
           : null;
 
+        // 1b. Dodatkowe Tavily query per typ (hurtownia/dystrybutor/importer/kooperatywa)
+        const extraSearchQuery = additionalSearchQueryForType(declaredOrInferredType, lead.company);
+        if (extraSearchQuery) {
+          try {
+            const extraRes = await searchWebTool.execute!({ query: extraSearchQuery, maxResults: 5 }, {} as any);
+            if (extraRes && 'success' in extraRes && extraRes.success) {
+              const snippets = extraRes.results.map((r: any) => `[${r.title}](${r.url}): ${r.content.slice(0, 240)}`).join('\n\n');
+              leadContext = leadContext ? `${leadContext}\n\n--- Type-specific context (${declaredOrInferredType}) ---\n${snippets}` : snippets;
+            }
+          } catch (extraErr) {
+            console.warn(`[producer-hunt:${taskId}] extra search for ${lead.company} failed:`, (extraErr as Error).message);
+          }
+        }
+
         let nlmAnalysis = '';
         let nlmHook = '';
 
-        // 2. Jeśli mamy stronę, robimy DEEP research przez NotebookLM
+        // 2. Jeśli mamy stronę, robimy DEEP research przez NotebookLM (multi-source per typ)
         if (researchWebsite) {
           try {
             console.log(`[producer-hunt:${taskId}] creating Deep Research notebook for ${lead.company}...`);
@@ -774,7 +796,7 @@ const enrichLeadsStep = createStep({
             if (createRes && 'success' in createRes && createRes.success) {
               notebookId = (createRes as any).notebookId;
 
-              // Dodajemy stronę firmy jako główne źródło
+              // Dodajemy stronę główną
               await knowledgeAddSourceTool.execute!({
                 notebook: notebookId,
                 sourceType: 'url',
@@ -782,7 +804,22 @@ const enrichLeadsStep = createStep({
                 title: `Strona: ${lead.company}`
               }, {} as any);
 
-              // Opcjonalnie: dodaj wyniki z Tavily jako tekst
+              // Multi-source: dodajemy podstrony dopasowane do typu (max 4 ekstra → razem ≤5 URL).
+              // NotebookLM toleruje 404, więc nie pre-fetchujemy.
+              const extraPaths = additionalSourcePathsForType(declaredOrInferredType).slice(0, 4);
+              const baseUrl = researchWebsite.replace(/\/$/, '');
+              await Promise.all(
+                extraPaths.map((path) =>
+                  knowledgeAddSourceTool.execute!({
+                    notebook: notebookId,
+                    sourceType: 'url',
+                    url: `${baseUrl}${path}`,
+                    title: `${lead.company} ${path}`,
+                  }, {} as any).catch(() => null),
+                ),
+              );
+
+              // Tavily searchContext jako tekst pomocniczy.
               if (leadContext) {
                 await knowledgeAddSourceTool.execute!({
                   notebook: notebookId,
@@ -795,15 +832,12 @@ const enrichLeadsStep = createStep({
               // Czekamy na indeksowanie
               await new Promise(resolve => setTimeout(resolve, 8000));
 
-              const researchQuestion = `Przeanalizuj firmę "${lead.company}". Co ich wyróżnia? 
-              1. Jakie konkretnie produkty wytwarzają?
-              2. Czy mają jakąś historię (rodzinna tradycja, lata istnienia)?
-              3. Czy otrzymali jakieś nagrody lub certyfikaty (np. "Produkt Lokalny", RHD)?
-              4. Jakie są ich wartości (ekologia, naturalne składniki, brak konserwantów)?
-
-              Na tej podstawie przygotuj:
-              - PERSONALIZATION_HOOK: Jedno zdanie (maks 20 słów), które udowodni, że znamy ich firmę. Powinno być naturalne i konkretne (np. "Widziałem, że Wasze sery kozie zdobyły nagrodę na festiwalu w Lublinie").
-              - DEEP_ANALYSIS: Kilka zdań podsumowania o ich skali, asortymencie i tym, co moglibyśmy im zaproponować w GastroBridge.`;
+              const researchQuestion = researchQuestionFor(declaredOrInferredType, {
+                company: lead.company,
+                website: researchWebsite,
+                city: lead.city ?? null,
+                productCategory: lead.productCategory ?? null,
+              });
 
               const queryRes = await knowledgeQueryTool.execute!({
                 notebook: notebookId,
@@ -823,39 +857,26 @@ const enrichLeadsStep = createStep({
           }
         }
 
-        // 3. Finalne szlifowanie przez LLM (jeśli NLM nie dał pełnych danych)
+        // 3. Finalne szlifowanie przez LLM (per typ)
         const sourceUrls = Array.isArray(lead.sourceUrls) ? lead.sourceUrls.join('\n') : (lead.sourceUrls ?? '');
-        const prompt = `Dokończ research firmy "${lead.company}".
-Strona: ${researchWebsite ?? website ?? 'nieznana'}.
-Miasto: ${lead.city ?? 'nieznane'}.
-Kategoria z discovery: ${lead.productCategory ?? 'nieznana'}.
-Źródła z discovery:
-${sourceUrls || 'Brak.'}
-Oryginalny powód: ${lead.reason ?? 'lokalny producent'}.
-
-Dane z głębokiego researchu (NLM):
-${nlmAnalysis || 'Brak.'}
-Hook z NLM: ${nlmHook || 'Brak.'}
-
-Kontekst rynkowy:
-${marketContext}
-
-Wyniki wyszukiwania (snippets):
-${leadContext}
-
-Nie podmieniaj firmy na inną o podobnej nazwie. 
-Jeśli nie możesz potwierdzić, że źródło dotyczy dokładnie tej firmy, ustaw "identityConfidence" poniżej 0.5.
-
-Zwróć WYŁĄCZNIE JSON:
-{ 
-  "companyName": "Potwierdzona nazwa firmy z researchu",
-  "personalizationHook": "Finalny 1-2 zdaniowy hook do maila",
-  "rawAnalysis": "Podsumowanie: co produkują, certyfikaty, potencjał współpracy",
-  "website": "...",
-  "linkedIn": "...",
-  "facebook": "...",
-  "identityConfidence": 1.0
-}`;
+        const prompt = finalEnrichmentPromptFor({
+          supplierType: declaredOrInferredType,
+          lead: {
+            company: lead.company,
+            website,
+            city: lead.city ?? null,
+            productCategory: lead.productCategory ?? null,
+          },
+          researchWebsite,
+          website,
+          sourceUrls,
+          reason: lead.reason ?? null,
+          nlmAnalysis,
+          nlmHook,
+          marketContext,
+          leadContext,
+          region,
+        });
 
         const parsed = await generateJsonWithFallback({
           taskId,
@@ -868,7 +889,8 @@ Zwróć WYŁĄCZNIE JSON:
           cloudFallbackAgent: producerHuntCloudFallbackAgent,
           fallback: () => ({
             companyName: lead.company,
-            personalizationHook: nlmHook || lead.reason || `Producent żywności z regionu ${region}.`,
+            supplierType: declaredOrInferredType,
+            personalizationHook: nlmHook || lead.reason || defaultHookForType(declaredOrInferredType, region),
             rawAnalysis: nlmAnalysis || leadContext || 'Brak głębokiego researchu.',
             website: researchWebsite ?? website,
             identityConfidence: 0.5,
@@ -884,7 +906,7 @@ Zwróć WYŁĄCZNIE JSON:
 
         const personalizationHook = normalizeTextField(
           parsed.personalizationHook,
-          nlmHook || `Producent żywności z regionu ${region}.`,
+          nlmHook || defaultHookForType(declaredOrInferredType, region),
         );
 
         const candidate = {
@@ -904,7 +926,7 @@ Zwróć WYŁĄCZNIE JSON:
         if (!identity.ok || (parsed.identityConfidence && parsed.identityConfidence < 0.5)) {
           console.warn(`[producer-hunt:${taskId}] identity mismatch for ${lead.company}:`, identity.reasons.join(', '));
           // Reset to safe values if identity is doubtful
-          candidate.personalizationHook = `Producent żywności z regionu ${region}.`;
+          candidate.personalizationHook = defaultHookForType(declaredOrInferredType, region);
           candidate.rawAnalysis = `Wstępny research dla ${lead.company}. Wymaga weryfikacji tożsamości. Original analysis: ${rawAnalysis.slice(0, 100)}...`;
         }
 
@@ -913,7 +935,7 @@ Zwróć WYŁĄCZNIE JSON:
           console.warn(`[producer-hunt:${taskId}] schema repair fallback for ${lead.company}:`, validation.error.message);
           const fallbackCandidate: EnrichedLead = {
             ...lead,
-            personalizationHook: `Producent żywności z regionu ${region}.`,
+            personalizationHook: defaultHookForType(declaredOrInferredType, region),
             rawAnalysis: 'Błąd walidacji enrichmentu.',
             companyName: lead.company,
           };
@@ -981,7 +1003,7 @@ Zwróć WYŁĄCZNIE JSON:
         console.warn(`[producer-hunt:${taskId}] enrichment fail dla ${lead.company}:`, (err as Error).message);
         const fallbackCandidate: EnrichedLead = {
           ...lead,
-          personalizationHook: lead.reason ?? 'Lokalny producent',
+          personalizationHook: lead.reason ?? defaultHookForType(declaredOrInferredType, region),
           rawAnalysis: 'Enrichment niedostępny.',
           companyName: lead.company,
         };

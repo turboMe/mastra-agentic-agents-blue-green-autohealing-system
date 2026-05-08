@@ -7,6 +7,8 @@ Ten dokument zawiera zestawienie ewolucji workflow `producer-hunt` po migracji z
 > Faza discovery (multi-profile zapytania Tavily, multi-round, budżet, filtrowanie URL) — [producer-hunt-discovery.md](producer-hunt-discovery.md) (PR B).
 >
 > Prompty discovery (NotebookLM + fallback po snippetach z klasyfikacją supplierType) — [producer-hunt-discovery-prompts.md](producer-hunt-discovery-prompts.md) (PR C).
+>
+> Enrichment dopasowany do typu (multi-source NotebookLM, per-typ pytania, per-typ final prompt, default hook) — [producer-hunt-enrichment.md](producer-hunt-enrichment.md) (PR D).
 
 ## 0. Tożsamość i Instrukcje Bazowe (System Prompt)
 
