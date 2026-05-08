@@ -11,6 +11,8 @@ Ten dokument zawiera zestawienie ewolucji workflow `producer-hunt` po migracji z
 > Enrichment dopasowany do typu (multi-source NotebookLM, per-typ pytania, per-typ final prompt, default hook) — [producer-hunt-enrichment.md](producer-hunt-enrichment.md) (PR D).
 >
 > Drafty cold-mail per typ + segment CRM per typ + neutralny `validateDraft` — [producer-hunt-drafts.md](producer-hunt-drafts.md) (PR E).
+>
+> Stabilność i diagnostyka (outer-catch fallback, validate-output gating, preserve NLM, regex email, strukturalne logi, notebook cleanup retry) — [producer-hunt-stability.md](producer-hunt-stability.md) (v2: P0.2/P0.3/P1.5/P1.6/P2.7/P2.8).
 
 ## 0. Tożsamość i Instrukcje Bazowe (System Prompt)
 

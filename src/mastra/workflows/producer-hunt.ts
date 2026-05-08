@@ -33,11 +33,10 @@ import { getDb } from '../lib/mongo';
 import { GmailService } from '../tools/google/gmail.js';
 import { getDraftsStore } from '../lib/drafts-store.js';
 import { searchWebTool, findCompanyLinksTool } from '../tools/search/tavily.js';
-import { 
-  knowledgeQueryTool, 
-  knowledgeCreateNotebookTool, 
-  knowledgeAddSourceTool, 
-  knowledgeDeleteNotebookTool 
+import {
+  knowledgeQueryTool,
+  knowledgeCreateNotebookTool,
+  knowledgeAddSourceTool,
 } from '../tools/knowledge/knowledge-tools.js';
 import { 
   normalizeTextField, 
@@ -73,6 +72,9 @@ import {
   draftPromptFor,
   fallbackDraftFor,
 } from './producer-hunt/draft-prompts.js';
+import { pickBestEmail } from './producer-hunt/email.js';
+import { logProducerHuntEvent } from './producer-hunt/logging.js';
+import { cleanupNotebook } from './producer-hunt/notebook-cleanup.js';
 
 // ── Schemas ─────────────────────────────────────────────────────────────────
 const supplierTypeSchema = z.enum([
@@ -482,7 +484,13 @@ Zwróć WYŁĄCZNIE JSON w formacie:
       console.warn(`[producer-hunt:${taskId}] NotebookLM discovery fail:`, (err as Error).message);
     } finally {
       if (notebookId) {
-        await knowledgeDeleteNotebookTool.execute!({ notebookId }, {} as any).catch(() => {});
+        await cleanupNotebook({
+          taskId,
+          stepId: 'discover-leads',
+          notebookId,
+          title: `Discovery: Producers ${region} (${taskId})`,
+          kind: 'discovery',
+        });
       }
     }
 
@@ -573,6 +581,24 @@ Zwróć WYŁĄCZNIE JSON:
     }).slice(0, count);
 
     console.log(`[producer-hunt:${taskId}] discover-leads finished, found ${finalLeads.length} leads.`);
+    await logProducerHuntEvent({
+      taskId,
+      stepId: 'discover-leads',
+      event: 'discover_summary',
+      metrics: {
+        region,
+        productType: productType ?? null,
+        requestedCount: count,
+        rawHits: uniqueResults.length,
+        topUrls: topUrls.length,
+        queriesIssued,
+        queryBudget: TAVILY_QUERY_BUDGET,
+        acceptableSupplierTypes,
+        found: finalLeads.length,
+        validEmail: finalLeads.filter((l) => isValidEmail(l.email)).length,
+        withWebsite: finalLeads.filter((l) => !!l.website).length,
+      },
+    });
     return { taskId, region, leads: finalLeads, acceptableSupplierTypes };
   },
 });
@@ -706,6 +732,16 @@ const createResearchLeadsStep = createStep({
     console.log(
       `[producer-hunt:${taskId}] candidates-for-research=${validLeads.length}, research-needed=${researchOnly.length}, draft-candidates=${draftCandidateCount}, rejected=${rejectedCount}`,
     );
+    await logProducerHuntEvent({
+      taskId,
+      stepId: 'create-research-leads',
+      event: 'quality_summary',
+      metrics: {
+        region,
+        ...qualitySummary,
+        bySupplierType,
+      },
+    });
     return {
       taskId,
       region,
@@ -761,6 +797,14 @@ const enrichLeadsStep = createStep({
       const declaredOrInferredType: SupplierType = (lead.supplierType as SupplierType | undefined) ?? 'unknown';
       console.log(`[producer-hunt:${taskId}] enriching lead: ${lead.company} (type=${declaredOrInferredType})...`);
       let notebookId = '';
+
+      // P1.5: zmienne researchu wyniesione na poziom pętli — outer-catch może z nich
+      // skorzystać do zachowania danych NLM zamiast pisać 'Enrichment niedostępny.'
+      let nlmAnalysis = '';
+      let nlmHook = '';
+      let leadContext = '';
+      let preservedSource: 'nlm' | 'searchContext' | 'leadReason' | 'none' = 'none';
+
       try {
         // 1. Szukanie linków i głębszego kontekstu przez Tavily
         const linksResult = await findCompanyLinksTool.execute!({
@@ -769,7 +813,7 @@ const enrichLeadsStep = createStep({
         }, {} as any);
 
         const isSuccess = linksResult && 'success' in linksResult && linksResult.success;
-        let leadContext = isSuccess ? (linksResult as any).searchContext : '';
+        leadContext = isSuccess ? (linksResult as any).searchContext : '';
         const website = normalizeOptionalText(isSuccess ? ((linksResult as any).website ?? lead.website) : lead.website);
         const researchWebsite = website
           ? (website.startsWith('http') ? website : `https://${website}`)
@@ -788,9 +832,6 @@ const enrichLeadsStep = createStep({
             console.warn(`[producer-hunt:${taskId}] extra search for ${lead.company} failed:`, (extraErr as Error).message);
           }
         }
-
-        let nlmAnalysis = '';
-        let nlmHook = '';
 
         // 2. Jeśli mamy stronę, robimy DEEP research przez NotebookLM (multi-source per typ)
         if (researchWebsite) {
@@ -857,7 +898,15 @@ const enrichLeadsStep = createStep({
           } catch (nlmErr) {
             console.warn(`[producer-hunt:${taskId}] NLM Deep Research failed for ${lead.company}:`, (nlmErr as Error).message);
           } finally {
-            if (notebookId) await knowledgeDeleteNotebookTool.execute!({ notebookId }, {} as any).catch(() => {});
+            if (notebookId) {
+              await cleanupNotebook({
+                taskId,
+                stepId: 'enrich-leads',
+                notebookId,
+                title: `Deep: ${lead.company} (${taskId})`,
+                kind: 'deep-research',
+              });
+            }
           }
         }
 
@@ -1005,14 +1054,49 @@ const enrichLeadsStep = createStep({
         }
       } catch (err) {
         console.warn(`[producer-hunt:${taskId}] enrichment fail dla ${lead.company}:`, (err as Error).message);
+
+        // P1.5: nie nadpisuj pustym placeholderem, jeśli mamy już dane z NotebookLM lub Tavily.
+        const preservedAnalysis =
+          normalizeTextField(nlmAnalysis, '')
+          || normalizeTextField(leadContext, '')
+          || normalizeTextField(lead.reason, '')
+          || 'Enrichment niedostępny.';
+
+        if (nlmAnalysis) preservedSource = 'nlm';
+        else if (leadContext) preservedSource = 'searchContext';
+        else if (lead.reason) preservedSource = 'leadReason';
+
+        const preservedHook =
+          normalizeTextField(nlmHook, '')
+          || normalizeTextField(lead.reason, '')
+          || defaultHookForType(declaredOrInferredType, region);
+
         const fallbackCandidate: EnrichedLead = {
           ...lead,
-          personalizationHook: lead.reason ?? defaultHookForType(declaredOrInferredType, region),
-          rawAnalysis: 'Enrichment niedostępny.',
+          personalizationHook: preservedHook,
+          rawAnalysis: preservedAnalysis,
           companyName: lead.company,
         };
         const fallbackQuality = scoreLead(fallbackCandidate, region);
         fallbackCandidate.inferredSupplierType = fallbackQuality.inferredSupplierType;
+
+        // Zapis diagnostyki do CRM, żeby widać było że enrichment padł, ale dane się zachowały.
+        try {
+          await db.collection('leads').updateOne(
+            { companyName: lead.company, region },
+            {
+              $set: {
+                'metadata.enrichmentError': (err as Error).message,
+                'metadata.usedPreservedNlmData': preservedSource !== 'none',
+                'metadata.preservedSource': preservedSource,
+                updatedAt: new Date(),
+              },
+            },
+          );
+        } catch (logErr) {
+          console.warn(`[producer-hunt:${taskId}] failed to record enrichment error for ${lead.company}:`, (logErr as Error).message);
+        }
+
         if (fallbackQuality.decision === 'reject') {
           enrichedRejected++;
           continue;
@@ -1020,6 +1104,26 @@ const enrichLeadsStep = createStep({
         enriched.push(fallbackCandidate);
       }
     }
+
+    const enrichedByType: Record<string, number> = {};
+    for (const e of enriched) {
+      const t = (e.inferredSupplierType ?? e.supplierType ?? 'unknown') as string;
+      enrichedByType[t] = (enrichedByType[t] ?? 0) + 1;
+    }
+
+    await logProducerHuntEvent({
+      taskId,
+      stepId: 'enrich-leads',
+      event: 'enrichment_summary',
+      metrics: {
+        region,
+        inputCandidates: validLeads.length,
+        enrichedAccepted: enriched.length,
+        enrichedRejected,
+        enrichedByType,
+      },
+    });
+
     return {
       taskId,
       region,
@@ -1056,67 +1160,99 @@ const extractEmailsStep = createStep({
   execute: async (context) => {
     const { taskId, region, enriched } = context.inputData;
     const out: EnrichedLead[] = [];
+
+    // P1.6: liczniki dla diagnostyki
+    let alreadyHadEmail = 0;
+    let foundByRegex = 0;
+    let foundByLocalLlm = 0;
+    let foundByCloud = 0;
+    let stillMissing = 0;
+
     for (const lead of enriched) {
       if (isValidEmail(lead.email)) {
         out.push(lead);
+        alreadyHadEmail++;
         continue;
       }
-      try {
-        const prompt = `Wyciągnij adres e-mail dla firmy "${lead.company}" z poniższego kontekstu.
+
+      // 1. Deterministyczny regex po wszystkich źródłach z lead'a.
+      const regexCandidate = pickBestEmail({
+        rawAnalysis: lead.rawAnalysis,
+        emailSource: lead.emailSource,
+        website: lead.website,
+        sourceUrls: lead.sourceUrls,
+      });
+      if (regexCandidate && isValidEmail(regexCandidate)) {
+        console.log(`[producer-hunt:${taskId}] regex znalazł email dla ${lead.company}: ${regexCandidate}`);
+        out.push({ ...lead, email: regexCandidate });
+        foundByRegex++;
+        continue;
+      }
+
+      // 2. Lokalny LLM jako pierwszy fallback po regexie.
+      const prompt = `Wyciągnij adres e-mail dla firmy "${lead.company}" z poniższego kontekstu.
 Zwróć WYŁĄCZNIE adres email lub słowo "null".
 Kontekst: ${lead.rawAnalysis}\nStrona: ${lead.website ?? '-'}`;
+
+      try {
         const res = await producerHuntEmailExtractionAgent.generate(prompt);
         const candidate = res.text.trim().replace(/^"|"$/g, '');
         if (isValidEmail(candidate)) {
-          console.log(`[producer-hunt:${taskId}] znaleziono email dla ${lead.company}: ${candidate}`);
+          console.log(`[producer-hunt:${taskId}] local LLM znalazł email dla ${lead.company}: ${candidate}`);
           out.push({ ...lead, email: candidate });
-        } else {
-          console.warn(`[producer-hunt:${taskId}] local email extraction returned no email for ${lead.company}, próbuję cloud fallback.`);
-          try {
-            const cloudRes = await producerHuntCloudFallbackAgent.generate(`${prompt}\n\nReturn only one email address or null.`);
-            const cloudCandidate = cloudRes.text.trim().replace(/^"|"$/g, '');
-            if (isValidEmail(cloudCandidate)) {
-              console.log(`[producer-hunt:${taskId}] cloud fallback znalazł email dla ${lead.company}: ${cloudCandidate}`);
-              out.push({ ...lead, email: cloudCandidate });
-            } else {
-              // Nie usuwamy leada! Idzie dalej, ale bez maila nie powstanie draft.
-              console.warn(`[producer-hunt:${taskId}] brak emaila dla ${lead.company} — zapiszę w CRM jako do researchu.`);
-              out.push(lead);
-            }
-          } catch (cloudErr) {
-            console.warn(
-              `[producer-hunt:${taskId}] extract-email cloud fallback fail ${lead.company}:`,
-              (cloudErr as Error).message,
-            );
-            out.push(lead);
-          }
+          foundByLocalLlm++;
+          continue;
         }
+        console.warn(`[producer-hunt:${taskId}] local email extraction returned no email for ${lead.company}, próbuję cloud fallback.`);
       } catch (err) {
         console.warn(
-          `[producer-hunt:${taskId}] extract-email fail ${lead.company}:`,
+          `[producer-hunt:${taskId}] extract-email local LLM fail ${lead.company}:`,
           (err as Error).message,
         );
-        try {
-          const prompt = `Wyciągnij adres e-mail dla firmy "${lead.company}" z poniższego kontekstu.
-Zwróć WYŁĄCZNIE adres email lub słowo "null".
-Kontekst: ${lead.rawAnalysis}\nStrona: ${lead.website ?? '-'}`;
-          const cloudRes = await producerHuntCloudFallbackAgent.generate(`${prompt}\n\nReturn only one email address or null.`);
-          const cloudCandidate = cloudRes.text.trim().replace(/^"|"$/g, '');
-          if (isValidEmail(cloudCandidate)) {
-            console.log(`[producer-hunt:${taskId}] cloud fallback znalazł email dla ${lead.company}: ${cloudCandidate}`);
-            out.push({ ...lead, email: cloudCandidate });
-          } else {
-            out.push(lead);
-          }
-        } catch (cloudErr) {
-          console.warn(
-            `[producer-hunt:${taskId}] extract-email cloud fallback fail ${lead.company}:`,
-            (cloudErr as Error).message,
-          );
-          out.push(lead);
-        }
       }
+
+      // 3. Cloud fallback.
+      try {
+        const cloudRes = await producerHuntCloudFallbackAgent.generate(`${prompt}\n\nReturn only one email address or null.`);
+        const cloudCandidate = cloudRes.text.trim().replace(/^"|"$/g, '');
+        if (isValidEmail(cloudCandidate)) {
+          console.log(`[producer-hunt:${taskId}] cloud fallback znalazł email dla ${lead.company}: ${cloudCandidate}`);
+          out.push({ ...lead, email: cloudCandidate });
+          foundByCloud++;
+          continue;
+        }
+      } catch (cloudErr) {
+        console.warn(
+          `[producer-hunt:${taskId}] extract-email cloud fallback fail ${lead.company}:`,
+          (cloudErr as Error).message,
+        );
+      }
+
+      // Nie usuwamy leada — idzie dalej bez maila, draft go pominie.
+      console.warn(`[producer-hunt:${taskId}] brak emaila dla ${lead.company} — zapiszę w CRM jako do researchu.`);
+      out.push(lead);
+      stillMissing++;
     }
+
+    console.log(
+      `[producer-hunt:${taskId}] extract-emails summary: alreadyHadEmail=${alreadyHadEmail}, foundByRegex=${foundByRegex}, foundByLocalLlm=${foundByLocalLlm}, foundByCloud=${foundByCloud}, stillMissing=${stillMissing}`,
+    );
+
+    await logProducerHuntEvent({
+      taskId,
+      stepId: 'extract-emails',
+      event: 'email_extraction_summary',
+      metrics: {
+        region,
+        alreadyHadEmail,
+        foundByRegex,
+        foundByLocalLlm,
+        foundByCloud,
+        stillMissing,
+        total: out.length,
+      },
+    });
+
     return {
       taskId,
       region,
@@ -1145,10 +1281,17 @@ const draftColdEmailsStep = createStep({
   execute: async (context) => {
     const { taskId, region, enrichedWithEmails } = context.inputData;
     const drafts: Draft[] = [];
-    
+
+    let draftedCount = 0;
+    let fallbackDraftedCount = 0;
+    let skippedNoEmail = 0;
+    let failedCount = 0;
+    const draftedByType: Record<string, number> = {};
+
     for (const lead of enrichedWithEmails) {
       if (!isValidEmail(lead.email)) {
         console.log(`[producer-hunt:${taskId}] skip drafting for ${lead.company} (no email)`);
+        skippedNoEmail++;
         continue;
       }
 
@@ -1210,12 +1353,105 @@ const draftColdEmailsStep = createStep({
           body: parsed.body,
           enrichment: lead,
         });
+        draftedCount++;
+        draftedByType[draftType] = (draftedByType[draftType] ?? 0) + 1;
       } catch (err) {
         console.warn(`[producer-hunt:${taskId}] draft fail ${lead.company}:`, (err as Error).message);
+        // P0.2: gdy generateJsonWithFallback rzuci wyjątek poza swoim deterministic fallbackiem,
+        // używamy fallbackDraftFor (per typ), żeby lead nie został pominięty.
+        const safeDraft = fallbackDraft();
+        const safeValidation = validateDraft(safeDraft, lead);
+        if (safeValidation.ok) {
+          drafts.push({
+            taskId,
+            draftId: `email-${randomUUID().slice(0, 6)}`,
+            company: lead.company,
+            email: lead.email,
+            subject: safeDraft.subject,
+            body: safeDraft.body,
+            enrichment: lead,
+          });
+          console.log(`[producer-hunt:${taskId}] draft fallback used for ${lead.company} after exception.`);
+          fallbackDraftedCount++;
+          draftedByType[draftType] = (draftedByType[draftType] ?? 0) + 1;
+          await logProducerHuntEvent({
+            taskId,
+            stepId: 'draft-cold-emails',
+            event: 'draft_fallback_used',
+            level: 'warn',
+            company: lead.company,
+            metrics: { supplierType: draftType },
+            error: (err as Error).message,
+          });
+        } else {
+          console.error(
+            `[producer-hunt:${taskId}] draft fallback failed validation for ${lead.company}:`,
+            safeValidation.hardFailures.join(', '),
+          );
+          failedCount++;
+          await logProducerHuntEvent({
+            taskId,
+            stepId: 'draft-cold-emails',
+            event: 'draft_fallback_invalid',
+            level: 'error',
+            company: lead.company,
+            metrics: { supplierType: draftType, hardFailures: safeValidation.hardFailures },
+            error: (err as Error).message,
+          });
+        }
       }
     }
-    
+
     console.log(`[producer-hunt:${taskId}] generated ${drafts.length} drafts.`);
+
+    const validEmailCount = enrichedWithEmails.filter((l) => isValidEmail(l.email)).length;
+
+    await logProducerHuntEvent({
+      taskId,
+      stepId: 'draft-cold-emails',
+      event: 'draft_summary',
+      metrics: {
+        region,
+        drafted: draftedCount,
+        fallbackDrafted: fallbackDraftedCount,
+        skippedNoEmail,
+        failed: failedCount,
+        validEmailCount,
+        totalDrafts: drafts.length,
+        draftedByType,
+      },
+    });
+
+    // P0.3: validate-output gating — wykryj sytuacje wymagające uwagi.
+    if (drafts.length === 0) {
+      const reason = validEmailCount > 0 ? 'valid_email_but_zero_drafts' : 'no_reachable_leads';
+      const level: 'error' | 'warn' = validEmailCount > 0 ? 'error' : 'warn';
+      console[level === 'error' ? 'error' : 'warn'](
+        `[producer-hunt:${taskId}] needs_attention: reason=${reason}, validEmailCount=${validEmailCount}, draftCount=0`,
+      );
+
+      await logProducerHuntEvent({
+        taskId,
+        stepId: 'draft-cold-emails',
+        event: 'producer_hunt_needs_attention',
+        level,
+        skippedReason: reason,
+        metrics: {
+          region,
+          validEmailCount,
+          draftCount: 0,
+          enrichedCount: enrichedWithEmails.length,
+        },
+      });
+
+      if (validEmailCount > 0) {
+        // Twardy błąd workflow — Mastra UI zobaczy step jako failed z czytelnym komunikatem.
+        throw new Error(
+          `Producer Hunt needs attention: ${validEmailCount} leadów z poprawnym emailem, ale 0 draftów. taskId=${taskId}`,
+        );
+      }
+    }
+
     return {
       taskId,
       region,
