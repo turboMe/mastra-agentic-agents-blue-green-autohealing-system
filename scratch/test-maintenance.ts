@@ -3,7 +3,7 @@ import { mastra } from '../src/mastra';
 async function main() {
   console.log('🚀 Rozpoczynamy symulację workflow repo-maintenance...');
   
-  const workflow = mastra.getWorkflow('repo-maintenance-workflow');
+  const workflow = mastra.getWorkflow('repoMaintenanceWorkflow');
   
   if (!workflow) {
     console.error('❌ Nie znaleziono repo-maintenance-workflow!');
@@ -12,7 +12,7 @@ async function main() {
 
   try {
     const run = await workflow.execute({
-      inputData: {
+      triggerData: {
         userRequest: 'Proszę stworzyć prosty plik testowy w folderze scratch/ z napisem console.log("Hello from Worktree!") i sprawdzić czy linter to puszcza.',
       }
     } as any);

@@ -1,11 +1,11 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { resolve, join } from 'path';
+import { resolve, join, relative } from 'path';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb } from '../../lib/mongo.js';
 import { AGENTIC_AGENTS_REPO } from '../../workspaces/code-workspace.js';
-import { copyFile, stat } from 'fs/promises';
+import { copyFile, stat, readFile, readdir } from 'fs/promises';
 
 const execAsync = promisify(exec);
 
@@ -233,6 +233,182 @@ export const applyWorktreePatchTool = createTool({
         message: 'Nie udalo sie wykonac apply_patch.',
         error: error.message || String(error),
       };
+    }
+  },
+});
+
+// ── Narzędzia do przeglądania worktree (dla codeReviewAgent) ──────────────────
+
+export const listWorktreeFilesTool = createTool({
+  id: 'coding.list_worktree_files',
+  description: 'Listuje pliki w worktree dla danego zadania. Pozwala reviewerowi zobaczyć jakie pliki zostały dodane lub zmodyfikowane w izolowanym środowisku.',
+  inputSchema: z.object({
+    taskId: z.string(),
+    directory: z.string().optional().default('.').describe('Podkatalog do listowania (domyślnie root worktree).'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    files: z.array(z.string()).optional(),
+    worktreePath: z.string().optional(),
+    message: z.string(),
+    error: z.string().optional(),
+  }),
+  execute: async (context) => {
+    try {
+      const db = await getDb();
+      const artifact = await db.collection('code_task_artifacts').findOne({ taskId: context.taskId });
+
+      if (!artifact?.worktreePath) {
+        return { success: false, message: `Brak aktywnego worktree dla zadania ${context.taskId}.` };
+      }
+
+      const targetDir = resolve(artifact.worktreePath, context.directory || '.');
+
+      // Zabezpieczenie: nie pozwol wyjsc poza worktree
+      if (!targetDir.startsWith(artifact.worktreePath)) {
+        return { success: false, message: 'Sciezka wykracza poza worktree. Odmowa dostepu.' };
+      }
+
+      const entries = await readdir(targetDir, { withFileTypes: true });
+      const files = entries
+        .filter((e) => !e.name.startsWith('.git') && e.name !== 'node_modules')
+        .map((e) => (e.isDirectory() ? `${e.name}/` : e.name));
+
+      return {
+        success: true,
+        files,
+        worktreePath: artifact.worktreePath,
+        message: `Znaleziono ${files.length} elementów w ${context.directory || '.'}`,
+      };
+    } catch (error: any) {
+      return { success: false, message: 'Nie udalo sie wylistowac plikow.', error: error.message };
+    }
+  },
+});
+
+export const readWorktreeFileTool = createTool({
+  id: 'coding.read_worktree_file',
+  description: 'Czyta zawartość pliku z worktree danego zadania. Niezbędne dla reviewera do weryfikacji kodu źródłowego w izolowanym środowisku.',
+  inputSchema: z.object({
+    taskId: z.string(),
+    filePath: z.string().describe('Ścieżka względna do pliku w worktree, np. "scratch/test.js" lub "src/index.ts".'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    content: z.string().optional(),
+    filePath: z.string().optional(),
+    message: z.string(),
+    error: z.string().optional(),
+  }),
+  execute: async (context) => {
+    try {
+      const db = await getDb();
+      const artifact = await db.collection('code_task_artifacts').findOne({ taskId: context.taskId });
+
+      if (!artifact?.worktreePath) {
+        return { success: false, message: `Brak aktywnego worktree dla zadania ${context.taskId}.` };
+      }
+
+      const fullPath = resolve(artifact.worktreePath, context.filePath);
+
+      // Zabezpieczenie: nie pozwol wyjsc poza worktree
+      if (!fullPath.startsWith(artifact.worktreePath)) {
+        return { success: false, message: 'Sciezka wykracza poza worktree. Odmowa dostepu.' };
+      }
+
+      const content = await readFile(fullPath, 'utf-8');
+
+      // Limit rozmiaru (200KB) zeby nie przeciazyc LLM
+      if (content.length > 200_000) {
+        return {
+          success: true,
+          content: content.slice(0, 200_000) + '\n... (plik skrocony do 200KB)',
+          filePath: context.filePath,
+          message: `Plik ${context.filePath} odczytany (skrocony).`,
+        };
+      }
+
+      return {
+        success: true,
+        content,
+        filePath: context.filePath,
+        message: `Plik ${context.filePath} odczytany pomyslnie.`,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        message: `Nie udalo sie odczytac pliku ${context.filePath}.`,
+        error: error.message,
+      };
+    }
+  },
+});
+
+export const worktreeDiffTool = createTool({
+  id: 'coding.worktree_diff',
+  description: 'Zwraca git diff z worktree dla danego zadania. Pokazuje dokładnie jakie zmiany zostały wprowadzone względem głównego brancha.',
+  inputSchema: z.object({
+    taskId: z.string(),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    diff: z.string().optional(),
+    message: z.string(),
+    error: z.string().optional(),
+  }),
+  execute: async (context) => {
+    try {
+      const db = await getDb();
+      const artifact = await db.collection('code_task_artifacts').findOne({ taskId: context.taskId });
+
+      if (!artifact?.worktreePath) {
+        return { success: false, message: `Brak aktywnego worktree dla zadania ${context.taskId}.` };
+      }
+
+      // git diff HEAD pokazuje zmiany (staged i unstaged)
+      const { stdout: diff } = await execAsync('git diff HEAD', {
+        cwd: artifact.worktreePath,
+        maxBuffer: 1024 * 1024, // 1MB
+      });
+
+      // Jesli brak diffa, moze sa nowe pliki (untracked)
+      let fullDiff = diff;
+      if (!diff.trim()) {
+        const { stdout: statusOutput } = await execAsync('git status --porcelain', {
+          cwd: artifact.worktreePath,
+        });
+        if (statusOutput.trim()) {
+          // Pokaz zawartosc nowych plikow
+          const newFiles = statusOutput
+            .split('\n')
+            .filter((l) => l.startsWith('??') || l.startsWith('A '))
+            .map((l) => l.replace(/^(\?\?|A\s+)\s*/, '').trim());
+
+          const fileDiffs: string[] = [];
+          for (const file of newFiles) {
+            try {
+              const content = await readFile(resolve(artifact.worktreePath, file), 'utf-8');
+              fileDiffs.push(`--- /dev/null\n+++ b/${file}\n${content.split('\n').map((l) => `+${l}`).join('\n')}`);
+            } catch {
+              // pomiń pliki binarne
+            }
+          }
+          fullDiff = fileDiffs.join('\n\n');
+        }
+      }
+
+      // Limit 8000 znaków
+      const truncated = fullDiff.length > 8000
+        ? fullDiff.slice(0, 8000) + '\n... (diff skrocony)'
+        : fullDiff;
+
+      return {
+        success: true,
+        diff: truncated || '(brak zmian)',
+        message: truncated ? `Diff pobrany (${truncated.length} znaków).` : 'Brak zmian w worktree.',
+      };
+    } catch (error: any) {
+      return { success: false, message: 'Nie udalo sie pobrac diffa.', error: error.message };
     }
   },
 });

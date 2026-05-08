@@ -33,7 +33,7 @@ Aktualny postep:
 - [x] Etap 2: realny artifact + change ledger + rollback jako wymuszona sciezka edycji (Ukonczone).
 - [x] Etap 3: Staging Worktree (izolacja modyfikacji i bezpieczny merge) + podstawy code review.
 - [x] Etap 4: codeReviewAgent i repo-maintenance workflow (Orkiestracja w Mastra).
-- [ ] Etap 5: staging/blue-green runtime dla self-healing, z restart-safe resume.
+- [x] Etap 5: Review Loop + Suspend/Resume + Reviewer Worktree Tools (E2E potwierdzone).
 - [ ] Etap 6: self-healing z logow/testow, bez auto-deploy w trybie manualnym.
 - [ ] Etap 6: subagenci codingowi, routing modeli i tryb offline fallback.
 - [ ] Etap 7: GitHub/PR/CI integracja.
@@ -99,20 +99,31 @@ Status Etapu 3:
 - [x] Zaimplementowano narzędzie The Merge (`coding.apply_patch`).
 - [x] Przeprowadzono walidację E2E Worktree.
 
-Nastepny naturalny krok: Etap 4 (CodeReview Agent & Orkiestracja Workflow)
+Status Etapu 4 (CodeReview Agent & Orkiestracja Workflow) — UKOŃCZONY:
 
-Jesteśmy w sytuacji, w której codingAgent tworzy kod "w piaskownicy" i potrafi bezpiecznie zaaplikować łatkę na żywo. Zamiast pozwalać codingAgent odpalać finalne `coding.apply_patch`, wprowadzimy `codeReviewAgent`. 
+- [x] Stworzono `codeReviewAgent` z dedykowanym promptem (`prompts/coding/review.md`).
+- [x] Dodano narzędzie `coding.submit_review` (submitReviewTool) do rejestracji werdyktu w Mongo.
+- [x] Zarejestrowano agenta i narzędzia w głównym pliku Mastra (`index.ts`).
+- [x] Zbudowano bazowy `repo-maintenance-workflow` z krokami Coding → Review.
+- [x] Przeprowadzono test E2E w Mastra Studio: codingAgent stworzył artefakt, reviewer go zrecenzował i zapisał werdykt w Mongo.
 
-Plan Etapu 4 (Separation of Concerns):
-1. `codingAgent` wykonuje zadanie w worktree, uruchamia linter/TSC i kończy pracę ze statusem `waiting_approval`.
-2. Tworzymy obiekt Mastra Workflow (`repo-maintenance`):
-   - Step 1: `codingAgent`
-   - Step 2: `codeReviewAgent`
-3. `codeReviewAgent` czyta diff z wygenerowanego worktree, weryfikuje kod i architekturę.
-4. `codeReviewAgent` wywołuje nowe narzędzie `coding.submit_review` ze statusem `approve` lub `needs_changes`.
-5. Jeśli `approve`, odpalamy `apply_patch`. Jeśli `needs_changes`, workflow wraca do `codingAgent`.
+Status Etapu 5 (Review Loop + Suspend/Resume + Reviewer Worktree Tools) — UKOŃCZONY:
 
-Dzięki temu zamykamy temat Self-Healing – środowisko Mastry będzie mogło samo pisać łatki, weryfikować je, recenzować i integrować z kodem.
+Plan:
+1. `decision-gate` step: bramka decyzyjna po Code Review.
+2. Jeśli `approve` → workflow zawieszany (`suspend`) z komunikatem i oczekuje na `confirmMerge: true` od człowieka.
+3. Po `resume` z `confirmMerge: true` → automatycznie `coding.apply_patch` + `coding.remove_worktree`.
+4. Jeśli `needs_changes` → pętla naprawcza (codingAgent poprawia, codeReviewAgent re-review), max 3 iteracje.
+5. Jeśli `block` lub limit iteracji → natychmiastowe zatrzymanie z komunikatem.
+
+Zaimplementowano:
+- [x] `decision-gate` step z `suspendSchema` i `resumeSchema`.
+- [x] Pętla naprawcza wewnątrz bramki (do MAX_REVIEW_ITERATIONS = 3).
+- [x] Auto-merge po zatwierdzeniu przez człowieka.
+- [x] Kompilacja TSC czysta (0 błędów).
+- [x] Narzędzia worktree dla reviewera: `coding.worktree_diff`, `coding.list_worktree_files`, `coding.read_worktree_file`.
+- [x] Automatyczne wypełnianie `diffSummary` (backup w kodzie workflow po zakończeniu pracy codingAgent).
+- [x] Test E2E w Mastra Studio: pełny cykl coding → review (approve) → suspend → resume (confirmMerge: true) → apply_patch → cleanup worktree. Plik wylądował w live repo, commit zmergowany na mastera.
 
 ---
 
@@ -125,6 +136,8 @@ Aby agent był jeszcze bardziej autonomiczny i stabilny w trudnych refaktorach, 
 3. [x] **Staging Worktree (Podstawa i Narzędzia):** Agent otrzymał resolver ścieżek `getWorkspacePath(taskId)` oraz dwa potężne narzędzia `coding.init_worktree` (kopiujące `.env` i separujące branch) oraz `coding.remove_worktree`. Operacje dyskowe lądują teraz w wyznaczonym worktree!
 4. [x] **The Merge (`coding.apply_patch`):** Narzędzie do finalizacji zadań. Commituje zmiany z worktree i wywołuje `git merge` w środowisku Live, z wbudowaną ochroną (automatyczny `--abort` na wypadek konfliktów).
 5. [x] **CodeReview & Workflow:** Podział obowiązków między codingAgent i codeReviewAgent w ramach Mastra Workflow.
+6. [x] **Decision Gate + Suspend/Resume:** Bramka decyzyjna z Human-in-the-Loop. Approve → suspend → merge. Needs_changes → pętla naprawcza (max 3).
+7. [x] **Reviewer Worktree Tools:** Narzędzia do inspekcji worktree przez codeReviewAgent (`worktree_diff`, `list_worktree_files`, `read_worktree_file`). Reviewer sam sprawdza pliki zamiast polegać na metadanych.
 
 ---
 

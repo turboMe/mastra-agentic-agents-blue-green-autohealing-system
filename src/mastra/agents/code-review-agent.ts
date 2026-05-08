@@ -2,6 +2,7 @@ import { Agent } from '@mastra/core/agent';
 import { workflowModels } from '../config/workflow-models.js';
 import { loadPrompt } from '../lib/prompt-loader.js';
 import { getCodeTaskArtifactTool, submitReviewTool } from '../tools/dev/code-task-artifacts.js';
+import { listWorktreeFilesTool, readWorktreeFileTool, worktreeDiffTool } from '../tools/dev/code-worktree.js';
 import { codeWorkspace } from '../workspaces/code-workspace.js';
 
 export const codeReviewAgent: Agent = new Agent({
@@ -13,5 +14,8 @@ export const codeReviewAgent: Agent = new Agent({
   tools: {
     getCodeTaskArtifactTool,
     submitReviewTool,
+    listWorktreeFilesTool,
+    readWorktreeFileTool,
+    worktreeDiffTool,
   },
 });
