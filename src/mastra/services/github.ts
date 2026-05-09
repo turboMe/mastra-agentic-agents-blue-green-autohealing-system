@@ -1,20 +1,17 @@
 /**
  * GitHub Service (Etap 9.1)
+ * Version: 1.0.1
+ * Version: 1.0.1
  *
  * Central service for GitHub API interactions via @octokit/rest.
  * Handles: push branches, create PRs, check CI status, merge, cleanup.
- *
- * Config (from .env):
- *   GITHUB_TOKEN   - Personal Access Token (repo scope)
- *   GITHUB_OWNER   - Repository owner (e.g. "turboMe")
- *   GITHUB_REPO    - Repository name
- *   GITHUB_PR_MODE - "true" to enable PR workflow, "false" for legacy local merge
- *   GITHUB_AUTO_MERGE - "true" to auto-merge after CI passes
  */
 
 import { Octokit } from '@octokit/rest';
 import { execSync } from 'child_process';
 import { AGENTIC_AGENTS_REPO } from '../workspaces/code-workspace.js';
+
+export const GITHUB_SERVICE_VERSION = '1.0.1';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
