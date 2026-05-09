@@ -15,6 +15,9 @@ import { getErrorCollector } from './services/error-collector.js';
 // GPU Guard (Etap 8 — VRAM protection)
 import { initGpuGuard, getGpuGuard } from './services/gpu-guard.js';
 
+// Model Availability (Etap 8.1 — verify models at startup)
+import { initModelAvailability } from './services/model-availability.js';
+
 
 
 // Workflows
@@ -159,6 +162,24 @@ export const mastra: Mastra = new Mastra({
           }
         },
       }),
+      // ── Model Availability: check model status (Etap 8.1) ──
+      registerApiRoute('/deploy/model-status', {
+        method: 'GET',
+        handler: async (c: any) => {
+          try {
+            const { verifyAllModels, formatAvailabilitySummary } = await import('./services/model-availability.js');
+            const forceRefresh = new URL(c.req.url, 'http://localhost').searchParams.get('refresh') === 'true';
+            const summary = await verifyAllModels(forceRefresh);
+            return c.json({
+              ...summary,
+              checkedAt: summary.checkedAt.toISOString(),
+              formatted: formatAvailabilitySummary(summary),
+            });
+          } catch (err) {
+            return c.json({ error: (err as Error).message }, 500);
+          }
+        },
+      }),
     ],
   },
   workflows: {
@@ -261,3 +282,8 @@ initGlobalErrorHandlers();
 
 // ── GPU Guard: VRAM Protection (Etap 8) ──
 initGpuGuard();
+
+// ── Model Availability: Verify models at startup (Etap 8.1) ──
+initModelAvailability().catch((err) =>
+  console.error('[ModelAvailability] Startup check failed:', (err as Error).message),
+);
