@@ -105,6 +105,37 @@ export const mastra: Mastra = new Mastra({
           });
         },
       }),
+      // ── Google OAuth Flow (Faza 6.1) ──
+      registerApiRoute('/auth/google', {
+        method: 'GET',
+        handler: async (c: any) => {
+          const { getGoogleAuthUrl } = await import('./tools/google/auth.js');
+          const url = getGoogleAuthUrl();
+          return c.redirect(url);
+        },
+      }),
+      registerApiRoute('/auth/google/callback', {
+        method: 'GET',
+        handler: async (c: any) => {
+          const { exchangeGoogleCode } = await import('./tools/google/auth.js');
+          const url = new URL(c.req.url, 'http://localhost');
+          const code = url.searchParams.get('code');
+
+          if (!code) {
+            return c.json({ error: 'No code provided' }, 400);
+          }
+
+          try {
+            const tokens = await exchangeGoogleCode(code);
+            return c.json({
+              message: 'OAuth successful! Update your GOOGLE_REFRESH_TOKEN in .env',
+              ...tokens
+            });
+          } catch (err: any) {
+            return c.json({ error: err.message }, 500);
+          }
+        },
+      }),
       // ── Self-healing: crash-test endpoint (Etap 7) ──
       registerApiRoute('/deploy/crash-test', {
         method: 'GET',
