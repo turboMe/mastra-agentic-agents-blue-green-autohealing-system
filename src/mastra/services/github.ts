@@ -1,7 +1,6 @@
 /**
  * GitHub Service (Etap 9.1)
  * Version: 1.0.1
- * Version: 1.0.1
  *
  * Central service for GitHub API interactions via @octokit/rest.
  * Handles: push branches, create PRs, check CI status, merge, cleanup.
