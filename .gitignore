@@ -2,19 +2,49 @@ output.txt
 node_modules
 dist
 .mastra
-.env.development
+
+# ── Secrets & Environment ─────────────────────────────────
 .env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+*.key
+*.crt
+*.jks
+
+# ── Cloud Provider Credentials ────────────────────────────
+**/service-account*.json
+**/credentials*.json
+**/gcp-*.json
+**/firebase-*.json
+
+# ── Database files ────────────────────────────────────────
 *.db
 *.db-*
 *.duckdb
 *.duckdb.wal
-.netlify
-.vercel
+*.sqlite
+*.sqlite3
 
-# Deploy staging/worktrees (kopie repo, nie powinny być śledzone)
+# ── Deploy staging/worktrees (kopie repo) ─────────────────
 agentic-agents-staging/
 agentic-agents-worktrees/
 .deploy/
 
-# Pino detection (generowany, duży plik)
+# ── Build & Platform ─────────────────────────────────────
+.netlify
+.vercel
+
+# ── Generated files ──────────────────────────────────────
 pino-detection.js
+
+# ── Editor & OS ──────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/settings.json

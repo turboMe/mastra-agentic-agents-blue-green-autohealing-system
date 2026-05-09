@@ -36,7 +36,7 @@ Aktualny postep:
 - [x] Etap 5: Review Loop + Suspend/Resume + Reviewer Worktree Tools (E2E potwierdzone).
 - [x] Etap 6: Blue-Green Deployment — dwie instancje Mastry (Live/Staging), health-check, auto-switch z rollback.
 - [x] Etap 7: Self-healing z logów/testów, automatyczny trigger workflow bez auto-deploy.
-- [ ] Etap 8: Subagenci codingowi, routing modeli i tryb offline fallback.
+- [x] Etap 8: Subagenci codingowi, routing modeli i tryb offline fallback.
 - [ ] Etap 9: GitHub/PR/CI integracja.
 
 Pierwszy naturalny krok:
@@ -166,6 +166,11 @@ Aby agent był jeszcze bardziej autonomiczny i stabilny w trudnych refaktorach, 
 10. [x] **Faza Diagnostyczna (Diagnose → Patch split):** Workflow rozbity na `diagnose-and-plan` (szerokie badanie kontekstu, analiza wpływu, plan z subtaskami) → `execute-patch` (realizacja planu). Prompt diagnostyczny ładowany dynamicznie z `prompts/coding/diagnose.md` — NIE siedzi w base.md agenta. Schema `diagnosticPlan` w artifact z subtaskami, priorytetami i zależnościami — gotowa do dekompozycji na subagentów w Etapie 8.
 11. [x] **Model Capability Registry + Smart Router:** Centralny rejestr modeli (`config/model-capabilities.ts`) z VRAM budgetem, bezpiecznymi limitami kontekstu (anti-freeze), tier-ami (micro/light/heavy/cloud-fast/cloud-pro) i concurrent slots. `SmartRouter` (`services/smart-router.ts`) buduje graf zależności subtasków, organizuje je w grupy parallel execution i przypisuje najtańszy model zdolny obsłużyć daną złożoność, respektując limit 16GB VRAM (overflow → cloud). Subtask schema rozszerzony o `assignedModel`, `parallelGroup`, `estimatedVramMb`.
 12. [x] **Model Availability Check (Etap 8.1):** `services/model-availability.ts` — weryfikacja dostępności modeli przy starcie. Ollama: `ollama list` → parse → porównanie z registry. Cloud: lightweight ping per provider (Google/OpenAI/Anthropic) z timeout 5s. Aktualizacja `available` in-memory w `modelRegistry`. Endpoint diagnostyczny `/deploy/model-status`. Cache z TTL 60s. Quick-check wariant `verifyPlanModels()` do weryfikacji tylko modeli z bieżącego planu przed dispatch.
+13. [x] **Subtask Executor (Etap 8.2):** `services/subtask-executor.ts` — wrapper wykonujący pojedynczy subtask z scope-owanym promptem. Agent dostaje wąski kontekst (tylko swoje pliki docelowe, opis i kontekst z poprzednich subtasków) zamiast całego planu. Timeout per complexity (trivial=30s, simple=60s, moderate=120s, complex=300s). Zbiera wyniki z artifact Mongo po wykonaniu.
+14. [x] **Intelligent Retry & Escalation (Etap 8.3a):** Walidacja jakości wyniku subtaska przez 5 sygnałów: `no_files_changed`, `tsc_errors`, `target_files_missed`, `agent_reported_failure`, `empty_diagnostics`. Trzy poziomy reakcji: (1) RETRY z wzbogaconym promptem (błędy + kontekst z poprzedniej próby), (2) ESCALATE do mocniejszego modelu (micro→light→heavy→cloud-fast→cloud-pro), (3) MARK `needs_human`. Max 3 próby. Pełna historia eskalacji w `qualityCheck`.
+15. [x] **Parallel Dispatch Engine (Etap 8.3):** `services/parallel-dispatch.ts` — sekwencyjny dispatch grup, równoległy wewnątrz grupy przez `Promise.allSettled`. Pre-flight VRAM check per grupę. Circuit breaker na critical subtask failure (przerywa kolejne grupy). Result aggregator z conflict detection (ten sam plik edytowany przez >1 subtask). Pauza 2s między grupami na VRAM unload. Endpoint diagnostyczny `formatDispatchResult()`.
+16. [x] **Offline Fallback (Etap 8.4):** Wbudowany w `executeSubtask()` — heurystyczna detekcja błędów infrastrukturalnych (timeout, ECONNREFUSED, 503, OOM, rate limit). Cloud error → re-route do najtańszego local (jeśli VRAM). Local error → re-route do najtańszego cloud. Max 1 fallback attempt. Odróżnia błędy infrastrukturalne (fallback) od logicznych (retry/escalation w 8.3a).
+17. [x] **Integration: execute-patch refactor (Etap 8.5):** `repo-maintenance.ts` execute-patch refactored z PATH A (parallel dispatch) i PATH B (legacy fallback). PATH A: czyta `routingSummary` z artifact → `dispatchSubtasks()` → agregacja wyników → zapis `dispatchResult` w Mongo → auto-diff. PATH B: zachowany stary single-agent mode gdy brak routingu. Pełna backward-compatibility.
 
 ---
 

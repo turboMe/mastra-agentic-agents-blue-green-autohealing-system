@@ -105,7 +105,7 @@ const diagnoseAndPlan = createStep({
 
 const executePatch = createStep({
   id: 'execute-patch',
-  description: 'Realizacja planu naprawy: tworzenie worktree, edycja plików zgodnie z diagnosticPlan, generacja diff.',
+  description: 'Realizacja planu naprawy: routing → parallel dispatch subtasków → aggregation → validation. Fallback na single-agent jeśli brak routingu.',
   inputSchema: codingOutputSchema,
   outputSchema: codingOutputSchema,
   execute: async ({ inputData, mastra }) => {
@@ -115,11 +115,108 @@ const executePatch = createStep({
     if (!agent) throw new Error('codingAgent not found');
 
     const taskId = inputData.taskId;
-
-    // Pobierz plan diagnostyczny z artifact
     const db = await getDb();
     const artifact = await db.collection('code_task_artifacts').findOne({ taskId });
 
+    // ══════════════════════════════════════════════════════════════════════════
+    // PATH A: Parallel Dispatch (Etap 8) — subtaski z routingSummary
+    // ══════════════════════════════════════════════════════════════════════════
+    if (artifact?.diagnosticPlan?.subtasks?.length && artifact.diagnosticPlan.routingSummary) {
+      try {
+        const { routeSubtasks, formatRoutingResult } = await import('../services/smart-router.js');
+        const { dispatchSubtasks, formatDispatchResult } = await import('../services/parallel-dispatch.js');
+
+        // 1. Rebuild routing result from stored subtasks
+        const routingResult = routeSubtasks(artifact.diagnosticPlan.subtasks);
+        console.log(formatRoutingResult(routingResult));
+
+        // 2. Init worktree
+        await agent.generate(
+          `Użyj coding.init_worktree z taskId="${taskId}" aby przygotować staging worktree. ` +
+          `Odpowiedz krótko kiedy gotowe.`,
+        );
+
+        // 3. PARALLEL DISPATCH — heart of Etap 8
+        const dispatchResult = await dispatchSubtasks(taskId, routingResult, mastra!);
+        console.log(formatDispatchResult(dispatchResult));
+
+        // 4. Post-dispatch: store results in artifact
+        await db.collection('code_task_artifacts').updateOne(
+          { taskId },
+          {
+            $set: {
+              dispatchResult: {
+                groups: dispatchResult.groups.map((g) => ({
+                  groupIndex: g.groupIndex,
+                  subtasks: g.subtaskResults.map((sr) => ({
+                    subtaskId: sr.subtaskId,
+                    assignedModel: sr.assignedModel,
+                    actualModel: sr.actualModel,
+                    status: sr.status,
+                    durationMs: sr.durationMs,
+                    filesChanged: sr.filesChanged.map((f) => f.path),
+                    errors: sr.errors,
+                    qualityAttempt: sr.qualityCheck?.attempt,
+                  })),
+                  durationMs: g.durationMs,
+                })),
+                summary: {
+                  totalSubtasks: dispatchResult.aggregated.totalSubtasks,
+                  succeeded: dispatchResult.aggregated.succeeded,
+                  failed: dispatchResult.aggregated.failed,
+                  skipped: dispatchResult.aggregated.skipped,
+                  needsHuman: dispatchResult.aggregated.needsHuman,
+                  conflictingFiles: dispatchResult.aggregated.conflictingFiles,
+                  totalDurationMs: dispatchResult.aggregated.totalDurationMs,
+                  overallStatus: dispatchResult.overallStatus,
+                },
+              },
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        );
+
+        // 5. Post-dispatch verification: generate diff & run tsc
+        const updatedArtifact = await db.collection('code_task_artifacts').findOne({ taskId });
+        if (updatedArtifact?.worktreePath) {
+          try {
+            const { execSync } = await import('child_process');
+            const diff = execSync('git diff HEAD', {
+              cwd: updatedArtifact.worktreePath,
+              encoding: 'utf-8',
+              timeout: 10000,
+            }).trim();
+            if (diff) {
+              const truncatedDiff = diff.length > 4000 ? diff.slice(0, 4000) + '\n... (skrócono)' : diff;
+              await db.collection('code_task_artifacts').updateOne(
+                { taskId },
+                { $set: { diffSummary: truncatedDiff, status: 'waiting_approval', updatedAt: new Date().toISOString() } },
+              );
+            }
+          } catch { /* diff optional */ }
+        }
+
+        // 6. If needs_human subtasks exist, note in artifact
+        if (dispatchResult.aggregated.needsHuman > 0) {
+          console.warn(
+            `[execute-patch] ${dispatchResult.aggregated.needsHuman} subtask(s) need human intervention`,
+          );
+        }
+
+        return {
+          taskId,
+          status: 'waiting_approval',
+          iteration: inputData.iteration ?? 1,
+        };
+      } catch (dispatchErr) {
+        console.error('[execute-patch] Parallel dispatch failed, falling back to single-agent:', (dispatchErr as Error).message);
+        // Fall through to Path B
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // PATH B: Legacy Single-Agent Mode (fallback)
+    // ══════════════════════════════════════════════════════════════════════════
     let planContext = '';
     if (artifact?.diagnosticPlan) {
       const dp = artifact.diagnosticPlan as any;
@@ -169,7 +266,7 @@ const executePatch = createStep({
 
     await agent.generate(prompt);
 
-    // Backup: jeśli agent nie wypełnił diffSummary, spróbujmy to zrobić automatycznie
+    // Backup: auto-generate diff if agent didn't
     const updatedArtifact = await db.collection('code_task_artifacts').findOne({ taskId });
     if (updatedArtifact?.worktreePath && (!updatedArtifact.diffSummary || updatedArtifact.diffSummary.trim() === '')) {
       try {
