@@ -169,7 +169,7 @@ export const agentModels = {
   salesAgent: 'gemma4-26b' as ModelKey,
   crmAgent: 'gemma4-26b' as ModelKey,
   analyticsAgent: 'qwen3-coder-30b' as ModelKey,
-  weatherAgent: 'gemini-2.5-pro' as ModelKey,
+  weatherAgent: 'gemini-2.5-flash' as ModelKey,
   automationArchitect: 'gemini-2.5-pro' as ModelKey,
   marketingAgent: 'gpt-5.3-mini' as ModelKey,
 } as const;
@@ -245,7 +245,7 @@ export const infrastructure = {
 
   /** N8n workflow generation defaults (used by automation-architect builders) */
   n8n: {
-    defaultModel: 'gemma4-26b' as ModelKey,
-    reasoningModel: 'magistral-24b' as ModelKey,
+    defaultModel: 'gemini-2.5-flash' as ModelKey,
+    reasoningModel: 'gemini-2.5-flash' as ModelKey,
   },
 } as const;
