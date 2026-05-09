@@ -1,6 +1,7 @@
 import { AutomationSpec } from '../types.js';
 import { getRuntimeTopology } from '../../../config/runtime-topology.js';
 import { getCredentialFromRegistry } from '../credentials/credential-registry.js';
+import { infrastructure, resolveModelId } from '../../../config/model-manifest.js';
 
 /**
  * Runtime configuration for n8n workflow generation.
@@ -23,15 +24,24 @@ export interface N8nRuntimeConfig {
 /**
  * Reads n8n config from environment variables and runtime topology.
  * Called at workflow generation time — values are baked into the workflow JSON.
+ *
+ * Default model names are sourced from model-manifest.ts (Single Source of Truth).
+ * Env vars OLLAMA_DEFAULT_MODEL / OLLAMA_REASONING_MODEL override manifest defaults.
  */
 export function getN8nConfig(): N8nRuntimeConfig {
   const topology = getRuntimeTopology();
   const mastraApiBase = topology.mastraApiUrlForN8n.replace(/\/$/, '');
+
+  // Extract raw Ollama model name from manifest ID:
+  // 'ollama/local/gemma4:26b' → 'gemma4:26b'
+  const manifestDefault = resolveModelId(infrastructure.n8n.defaultModel).replace(/^ollama\/local\//, '');
+  const manifestReasoning = resolveModelId(infrastructure.n8n.reasoningModel).replace(/^ollama\/local\//, '');
+
   return {
     telegramChatId: process.env.N8N_TELEGRAM_CHAT_ID || process.env.TELEGRAM_CHAT_ID || '',
     ollamaBaseUrl: topology.ollamaBaseUrlForN8n,
-    defaultLocalModel: process.env.OLLAMA_DEFAULT_MODEL || 'gemma4:26b',
-    reasoningLocalModel: process.env.OLLAMA_REASONING_MODEL || 'huihui_ai/qwen3.5-abliterated:35b',
+    defaultLocalModel: process.env.OLLAMA_DEFAULT_MODEL || manifestDefault,
+    reasoningLocalModel: process.env.OLLAMA_REASONING_MODEL || manifestReasoning,
     agentForgeTaskEndpoint: process.env.AGENTFORGE_TASK_ENDPOINT || `${mastraApiBase}/api/tasks`,
     agentForgeMemoryEndpoint: process.env.AGENTFORGE_MEMORY_ENDPOINT || `${mastraApiBase}/api/shared-memory`,
     agentForgeCrmEndpoint: process.env.AGENTFORGE_CRM_ENDPOINT || `${mastraApiBase}/api/crm`,

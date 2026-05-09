@@ -18,9 +18,23 @@ export type EmbeddingVector = number[];
 
 type Provider = 'ollama' | 'google';
 
+/**
+ * Embedding config — env vars take priority, manifest provides defaults.
+ * NOTE: model-manifest.ts only stores the alias key. We extract the raw
+ * model name (e.g. 'bge-m3') from the full ID for use in API calls.
+ */
+import { models, infrastructure, resolveModelId } from '../config/model-manifest.js';
+
+/** Extract raw model name from full manifest ID: 'ollama/local/bge-m3' → 'bge-m3' */
+function extractModelName(fullId: string): string {
+  return fullId.split('/').pop() ?? fullId;
+}
+
+const MANIFEST_EMBEDDING_MODEL = extractModelName(resolveModelId(infrastructure.embedding.model));
+
 const PROVIDER: Provider = (process.env.EMBEDDING_PROVIDER as Provider) || 'ollama';
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-const OLLAMA_MODEL = process.env.EMBEDDING_MODEL || 'bge-m3';
+const OLLAMA_MODEL = process.env.EMBEDDING_MODEL || MANIFEST_EMBEDDING_MODEL;
 const GOOGLE_MODEL = process.env.EMBEDDING_MODEL || 'text-embedding-005';
 const GOOGLE_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 

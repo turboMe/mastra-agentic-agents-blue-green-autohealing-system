@@ -21,39 +21,32 @@
 import { MastraModelGateway } from '@mastra/core/llm';
 import type { ProviderConfig, GatewayLanguageModel } from '@mastra/core/llm';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
+import { models } from '../config/model-manifest.js';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
-// ── Free models we want to expose ────────────────────────────────────────────
+// ── Free models — generated from model-manifest.ts ───────────────────────────
 
 /**
- * Curated list of free OpenRouter models.
- * Format: { id: "provider/model:free", provider: "provider_namespace" }
+ * Derives FREE_MODELS from model-manifest inventory.
+ * Any model whose full ID starts with 'openrouter/' is included.
+ * Provider namespace and model name are extracted from the ID segments.
  *
- * These are the models registered in model-capabilities.ts as cloud-free tier.
- * Only models that are consistently available and produce usable output.
+ * manifest: 'openrouter/nvidia/nemotron-3-super-120b-a12b:free'
+ *       → { id: 'nvidia/nemotron-3-super-120b-a12b:free', provider: 'nvidia', model: 'nemotron-3-super-120b-a12b:free' }
  */
-const FREE_MODELS: Array<{ id: string; provider: string; model: string }> = [
-  // NVIDIA Nemotron — strong reasoning, good for planning/JSON
-  { id: 'nvidia/nemotron-3-super-120b-a12b:free', provider: 'nvidia', model: 'nemotron-3-super-120b-a12b:free' },
-  { id: 'nvidia/nemotron-3-nano-30b-a3b:free', provider: 'nvidia', model: 'nemotron-3-nano-30b-a3b:free' },
-
-  // Poolside Laguna — code-focused
-  { id: 'poolside/laguna-m.1:free', provider: 'poolside', model: 'laguna-m.1:free' },
-
-  // InclusionAI Ring — general-purpose large model
-  { id: 'inclusionai/ring-2.6-1t:free', provider: 'inclusionai', model: 'ring-2.6-1t:free' },
-
-  // MiniMax — general-purpose
-  { id: 'minimax/minimax-m2.5:free', provider: 'minimax', model: 'minimax-m2.5:free' },
-
-  // Z.ai GLM — general-purpose
-  { id: 'z-ai/glm-4.5-air:free', provider: 'z-ai', model: 'glm-4.5-air:free' },
-
-  // OpenAI GPT-OSS — open-source models from OpenAI
-  { id: 'openai/gpt-oss-120b:free', provider: 'openai-oss', model: 'gpt-oss-120b:free' },
-  { id: 'openai/gpt-oss-20b:free', provider: 'openai-oss', model: 'gpt-oss-20b:free' },
-];
+const FREE_MODELS: Array<{ id: string; provider: string; model: string }> = (Object.values(models) as string[])
+  .filter((fullId) => fullId.startsWith('openrouter/'))
+  .map((fullId) => {
+    // 'openrouter/nvidia/nemotron-3-super-120b-a12b:free' → 'nvidia/nemotron-3-super-120b-a12b:free'
+    const withoutGateway = fullId.replace('openrouter/', '');
+    const slashIdx = withoutGateway.indexOf('/');
+    const provider = withoutGateway.slice(0, slashIdx);
+    const model = withoutGateway.slice(slashIdx + 1);
+    // Special case: 'openai' provider collides with paid OpenAI — use 'openai-oss'
+    const safeProvider = provider === 'openai' ? 'openai-oss' : provider;
+    return { id: withoutGateway, provider: safeProvider, model };
+  });
 
 // ── Gateway Implementation ───────────────────────────────────────────────────
 

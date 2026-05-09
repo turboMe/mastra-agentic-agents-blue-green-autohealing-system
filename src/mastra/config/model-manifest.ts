@@ -51,6 +51,9 @@ export const models = {
   'glm-free':             'openrouter/z-ai/glm-4.5-air:free',
   'gpt-oss-120b-free':    'openrouter/openai/gpt-oss-120b:free',
   'gpt-oss-20b-free':     'openrouter/openai/gpt-oss-20b:free',
+
+  // ── Embedding ──────────────────────────────────────────────────────────────
+  'bge-m3':               'ollama/local/bge-m3',
 } as const;
 
 /** All valid model alias keys */
@@ -146,6 +149,11 @@ export const workerPresets = {
 export const infrastructure = {
   /** Model used by Observational Memory to compress conversation history */
   observationalMemory:  'gemini-2.5-flash'    as ModelKey,
+
+  /** Embedding model defaults (used by lib/embedder.ts) */
+  embedding: {
+    model:              'bge-m3'              as ModelKey,
+  },
 
   /** N8n workflow generation defaults (used by automation-architect builders) */
   n8n: {
