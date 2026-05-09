@@ -99,10 +99,10 @@ export const metaAgent: Agent = new Agent({
   name: 'Meta Agent',
   instructions: await buildInstructions(),
   model: resolveModelId(agentModels.metaAgent),
-  defaultOptions: { maxSteps: 20 },
-  defaultGenerateOptionsLegacy: { maxSteps: 20 },
-  defaultStreamOptionsLegacy: { maxSteps: 20 },
-  defaultNetworkOptions: { maxSteps: 20 },
+  defaultOptions: { maxSteps: 40 },
+  defaultGenerateOptionsLegacy: { maxSteps: 40 },
+  defaultStreamOptionsLegacy: { maxSteps: 40 },
+  defaultNetworkOptions: { maxSteps: 40 },
 
   memory: new Memory({
     options: {
