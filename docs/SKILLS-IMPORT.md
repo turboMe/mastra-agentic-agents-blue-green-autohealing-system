@@ -1,10 +1,10 @@
 # Skill Registry — External Skills Import
 
-> Status: ✅ Complete | Imported: 2026-05-09 | Updated: 2026-05-09 (batch 5 — devops & coding expansion)
+> Status: ✅ Complete | Imported: 2026-05-09 | Updated: 2026-05-09 (batch 7 — all 12 new skills done)
 
 ## Overview
 
-Imported 21 high-quality skills from multiple repositories into our SkillRegistry:
+Imported 29 high-quality skills from multiple repositories into our SkillRegistry:
 - [anthropics/skills](https://github.com/anthropics/skills) (131k ⭐) — 4 skills
 - [openai/skills](https://github.com/openai/skills) (18.7k ⭐) — 6 skills
 - [claude-office-skills/skills](https://github.com/claude-office-skills/skills) (106 ⭐) — 5 skills
@@ -157,6 +157,65 @@ auth flow testing, batch endpoint sweeps, performance baselines.
 query rewriting (N+1 detection, subquery→JOIN, keyset pagination), PostgreSQL/SQLite/DuckDB.
 - No bundles (self-contained)
 - Use case: Database performance tuning, slow query diagnosis, index management
+## Batch 6 — Testing, Scraping, Security & Meta (Custom-Written)
+
+Sources: [wshobson/agents](https://github.com/wshobson/agents) (MIT),
+[trailofbits/skills](https://github.com/trailofbits/skills) (Apache 2.0),
+[alirezarezvani/claude-skills](https://github.com/alirezarezvani/claude-skills) (MIT).
+
+### 22. `test-generator` → `coding/`
+**Test scaffolding engine** — generates unit/integration tests with edge cases,
+mocks, and assertions. Auto-detects Vitest/Jest/Pytest and project conventions.
+- No bundles (self-contained)
+- Use case: Adding test coverage, TDD scaffolding, regression test creation
+
+### 23. `web-scraper` → `coding/`
+**Web data extraction** — curl-based scraping with anti-bot headers, pagination
+handling, HTML→JSON/CSV normalization, ethical rate limiting.
+- No bundles (self-contained)
+- Use case: Data mining, ETL pipelines, content aggregation
+
+### 24. `agentic-actions-auditor` → `security/` (NEW CATEGORY)
+**CI/CD agentic security audit** — detects 9 attack vectors in GitHub Actions
+workflows using AI agents (prompt injection, sandbox escape, env var intermediary).
+Adapted from TrailOfBits.
+- No bundles (self-contained)
+- Use case: Security audit of AI-powered CI/CD pipelines
+
+### 25. `prompt-tester` → `meta/`
+**LLM prompt evaluation** — structured testing with scoring rubrics, A/B comparison,
+regression detection, consistency analysis, and token efficiency optimization.
+- No bundles (self-contained)
+- Use case: Prompt development, quality assurance, agentic workflow tuning
+## Batch 7 — DevOps Pipeline & Standards (Custom-Written)
+
+Sources: [bentsolheim/claude-skill-bash](https://github.com/bentsolheim/claude-skill-bash) (MIT),
+[dash0hq/agent-skills](https://github.com/dash0hq/agent-skills) (Apache 2.0),
+[wshobson/agents](https://github.com/wshobson/agents) (MIT).
+
+### 26. `bash-standards` → `coding/`
+**Enterprise bash scripting** — main function pattern, argument parsing,
+dependency checking, error handling (no set -e), colored output, guard clauses.
+- No bundles (self-contained)
+- Use case: Writing production-grade shell scripts
+
+### 27. `cicd-pipeline` → `devops/`
+**CI/CD workflow generation** — GitHub Actions and GitLab CI templates with
+caching, matrix testing, security hardening, and deployment strategies.
+- No bundles (self-contained)
+- Use case: Setting up CI/CD pipelines, debugging workflow failures
+
+### 28. `k8s-helper` → `devops/`
+**Kubernetes management** — manifest generation (Deployments, Services, ConfigMaps),
+pod troubleshooting, cluster diagnostics, Helm basics, resource sizing.
+- No bundles (self-contained)
+- Use case: K8s manifest creation, pod debugging, cluster management
+
+### 29. `otel-instrumentation` → `devops/`
+**OpenTelemetry setup** — Node.js/Python SDK initialization, auto-instrumentation,
+custom spans/metrics, Collector configuration, Jaeger/Grafana integration.
+- No bundles (self-contained)
+- Use case: Adding observability to applications, tracing pipelines
 
 ## Infrastructure Changes
 
@@ -176,15 +235,16 @@ These were updated to match our flat naming convention:
 ### `.gitignore`
 Added `_external/` (cloned Anthropic repo used as source material).
 
-## Skill Inventory (36 total)
+## Skill Inventory (44 total)
 
 | Category | Count | Skills |
 |----------|:-----:|--------|
 | `terminal` | 7 | git-conflict-resolver, swe-repo-explorer, agentic-terminal-problem-solving, code-modification-agent, terminal-code-dev, nodejs-dependency-fixer, yeet |
-| `coding` | 20 | fix-typescript-error, safe-file-edit, run-verification, webapp-testing, mcp-builder, frontend-design, pdf, security-best-practices, gh-fix-ci, screenshot, cli-creator, docx-manipulation, office-to-md, pdf-extraction, diagram-creator, doc-parser, md-to-office, xlsx-manipulation, **api-tester**, **sql-optimizer** |
-| `devops` | 2 | **docker-helper**, **log-analyzer** |
+| `coding` | 23 | fix-typescript-error, safe-file-edit, run-verification, webapp-testing, mcp-builder, frontend-design, pdf, security-best-practices, gh-fix-ci, screenshot, cli-creator, docx-manipulation, office-to-md, pdf-extraction, diagram-creator, doc-parser, md-to-office, xlsx-manipulation, api-tester, sql-optimizer, test-generator, web-scraper, **bash-standards** |
+| `devops` | 5 | docker-helper, log-analyzer, **cicd-pipeline**, **k8s-helper**, **otel-instrumentation** |
+| `security` | 1 | agentic-actions-auditor |
 | `n8n` | 6 | n8n-common-patterns, n8n-node-catalog, n8n-workflow-rules, n8n-security-review, n8n-expression-syntax, n8n-security-checklist |
-| `meta` | 1 | skill-creator |
+| `meta` | 2 | skill-creator, prompt-tester |
 
 ## Agent Skills Spec Compatibility
 
@@ -207,7 +267,7 @@ Our format is a **superset** of the Agent Skills standard:
 ## Verification
 
 - TypeScript compilation: `npx tsc --noEmit` → 0 errors
-- Skill files with frontmatter: 30
+- Skill files with frontmatter: 44
 - Reference/support files (skipped by guard): ~10
 
 ## Source Licensing Summary
