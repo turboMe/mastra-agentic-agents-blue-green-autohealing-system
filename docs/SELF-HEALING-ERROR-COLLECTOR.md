@@ -15,19 +15,23 @@ Automatyczny "Łowca Błędów" — serwis nasłuchujący wyjątki runtime i aut
 │  ┌──────────────────┐    ┌──────────────────────┐ │
 │  │ Global Error     │───>│  ErrorCollector       │ │
 │  │ Handlers         │    │  (singleton)          │ │
-│  │ - uncaughtExc.   │    │                       │ │
-│  │ - unhandledRej.  │    │  ┌─ hashError()       │ │
-│  └──────────────────┘    │  ├─ dedup (Mongo)     │ │
-│                          │  ├─ cooldown (60s)    │ │
-│  ┌──────────────────┐    │  ├─ max active (3)    │ │
-│  │ /deploy/         │───>│  └─ TTL (24h)        │ │
-│  │   crash-test     │    └──────────┬───────────┘ │
-│  └──────────────────┘              │              │
-│                                    ▼              │
+│  │ - uncaughtExc.   │    │  ┌─ hashError()       │ │
+│  │ - unhandledRej.  │    │  ├─ dedup (Mongo)     │ │
+│  └──────────────────┘    │  ├─ cooldown (60s)    │ │
+│                          │  ├─ max active (3)    │ │
+│  ┌──────────────────┐    │  └─ TTL (24h)        │ │
+│  │ /deploy/         │───>└──────────┬───────────┘ │
+│  │   crash-test     │              │              │
+│  └──────────────────┘              ▼              │
 │                          ┌──────────────────────┐ │
 │                          │ repo-maintenance-wf  │ │
-│                          │ (Coding → Review →   │ │
-│                          │  Gate → Deploy)       │ │
+│                          │                       │ │
+│                          │ 1. diagnose-and-plan  │ │
+│                          │    (prompts/diagnose) │ │
+│                          │ 2. execute-patch      │ │
+│                          │ 3. review             │ │
+│                          │ 4. decision-gate      │ │
+│                          │ 5. deploy-and-verify  │ │
 │                          └──────────────────────┘ │
 └──────────────────────────────────────────────────┘
 ```
@@ -38,9 +42,10 @@ Automatyczny "Łowca Błędów" — serwis nasłuchujący wyjątki runtime i aut
 |------|------|
 | `src/mastra/services/error-collector.ts` | Serwis ErrorCollector — dedup, cooldown, trigger workflow |
 | `src/mastra/services/global-error-handler.ts` | Bootstrap globalnych handlerów `process.on(...)` |
+| `src/mastra/prompts/coding/diagnose.md` | Prompt diagnostyczny — ładowany dynamicznie przez workflow |
 | `src/mastra/index.ts` | Rejestracja handlerów + endpointy crash-test i status |
 | `src/mastra/lib/mongo.ts` | Indeksy dla `auto_healing_tickets` |
-| `src/mastra/workflows/repo-maintenance.ts` | Integracja ticket cleanup po deploy |
+| `src/mastra/workflows/repo-maintenance.ts` | Dwa nowe kroki: `diagnose-and-plan` + `execute-patch` |
 
 ## Kolekcja MongoDB: `auto_healing_tickets`
 
@@ -147,10 +152,60 @@ Odpowiedź:
    - Sprawdza limit aktywnych → OK
    - Tworzy ticket w `auto_healing_tickets`
    - Fire-and-forget: `repoMaintenanceWorkflow.createRun().start()`
-5. Workflow:
-   - `codingAgent` diagnozuje i tworzy patch w worktree
-   - `codeReviewAgent` reviewuje diff
-   - `decision-gate` → suspend na zatwierdzenie przez człowieka
-   - Po `resume(confirmMerge: true)` → `apply_patch` + `remove_worktree`
-   - `deploy-and-verify` → dry-run build + ticket resolution
-6. Człowiek dostaje jedynie: *"Fix gotowy. Proszę o zatwierdzenie."*
+5. **`diagnose-and-plan`** (nowy krok):
+   - Ładuje prompt z `prompts/coding/diagnose.md` (dynamicznie, nie z base.md agenta)
+   - codingAgent skanuje: plik błędu, importy, zależności, testy
+   - Wypełnia `diagnosticPlan` w artifact: rootCause, impactAnalysis, subtaski
+6. **`execute-patch`** (nowy krok):
+   - Pobiera `diagnosticPlan` z artifact
+   - Realizuje subtaski w kolejności priorytetów
+   - Tworzy worktree, edytuje pliki, generuje diff
+7. `codeReviewAgent` reviewuje diff
+8. `decision-gate` → suspend na zatwierdzenie przez człowieka
+9. Po `resume(confirmMerge: true)` → `apply_patch` + `remove_worktree`
+10. `deploy-and-verify` → dry-run build + ticket resolution
+11. Człowiek dostaje jedynie: *"Fix gotowy. Proszę o zatwierdzenie."*
+
+## Faza diagnostyczna — DiagnosticPlan
+
+Prompt diagnostyczny jest ładowany **dynamicznie** z `prompts/coding/diagnose.md` przez krok workflow — NIE jest częścią stałego prompta agenta (`base.md`). Dzięki temu:
+
+- Gdy user rozmawia z codingAgent w Studio → lekki generalny prompt
+- Gdy workflow triggeruje diagnostykę → ciężki diagnostyczny prompt wstrzyknięty przez step
+- Gdy Etap 8 doda subagentów → master wstrzykuje subtask-specific prompty workerom
+
+### Schema diagnosticPlan w artifact
+
+```json
+{
+  "rootCause": "Brak null-checku na property 'value' w handlerze",
+  "hypothesis": "Endpoint nie waliduje wejścia, undefined propaguje do handlera",
+  "impactAnalysis": {
+    "errorFile": "src/mastra/index.ts",
+    "errorLine": 42,
+    "directFiles": ["src/mastra/routes/api.ts"],
+    "dependentFiles": ["src/mastra/services/handler.ts"],
+    "testFiles": [],
+    "configFiles": ["deploy.config.json"]
+  },
+  "riskLevel": "low",
+  "riskJustification": "Izolowany handler, brak efektów ubocznych",
+  "subtasks": [
+    {
+      "id": "add-null-check",
+      "description": "Dodaj walidację wejścia",
+      "targetFiles": ["src/mastra/routes/api.ts"],
+      "type": "edit",
+      "priority": 1,
+      "estimatedComplexity": "trivial",
+      "dependencies": []
+    }
+  ],
+  "verificationPlan": {
+    "commands": ["npx tsc --noEmit"],
+    "expectedOutcome": "Zero błędów kompilacji"
+  }
+}
+```
+
+Ta struktura jest gotowa do dekompozycji na subagentów w **Etapie 8** — każdy subtask może być przekazany osobnemu workerowi.

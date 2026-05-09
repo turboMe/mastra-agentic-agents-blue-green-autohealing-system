@@ -163,6 +163,8 @@ Aby agent był jeszcze bardziej autonomiczny i stabilny w trudnych refaktorach, 
 7. [x] **Reviewer Worktree Tools:** Narzędzia do inspekcji worktree przez codeReviewAgent (`worktree_diff`, `list_worktree_files`, `read_worktree_file`). Reviewer sam sprawdza pliki zamiast polegać na metadanych.
 8. [x] **Blue-Green Deployment:** Dwie instancje Mastry, skrypt izolujący build, weryfikacja logiki deploymentu (dry-run) przez dedykowany krok w workflow po zmergowaniu kodu.
 9. [x] **Self-Healing Error Collector:** `ErrorCollector` z deduplikacją, cooldownem i limitem. Globalne handlery `uncaughtException`/`unhandledRejection`. Auto-trigger `repo-maintenance-workflow`. Crash-test endpoint do E2E.
+10. [x] **Faza Diagnostyczna (Diagnose → Patch split):** Workflow rozbity na `diagnose-and-plan` (szerokie badanie kontekstu, analiza wpływu, plan z subtaskami) → `execute-patch` (realizacja planu). Prompt diagnostyczny ładowany dynamicznie z `prompts/coding/diagnose.md` — NIE siedzi w base.md agenta. Schema `diagnosticPlan` w artifact z subtaskami, priorytetami i zależnościami — gotowa do dekompozycji na subagentów w Etapie 8.
+11. [x] **Model Capability Registry + Smart Router:** Centralny rejestr modeli (`config/model-capabilities.ts`) z VRAM budgetem, bezpiecznymi limitami kontekstu (anti-freeze), tier-ami (micro/light/heavy/cloud-fast/cloud-pro) i concurrent slots. `SmartRouter` (`services/smart-router.ts`) buduje graf zależności subtasków, organizuje je w grupy parallel execution i przypisuje najtańszy model zdolny obsłużyć daną złożoność, respektując limit 16GB VRAM (overflow → cloud). Subtask schema rozszerzony o `assignedModel`, `parallelGroup`, `estimatedVramMb`.
 
 ---
 

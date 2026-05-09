@@ -54,13 +54,15 @@ export const workflowModels = {
   },
 
   coding: {
-    // Local-first for MVP. Switch default/review to cloud presets when stronger
-    // coding models are connected.
-    default: modelPresets.googlePro,
-    patch: modelPresets.openaiMini,
-    review: modelPresets.googleFlash,
+    // Master agents — static model assignment
+    default: modelPresets.googlePro,       // diagnose-and-plan (needs reasoning)
+    patch: modelPresets.openaiMini,        // execute-patch fallback (when no diagnosticPlan)
+    review: modelPresets.googleFlash,      // code review
     selfHealingPlanner: modelPresets.openaiMini,
     selfHealingReview: modelPresets.googleFlash,
     jsonRepair: modelPresets.openaiMini,
+    // Worker routing is DYNAMIC via SmartRouter (config/model-capabilities.ts).
+    // Each subtask gets assigned based on complexity, VRAM budget, and cost.
+    // See: services/smart-router.ts
   },
 } as const;

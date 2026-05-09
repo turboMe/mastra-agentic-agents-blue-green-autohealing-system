@@ -48,6 +48,40 @@ const testResultSchema = z.object({
   summary: z.string(),
 });
 
+const subtaskSchema = z.object({
+  id: z.string(),
+  description: z.string(),
+  targetFiles: z.array(z.string()),
+  type: z.enum(['edit', 'create', 'delete', 'test', 'config']),
+  priority: z.number(),
+  estimatedComplexity: z.enum(['trivial', 'simple', 'moderate', 'complex']).optional(),
+  dependencies: z.array(z.string()),
+  // ── Model routing (populated by Smart Router, not by LLM) ──
+  assignedModel: z.string().optional().describe('Model ID assigned by router, e.g. ollama/local/qwen3:1.7b'),
+  parallelGroup: z.number().optional().describe('Execution group number — subtasks in same group run concurrently'),
+  estimatedVramMb: z.number().optional().describe('VRAM needed for assigned model'),
+});
+
+const diagnosticPlanSchema = z.object({
+  rootCause: z.string(),
+  hypothesis: z.string(),
+  impactAnalysis: z.object({
+    errorFile: z.string(),
+    errorLine: z.number().optional(),
+    directFiles: z.array(z.string()),
+    dependentFiles: z.array(z.string()),
+    testFiles: z.array(z.string()),
+    configFiles: z.array(z.string()),
+  }),
+  riskLevel: z.enum(['low', 'medium', 'high']),
+  riskJustification: z.string(),
+  subtasks: z.array(subtaskSchema),
+  verificationPlan: z.object({
+    commands: z.array(z.string()),
+    expectedOutcome: z.string(),
+  }),
+});
+
 const codeTaskArtifactSchema = z.object({
   taskId: z.string(),
   status: z.enum(CODE_TASK_STATUSES),
@@ -62,6 +96,7 @@ const codeTaskArtifactSchema = z.object({
   branchName: z.string().optional(),
   diffSummary: z.string(),
   testResult: testResultSchema.optional(),
+  diagnosticPlan: diagnosticPlanSchema.optional(),
   reviewVerdict: z.enum(REVIEW_VERDICTS).optional(),
   rollbackAvailable: z.boolean(),
   createdAt: z.string(),
@@ -105,6 +140,7 @@ function normalizeArtifact(doc: Record<string, unknown>): CodeTaskArtifact {
     branchName: typeof doc.branchName === 'string' ? doc.branchName : undefined,
     diffSummary: String(doc.diffSummary ?? ''),
     testResult: doc.testResult as CodeTaskArtifact['testResult'],
+    diagnosticPlan: doc.diagnosticPlan as CodeTaskArtifact['diagnosticPlan'],
     reviewVerdict: doc.reviewVerdict as CodeTaskArtifact['reviewVerdict'],
     rollbackAvailable: Boolean(doc.rollbackAvailable),
     createdAt: String(doc.createdAt),
@@ -182,6 +218,7 @@ export const updateCodeTaskArtifactTool = createTool({
     approvalsRequested: z.array(approvalRequestSchema).optional(),
     diffSummary: z.string().optional(),
     testResult: testResultSchema.optional(),
+    diagnosticPlan: diagnosticPlanSchema.optional(),
     reviewVerdict: z.enum(REVIEW_VERDICTS).optional(),
     rollbackAvailable: z.boolean().optional(),
   }),
@@ -205,6 +242,7 @@ export const updateCodeTaskArtifactTool = createTool({
       if (context.approvalsRequested) set.approvalsRequested = context.approvalsRequested;
       if (context.diffSummary !== undefined) set.diffSummary = context.diffSummary;
       if (context.testResult) set.testResult = context.testResult;
+      if (context.diagnosticPlan) set.diagnosticPlan = context.diagnosticPlan;
       if (context.reviewVerdict) set.reviewVerdict = context.reviewVerdict;
       if (context.rollbackAvailable !== undefined) set.rollbackAvailable = context.rollbackAvailable;
 

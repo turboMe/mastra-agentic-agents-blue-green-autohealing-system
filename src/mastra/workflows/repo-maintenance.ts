@@ -26,11 +26,11 @@ const reviewOutputSchema = z.object({
 
 const MAX_REVIEW_ITERATIONS = 3;
 
-// ── Step 1: Coding Agent ─────────────────────────────────────────────────────
+// ── Step 1a: Diagnose and Plan ───────────────────────────────────────────────
 
-const executeCodingAgent = createStep({
-  id: 'execute-coding-agent',
-  description: 'Wysyła zadanie programistyczne do codingAgent w celu utworzenia worktree i modyfikacji kodu.',
+const diagnoseAndPlan = createStep({
+  id: 'diagnose-and-plan',
+  description: 'Faza diagnostyczna: szerokie badanie błędu, analiza wpływu, ustrukturyzowany plan naprawy z subtaskami.',
   inputSchema: codingTaskSchema,
   outputSchema: codingOutputSchema,
   execute: async ({ inputData, mastra }) => {
@@ -41,31 +41,145 @@ const executeCodingAgent = createStep({
 
     const taskId = inputData.taskId || randomUUID();
 
-    const prompt = `Rozpocznij realizację zadania: ${inputData.userRequest}
-    Identyfikator zadania: ${taskId}
-    Na samym początku użyj coding.create_artifact aby zainicjować wpis w bazie używając dokładnie ID: ${taskId}.
-    Użyj pełnego cyklu Staging Worktree (coding.init_worktree).
-    Po zapisaniu wszystkich plików w worktree, KONIECZNIE:
-    1. Uruchom w worktree komendę: git diff HEAD (aby wygenerować diff zmian).
-    2. Zaktualizuj artefakt (coding.update_artifact) ustawiając pole diffSummary na wynik tego diffa.
-    3. Ustaw status artefaktu na waiting_approval.
-    UWAGA: nie wywołuj narzędzia apply_patch samodzielnie! Oczekujesz na codeReviewAgent.`;
+    // Ładujemy diagnostyczny prompt dynamicznie — NIE jest częścią base.md agenta
+    let diagnosticInstructions: string;
+    try {
+      const { loadPrompt } = await import('../lib/prompt-loader.js');
+      diagnosticInstructions = await loadPrompt('coding/diagnose');
+    } catch {
+      // Fallback jeśli plik promptu nie istnieje
+      diagnosticInstructions = `Przeprowadź szeroki skan kontekstu. Zbadaj plik błędu, importy, eksporty, zależności. Znajdź pliki powiązane i testy. Stwórz plan naprawy z subtaskami. NIE edytuj plików.`;
+    }
+
+    const prompt = [
+      diagnosticInstructions,
+      ``,
+      `## Zadanie do diagnozy`,
+      ``,
+      inputData.userRequest,
+      ``,
+      `## Identyfikator zadania: ${taskId}`,
+      ``,
+      `Na samym początku użyj \`coding.create_artifact\` aby zainicjować artifact z ID: ${taskId}.`,
+      `Po zakończeniu diagnostyki zaktualizuj artifact (\`coding.update_artifact\`) z pełnym polem \`diagnosticPlan\` i ustaw status na \`planning\`.`,
+    ].join('\n');
+
+    await agent.generate(prompt);
+
+    // ── Post-diagnosis: Smart Router assigns models & parallel groups ──
+    try {
+      const { routeSubtasks, formatRoutingResult } = await import('../services/smart-router.js');
+      const db = await getDb();
+      const artifact = await db.collection('code_task_artifacts').findOne({ taskId });
+
+      if (artifact?.diagnosticPlan?.subtasks?.length) {
+        const routingResult = routeSubtasks(artifact.diagnosticPlan.subtasks);
+        console.log(formatRoutingResult(routingResult));
+
+        // Write routed subtasks back to artifact
+        await db.collection('code_task_artifacts').updateOne(
+          { taskId },
+          {
+            $set: {
+              'diagnosticPlan.subtasks': artifact.diagnosticPlan.subtasks, // mutated in-place by router
+              'diagnosticPlan.routingSummary': routingResult.summary,
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        );
+      }
+    } catch (routeErr) {
+      // Non-fatal — execute-patch can still work without routing
+      console.warn('[diagnose-and-plan] Smart Router failed, subtasks will run sequentially:', (routeErr as Error).message);
+    }
+
+    return {
+      taskId,
+      status: 'planning',
+      iteration: 1,
+    };
+  },
+});
+
+// ── Step 1b: Execute Patch ───────────────────────────────────────────────────
+
+const executePatch = createStep({
+  id: 'execute-patch',
+  description: 'Realizacja planu naprawy: tworzenie worktree, edycja plików zgodnie z diagnosticPlan, generacja diff.',
+  inputSchema: codingOutputSchema,
+  outputSchema: codingOutputSchema,
+  execute: async ({ inputData, mastra }) => {
+    if (!inputData) throw new Error('Input data not found');
+
+    const agent = mastra?.getAgent('codingAgent');
+    if (!agent) throw new Error('codingAgent not found');
+
+    const taskId = inputData.taskId;
+
+    // Pobierz plan diagnostyczny z artifact
+    const db = await getDb();
+    const artifact = await db.collection('code_task_artifacts').findOne({ taskId });
+
+    let planContext = '';
+    if (artifact?.diagnosticPlan) {
+      const dp = artifact.diagnosticPlan as any;
+      const subtaskList = (dp.subtasks || [])
+        .sort((a: any, b: any) => (a.priority ?? 99) - (b.priority ?? 99))
+        .map((s: any) => `  - [${s.id}] (${s.type}, priorytet ${s.priority}): ${s.description} → pliki: ${(s.targetFiles || []).join(', ')}`)
+        .join('\n');
+
+      planContext = [
+        `## Plan diagnostyczny (przygotowany wcześniej)`,
+        ``,
+        `**Root cause:** ${dp.rootCause}`,
+        `**Hipoteza:** ${dp.hypothesis}`,
+        `**Ryzyko:** ${dp.riskLevel} — ${dp.riskJustification}`,
+        ``,
+        `**Analiza wpływu:**`,
+        `- Plik błędu: ${dp.impactAnalysis?.errorFile || 'N/A'}`,
+        `- Pliki bezpośrednie: ${(dp.impactAnalysis?.directFiles || []).join(', ') || 'brak'}`,
+        `- Pliki zależne: ${(dp.impactAnalysis?.dependentFiles || []).join(', ') || 'brak'}`,
+        `- Testy: ${(dp.impactAnalysis?.testFiles || []).join(', ') || 'brak'}`,
+        ``,
+        `**Subtaski (realizuj w kolejności priorytetów):**`,
+        subtaskList || '  (brak subtasków)',
+        ``,
+        `**Weryfikacja po naprawie:**`,
+        `- Komendy: ${(dp.verificationPlan?.commands || []).join(', ')}`,
+        `- Oczekiwany wynik: ${dp.verificationPlan?.expectedOutcome || 'TSC clean'}`,
+      ].join('\n');
+    } else {
+      planContext = `Brak planu diagnostycznego — działaj standardowo: zdiagnozuj i napraw.`;
+    }
+
+    const prompt = [
+      `Realizuj plan naprawy. Masz gotową diagnozę — skup się na implementacji.`,
+      ``,
+      planContext,
+      ``,
+      `## Identyfikator zadania: ${taskId}`,
+      ``,
+      `Użyj pełnego cyklu Staging Worktree (\`coding.init_worktree\`).`,
+      `Po zapisaniu wszystkich plików w worktree, KONIECZNIE:`,
+      `1. Uruchom w worktree komendę: git diff HEAD (aby wygenerować diff zmian).`,
+      `2. Zaktualizuj artefakt (\`coding.update_artifact\`) ustawiając pole diffSummary na wynik tego diffa.`,
+      `3. Ustaw status artefaktu na waiting_approval.`,
+      `UWAGA: nie wywołuj narzędzia apply_patch samodzielnie! Oczekujesz na codeReviewAgent.`,
+    ].join('\n');
 
     await agent.generate(prompt);
 
     // Backup: jeśli agent nie wypełnił diffSummary, spróbujmy to zrobić automatycznie
-    const db = await getDb();
-    const artifact = await db.collection('code_task_artifacts').findOne({ taskId });
-    if (artifact?.worktreePath && (!artifact.diffSummary || artifact.diffSummary.trim() === '')) {
+    const updatedArtifact = await db.collection('code_task_artifacts').findOne({ taskId });
+    if (updatedArtifact?.worktreePath && (!updatedArtifact.diffSummary || updatedArtifact.diffSummary.trim() === '')) {
       try {
         const { execSync } = await import('child_process');
         const diff = execSync('git diff HEAD', {
-          cwd: artifact.worktreePath,
+          cwd: updatedArtifact.worktreePath,
           encoding: 'utf-8',
           timeout: 10000,
         }).trim();
         if (diff) {
-          // Ograniczamy diff do 4000 znaków żeby nie przeciążyć LLM
           const truncatedDiff = diff.length > 4000 ? diff.slice(0, 4000) + '\n... (skrócono)' : diff;
           await db.collection('code_task_artifacts').updateOne(
             { taskId },
@@ -78,7 +192,7 @@ const executeCodingAgent = createStep({
     }
 
     return {
-      taskId: taskId,
+      taskId,
       status: 'waiting_approval',
       iteration: 1,
     };
@@ -372,11 +486,12 @@ const deployAndVerify = createStep({
 
 const repoMaintenanceWorkflow = createWorkflow({
   id: 'repo-maintenance-workflow',
-  description: 'Self-healing workflow: Coding → Review → Decision Gate → Deploy Verify',
+  description: 'Self-healing workflow: Diagnose → Patch → Review → Decision Gate → Deploy Verify',
   inputSchema: codingTaskSchema,
   outputSchema: deployOutputSchema,
 })
-  .then(executeCodingAgent)
+  .then(diagnoseAndPlan)
+  .then(executePatch)
   .then(executeReviewAgent)
   .then(decisionGate)
   .then(deployAndVerify);
