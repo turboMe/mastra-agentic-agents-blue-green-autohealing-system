@@ -340,6 +340,14 @@ getSkillRegistry().initialize(resolve(import.meta.dirname ?? '.', '_skills')).ca
   console.error('[SkillRegistry] Initialization failed:', (err as Error).message),
 );
 
+// ── Repo Indexer (Phase 5 — Structural Code Navigation) ──
+import { getRepoIndexer } from './services/repo-indexer.js';
+getRepoIndexer('/projekty/mastra-agentic-environment/agentic-agents').index().then((result) =>
+  console.log(`[RepoIndexer] Startup scan: ${result.total} files, ${result.indexed} indexed in ${result.durationMs}ms`),
+).catch((err) =>
+  console.error('[RepoIndexer] Startup scan failed:', (err as Error).message),
+);
+
 // ── Graceful Shutdown for Dev/Hot-Reload ──
 function cleanupAndExit(signal: string) {
   console.log(`[Mastra] Otrzymano sygnał ${signal}. Zamykanie zasobów przed restartem (Graceful Shutdown)...`);

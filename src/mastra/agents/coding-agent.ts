@@ -1,5 +1,6 @@
 import { Agent } from '@mastra/core/agent';
 import { Memory } from '@mastra/memory';
+import { TokenLimiterProcessor } from '@mastra/core/processors';
 import { workflowModels } from '../config/workflow-models.js';
 import { infrastructure, resolveModelId } from '../config/model-manifest.js';
 import { loadPrompt } from '../lib/prompt-loader.js';
@@ -35,6 +36,7 @@ import { memoryWriteTool } from '../tools/system/memory-write.js';
 import { skillSearchTool } from '../tools/system/skill-search.js';
 import { skillLoadTool } from '../tools/system/skill-load.js';
 import { skillReportTool } from '../tools/system/skill-report.js';
+import { repoMapTool, repoStatsTool, repoReindexTool } from '../tools/dev/repo-map-tools.js';
 
 export const codingAgent: Agent = new Agent({
   id: 'coding-agent',
@@ -72,6 +74,10 @@ export const codingAgent: Agent = new Agent({
     skillSearchTool,
     skillLoadTool,
     skillReportTool,
+    // Repo Indexing (Phase 5 — Structural Code Navigation)
+    repoMapTool,
+    repoStatsTool,
+    repoReindexTool,
   },
   memory: new Memory({
     options: {
@@ -87,4 +93,10 @@ export const codingAgent: Agent = new Agent({
       generateTitle: true,
     },
   }),
+  // Phase 5 — Context window protection (prevents overflow in long autonomous sessions)
+  inputProcessors: [
+    new TokenLimiterProcessor({
+      limit: 120_000,  // Effective limit for Gemini 2.5 Flash (actual: 1M, but perf degrades after ~120K)
+    }),
+  ],
 });
