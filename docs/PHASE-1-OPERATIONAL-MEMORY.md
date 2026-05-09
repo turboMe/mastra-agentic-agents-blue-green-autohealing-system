@@ -1,6 +1,6 @@
 # Phase 1 — Operational Memory
 
-> Status: In Progress | 1.1 ✅ | 1.1b ⏳ | 1.2 ✅ | 1.3 ✅ | 1.4 ⏳
+> Status: ✅ Complete | 1.1 ✅ | 1.1b ✅ | 1.2 ✅ | 1.3 ✅ | 1.4 ✅ | Completed: 2026-05-09
 
 ## Overview
 
@@ -47,11 +47,17 @@ compressing older context into observations rather than losing it via `lastMessa
 
 Remove the `observationalMemory` block from config to revert to pure `lastMessages: 30`.
 
-## 1.1b Observational Memory for codingAgent ⏳
+## 1.1b Observational Memory for codingAgent ✅
 
-**Dependency:** Must confirm OM works correctly on metaAgent first (pilot test).
+**File:** `agents/coding-agent.ts`
 
-Same config pattern as 1.1. Will be enabled after metaAgent pilot validates OM quality.
+Same config as metaAgent, enabled after successful pilot test. Configuration:
+- `lastMessages: 30` (bumped from 20 for parity)
+- `observationalMemory` with Gemini 2.5 Flash + temporal markers
+- `generateTitle: true` + `threadTitle: true`
+
+Keeps context across 15+ subtask orchestrations — Observer compresses earlier results
+automatically.
 
 ## 1.2 Agent Event Log ✅
 
@@ -137,6 +143,44 @@ import { extractKnowledge } from './services/memory-extractor.js';
 const count = await extractKnowledge(); // run manually or on schedule
 ```
 
+## 1.4 Memory Tools ✅
+
+### Tools
+
+| Tool | Agents | Purpose |
+|------|--------|---------|
+| `system.memory_recall` | metaAgent, codingAgent | Semantic vector search over `system_knowledge`. Auto-renews TTL on hit. |
+| `system.memory_write_observation` | metaAgent, codingAgent | Explicit knowledge persistence. Deduplicates by `(type, title)`, increments confidence. |
+
+### Files
+
+- `tools/system/memory-recall.ts` — Recall tool with embedding search + TTL renewal
+- `tools/system/memory-write.ts` — Write tool with deduplication
+
+### System prompt integration
+
+Both agents have updated system prompts (`prompts/meta/base.md`, `prompts/coding/base.md`)
+with explicit instructions:
+- **Before complex tasks:** Call `memory_recall` to check for known patterns
+- **After significant discoveries:** Call `memory_write_observation` to persist lessons
+
+## 1.5 Working Memory + Auto-Titles ✅
+
+**File:** `agents/meta-agent.ts`
+
+Additional memory features enabled on metaAgent:
+
+- **Working Memory** — persistent scratchpad surviving across sessions with template:
+  - User Preferences (language, communication style, decision authority)
+  - Active Project Context (phase, decisions, blockers)
+  - Learned Patterns (strategies, pitfalls)
+- **generateTitle: true** — auto-generates descriptive thread titles
+- **threadTitle: true** — OM refines titles during compression
+
 ## Verification
 
 All changes pass `npx tsc --noEmit` with zero errors.
+
+---
+
+> **Next:** [Phase 2 — Failure Brain + Skill Registry](./PHASE-2-FAILURE-BRAIN-SKILL-REGISTRY.md)

@@ -86,3 +86,7 @@ All changes pass `npx tsc --noEmit` with zero errors.
 | token_usage pipeline working | ⏳ Requires runtime diagnosis |
 | Lessons auto-saved after retry | ✅ |
 | run_test command whitelist | ✅ |
+
+---
+
+> **Next:** [Phase 1 — Operational Memory](./PHASE-1-OPERATIONAL-MEMORY.md)
