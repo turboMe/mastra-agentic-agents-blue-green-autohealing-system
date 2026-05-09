@@ -12,7 +12,7 @@ Ref: [plan-rozwoju.md](./plan-rozwoju.md) | [Część 1](./plan-rozwoju-v2-part1
 > Szacowany czas: 5–8 sesji roboczych
 > Zależność: → Faza 2 (Skill Registry musi działać)
 
-### 3.1 Definicja specjalizacji subagentów
+### 3.1 Definicja specjalizacji subagentów — ✅ DONE 2026-05-09
 
 **Zależność:** → 2.3 (skill tools)
 
@@ -79,7 +79,7 @@ Ref: [plan-rozwoju.md](./plan-rozwoju.md) | [Część 1](./plan-rozwoju-v2-part1
    - Format outputu (structured JSON z diff/diagnostics)
    - Instrukcję skill loading ("Twoja procedura jest poniżej, wykonaj ją krok po kroku")
 
-### 3.2 Ewolucja subtask-executor z routing po rolach
+### 3.2 Ewolucja subtask-executor z routing po rolach — ✅ DONE 2026-05-09
 
 **Zależność:** → 3.1
 
@@ -141,7 +141,7 @@ Ref: [plan-rozwoju.md](./plan-rozwoju.md) | [Część 1](./plan-rozwoju-v2-part1
    - terminal subtask → użyty model local-micro
    - qa subtask → użyty model local-micro, raport quality signals
 
-### 3.3 Ad-hoc worker creation przez codingAgent
+### 3.3 Ad-hoc worker creation przez codingAgent — ✅ DONE 2026-05-09
 
 **Zależność:** → 3.2
 
@@ -168,7 +168,7 @@ Ref: [plan-rozwoju.md](./plan-rozwoju.md) | [Część 1](./plan-rozwoju-v2-part1
 
 3. **[TEST]** codingAgent dostaje task bez pasującego subagenta → tworzy ad-hoc workera ze skillem → worker wykonuje zadanie
 
-### 3.4 Integracja Skill Registry z subagentami — feedback loop
+### 3.4 Integracja Skill Registry z subagentami — feedback loop — ✅ DONE 2026-05-09
 
 **Zależność:** → 3.2, 3.3
 
@@ -198,7 +198,7 @@ Ref: [plan-rozwoju.md](./plan-rozwoju.md) | [Część 1](./plan-rozwoju-v2-part1
 > Szacowany czas: 2–3 sesje robocze
 > Zależność: → Faza 3 (subagenci muszą działać, żeby mieć komu przypisać free modele)
 
-### 4.1 OpenRouter free tier w model registry (DECYZJA-03)
+### 4.1 OpenRouter free tier w model registry (DECYZJA-03) — ✅ DONE 2026-05-09
 
 **Kroki:**
 1. **[EDYCJA]** `config/model-capabilities.ts`:
@@ -230,7 +230,7 @@ Ref: [plan-rozwoju.md](./plan-rozwoju.md) | [Część 1](./plan-rozwoju-v2-part1
 3. **[EDYCJA]** `.env` — dodać `OPENROUTER_API_KEY`
 4. **[TEST]** SmartRouter z subtask o complexity `trivial` → powinien preferować `cloud-free` nad `cloud-fast` (tańszy)
 
-### 4.2 Circuit breaker per model
+### 4.2 Circuit breaker per model — ✅ DONE 2026-05-09
 
 **Zależność:** → 4.1
 
@@ -251,7 +251,7 @@ Ref: [plan-rozwoju.md](./plan-rozwoju.md) | [Część 1](./plan-rozwoju-v2-part1
 3. **[EDYCJA]** `services/smart-router.ts` — `selectModel()` pomija modele z otwartym circuit breakerem
 4. **[TEST]** Symulować 3x 429 od OpenRouter → model powinien być pominięty przez 5 min
 
-### 4.3 Request budget tracker
+### 4.3 Request budget tracker — ✅ DONE 2026-05-09
 
 **Zależność:** → 4.1
 

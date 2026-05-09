@@ -5,6 +5,11 @@
  * run_worker creates an ad-hoc model with NO extra prompt and NO tools.
  * Meta-agent writes the full brief including role, context, format.
  *
+ * Phase 3.3: Now supports `skills` param — loads skill procedures from
+ * the SkillRegistry and injects them into the worker's prompt.
+ * Also supports `allowedTools` — a whitelist description for the worker
+ * (informational only — workers are still text-in/text-out).
+ *
  * Preset → Ollama model mapping (local-first, cloud fallback):
  *   fast      → gemma4:e4b        (8B,  quick classification / JSON extraction)
  *   default   → gemma4:26b        (26B, Polish copy, summaries, generic generation)
@@ -15,6 +20,7 @@
 import { createTool } from '@mastra/core/tools';
 import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
+import { getSkillRegistry } from '../../services/skill-registry.js';
 
 const PRESET_TO_MODEL: Record<string, string> = {
   fast: 'ollama/local/gemma4:e4b',
@@ -30,6 +36,8 @@ export const runWorkerTool = createTool({
 No built-in personality, no tools — pure text-in-text-out generation.
 Use for ad-hoc tasks that do not fit any registered expert (delegate_task).
 CAN be called multiple times in parallel for independent sub-tasks.
+
+Phase 3.3: Supports 'skills' param — loads skill procedures and injects them into the worker prompt.
 
 Presets:
 - fast      → gemma4:e4b     (classification, JSON extraction, reformatting)
@@ -49,6 +57,16 @@ Presets:
           'Be ruthlessly explicit — small models have no background knowledge.',
       ),
 
+    skills: z
+      .array(z.string())
+      .optional()
+      .describe('List of skill names to load from the Skill Registry. Their procedures will be injected into the worker prompt.'),
+
+    allowedTools: z
+      .array(z.string())
+      .optional()
+      .describe('Informational whitelist of tools the worker should reference in its output (workers are text-only — this is for prompt context).'),
+
     attemptNumber: z.number().int().min(1).max(3).default(1).describe('Attempt counter (1–3). Pass 2 or 3 on retries.'),
 
     previousAttempt: z
@@ -65,14 +83,52 @@ Presets:
     model: z.string(),
     attemptNumber: z.number(),
     success: z.boolean(),
+    skillsLoaded: z.array(z.string()).optional(),
     error: z.string().optional(),
   }),
 
   execute: async (input, { mastra }) => {
     const modelId = PRESET_TO_MODEL[input.preset] ?? PRESET_TO_MODEL.default;
 
-    // Build the full system prompt: brief + optional retry context
+    // Build the full system prompt: brief + optional skill procedures + retry context
     let systemPrompt = input.taskBrief;
+    const loadedSkillNames: string[] = [];
+
+    // ── Phase 3.3: Load skill procedures ──
+    if (input.skills && input.skills.length > 0) {
+      try {
+        const registry = getSkillRegistry();
+        const skillSections: string[] = [];
+
+        for (const skillName of input.skills) {
+          const skill = await registry.load(skillName);
+          if (skill) {
+            skillSections.push(
+              `\n---\n## Skill: ${skill.metadata.name}`,
+              `> ${skill.metadata.description}`,
+              '',
+              skill.procedure,
+            );
+            loadedSkillNames.push(skillName);
+          } else {
+            console.warn(`[RunWorker] Skill not found: ${skillName}`);
+          }
+        }
+
+        if (skillSections.length > 0) {
+          systemPrompt += '\n\n' + skillSections.join('\n');
+        }
+      } catch (err) {
+        console.warn('[RunWorker] Skill loading failed:', (err as Error).message);
+      }
+    }
+
+    // ── Allowed tools context (informational) ──
+    if (input.allowedTools && input.allowedTools.length > 0) {
+      systemPrompt +=
+        '\n\n## Available tools (reference only)\n' +
+        input.allowedTools.map((t) => `- ${t}`).join('\n');
+    }
 
     if (input.previousAttempt) {
       systemPrompt +=
@@ -99,20 +155,41 @@ Presets:
 
       const result = await worker.generate(systemPrompt);
 
+      // ── Phase 3.4: Report skill usage results ──
+      if (loadedSkillNames.length > 0) {
+        try {
+          const registry = getSkillRegistry();
+          for (const name of loadedSkillNames) {
+            await registry.reportResult(name, true, 'Worker completed successfully');
+          }
+        } catch { /* non-critical */ }
+      }
 
       return {
         output: result.text,
         model: modelId,
         attemptNumber: input.attemptNumber ?? 1,
         success: true,
+        skillsLoaded: loadedSkillNames.length > 0 ? loadedSkillNames : undefined,
       };
     } catch (error) {
+      // Report skill failure
+      if (loadedSkillNames.length > 0) {
+        try {
+          const registry = getSkillRegistry();
+          for (const name of loadedSkillNames) {
+            await registry.reportResult(name, false, (error as Error).message);
+          }
+        } catch { /* non-critical */ }
+      }
+
       // If local Ollama model failed, surface a clean error so meta can retry with 'cloud'
       return {
         output: '',
         model: modelId,
         attemptNumber: input.attemptNumber ?? 1,
         success: false,
+        skillsLoaded: loadedSkillNames.length > 0 ? loadedSkillNames : undefined,
         error: (error as Error).message,
       };
     }

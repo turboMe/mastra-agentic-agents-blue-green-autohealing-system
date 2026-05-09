@@ -1,5 +1,6 @@
 import { Mastra } from '@mastra/core/mastra';
 import { OllamaGateway } from './lib/ollama-gateway';
+import { OpenRouterGateway } from './lib/openrouter-gateway';
 
 import { PinoLogger } from '@mastra/loggers';
 import { MongoDBStore } from '@mastra/mongodb';
@@ -192,6 +193,25 @@ export const mastra: Mastra = new Mastra({
           }
         },
       }),
+      // ── Cloud-free tier diagnostics (Phase 4.2/4.3) ──
+      registerApiRoute('/deploy/cloud-free-status', {
+        method: 'GET',
+        handler: async (c: any) => {
+          try {
+            const { getCircuitBreaker } = await import('./services/circuit-breaker.js');
+            const { getBudgetTracker } = await import('./services/budget-tracker.js');
+            const breaker = getCircuitBreaker();
+            const budget = getBudgetTracker();
+            return c.json({
+              budget: budget.getDailySummary('openrouter'),
+              circuitBreakers: breaker.getOpenCircuits(),
+              timestamp: new Date().toISOString(),
+            });
+          } catch (err) {
+            return c.json({ error: (err as Error).message }, 500);
+          }
+        },
+      }),
     ],
   },
   workflows: {
@@ -288,6 +308,14 @@ export const mastra: Mastra = new Mastra({
 
 
 mastra.addGateway(new OllamaGateway());
+
+// ── OpenRouter: cloud-free tier (Phase 4.1) ──
+if (process.env.OPENROUTER_API_KEY) {
+  mastra.addGateway(new OpenRouterGateway());
+  console.log('[Mastra] OpenRouter gateway registered (cloud-free tier enabled)');
+} else {
+  console.log('[Mastra] OpenRouter gateway skipped (OPENROUTER_API_KEY not set)');
+}
 
 // ── Self-healing: Global Error Handlers (Etap 7) ──
 initGlobalErrorHandlers();

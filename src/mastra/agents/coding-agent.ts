@@ -38,7 +38,7 @@ import { skillReportTool } from '../tools/system/skill-report.js';
 export const codingAgent: Agent = new Agent({
   id: 'coding-agent',
   name: 'Coding Agent',
-  instructions: await loadPrompt('coding/base') + '\n\nOdpowiadaj krótko i rzeczowo, zwłaszcza gdy użytkownik pyta o status zadań.',
+  instructions: await loadPrompt('coding/base') + '\n\nRespond concisely and to the point, especially when asked about task status.',
   model: workflowModels.coding.default,
   workspace: codeWorkspace,
   defaultOptions: { maxSteps: 30 },

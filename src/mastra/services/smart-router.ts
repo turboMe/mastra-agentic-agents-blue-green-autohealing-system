@@ -14,6 +14,8 @@ import {
   VRAM_BUDGET_MB,
 } from '../config/model-capabilities.js';
 import { getGpuGuard, type GpuSnapshot } from './gpu-guard.js';
+import { getCircuitBreaker } from './circuit-breaker.js';
+import { getBudgetTracker } from './budget-tracker.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -159,6 +161,10 @@ function selectModel(
       if (!complexityMeetsRequirement(m.maxComplexity, complexity)) return false;
       // Skip local models if GPU unavailable (container without GPU, etc.)
       if (skipLocal && m.vramMb > 0) return false;
+      // Phase 4.2: Skip models with open circuit breaker
+      if (getCircuitBreaker().isOpen(m.modelId)) return false;
+      // Phase 4.3: Skip cloud-free models when over daily budget
+      if (m.tier === 'cloud-free' && getBudgetTracker().isOverBudget('openrouter')) return false;
       return true;
     })
     .sort((a, b) => {

@@ -13,7 +13,7 @@
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export type TaskComplexity = 'trivial' | 'simple' | 'moderate' | 'complex';
-export type ModelTier = 'local-micro' | 'local-light' | 'local-heavy' | 'cloud-fast' | 'cloud-pro';
+export type ModelTier = 'local-micro' | 'local-light' | 'local-heavy' | 'cloud-free' | 'cloud-fast' | 'cloud-pro';
 
 export interface ModelCapability {
   /** Mastra model ID, e.g. 'ollama/local/qwen3:1.7b' or 'google/gemini-2.5-pro' */
@@ -273,6 +273,67 @@ const cloudModels: ModelCapability[] = [
   },
 ];
 
+// ── Cloud-free models (OpenRouter free tier, Phase 4.1) ──────────────────────
+
+const cloudFreeModels: ModelCapability[] = [
+  {
+    modelId: 'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
+    name: 'Nemotron Super 120B (free)',
+    tier: 'cloud-free',
+    maxComplexity: 'moderate',
+    strengths: ['reasoning', 'planning', 'json', 'code-review', 'analysis'],
+    weaknesses: ['rate-limited', 'latency-variance', 'no-privacy'],
+    vramMb: 0,
+    safeContextWindow: 32000,
+    concurrentSlots: 5,
+    costPerCall: 0,
+    avgLatencyMs: 8000,
+    available: !!process.env.OPENROUTER_API_KEY,
+  },
+  {
+    modelId: 'openrouter/nvidia/nemotron-3-nano-30b-a3b:free',
+    name: 'Nemotron Nano 30B (free)',
+    tier: 'cloud-free',
+    maxComplexity: 'simple',
+    strengths: ['classification', 'json-extraction', 'fast', 'routing'],
+    weaknesses: ['complex-code', 'architecture', 'rate-limited'],
+    vramMb: 0,
+    safeContextWindow: 16000,
+    concurrentSlots: 5,
+    costPerCall: 0,
+    avgLatencyMs: 4000,
+    available: !!process.env.OPENROUTER_API_KEY,
+  },
+  {
+    modelId: 'openrouter/poolside/laguna-m.1:free',
+    name: 'Poolside Laguna M.1 (free)',
+    tier: 'cloud-free',
+    maxComplexity: 'moderate',
+    strengths: ['code-generation', 'typescript', 'refactor', 'tool-calling'],
+    weaknesses: ['rate-limited', 'latency-variance', 'no-privacy'],
+    vramMb: 0,
+    safeContextWindow: 16000,
+    concurrentSlots: 5,
+    costPerCall: 0,
+    avgLatencyMs: 6000,
+    available: !!process.env.OPENROUTER_API_KEY,
+  },
+  {
+    modelId: 'openrouter/inclusionai/ring-2.6-1t:free',
+    name: 'InclusionAI Ring 2.6 1T (free)',
+    tier: 'cloud-free',
+    maxComplexity: 'moderate',
+    strengths: ['reasoning', 'analysis', 'long-context', 'planning'],
+    weaknesses: ['rate-limited', 'slow', 'no-privacy'],
+    vramMb: 0,
+    safeContextWindow: 32000,
+    concurrentSlots: 5,
+    costPerCall: 0,
+    avgLatencyMs: 10000,
+    available: !!process.env.OPENROUTER_API_KEY,
+  },
+];
+
 // ── Embedding models (not for routing, but documented) ───────────────────────
 
 // ollama/local/bge-m3 — 1.2 GB, embedding only
@@ -280,7 +341,7 @@ const cloudModels: ModelCapability[] = [
 
 // ── Registry ─────────────────────────────────────────────────────────────────
 
-export const modelRegistry: ModelCapability[] = [...localModels, ...cloudModels];
+export const modelRegistry: ModelCapability[] = [...localModels, ...cloudFreeModels, ...cloudModels];
 
 /**
  * Get all models that can handle a given complexity level.

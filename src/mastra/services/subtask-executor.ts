@@ -1,5 +1,5 @@
 /**
- * Subtask Executor (Etap 8.2 + 8.3a)
+ * Subtask Executor (Etap 8.2 + 8.3a + Phase 3.2)
  *
  * Executes individual coding subtasks via scoped prompts with model-specific
  * routing. Includes quality validation and intelligent retry/escalation:
@@ -7,6 +7,11 @@
  *   Attempt 1 → quality check → fail → RETRY (same model, enriched prompt)
  *   Attempt 2 → quality check → fail → ESCALATE (stronger model)
  *   Attempt 3 → quality check → fail → mark 'needs_human'
+ *
+ * Phase 3.2: Role-based routing — each subtask is resolved to a SubAgentRole
+ * (file-editor, terminal, qa) which constrains the prompt, tool whitelist,
+ * and model tier. Skills from the SkillRegistry are loaded and injected
+ * into the scoped prompt when a matching skill is found.
  */
 
 import { randomUUID } from 'crypto';
@@ -22,6 +27,12 @@ import {
 import type { RoutableSubtask, RoutingResult } from './smart-router.js';
 import { getDb } from '../lib/mongo.js';
 import { logAgentEvent } from '../lib/agent-event-log.js';
+import { resolveSubAgentRole, type SubAgentRole } from '../config/subagent-roles.js';
+import { getSkillRegistry } from './skill-registry.js';
+import type { Skill } from './skill-registry.js';
+import { loadPrompt } from '../lib/prompt-loader.js';
+import { getCircuitBreaker } from './circuit-breaker.js';
+import { getBudgetTracker } from './budget-tracker.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -69,9 +80,10 @@ export interface QualityValidation {
 // ── Escalation Path ──────────────────────────────────────────────────────────
 
 const ESCALATION_PATH: Record<string, string[]> = {
-  'local-micro':  ['local-light', 'local-heavy', 'cloud-fast', 'cloud-pro'],
-  'local-light':  ['local-heavy', 'cloud-fast', 'cloud-pro'],
-  'local-heavy':  ['cloud-fast', 'cloud-pro'],
+  'local-micro':  ['local-light', 'local-heavy', 'cloud-free', 'cloud-fast', 'cloud-pro'],
+  'local-light':  ['local-heavy', 'cloud-free', 'cloud-fast', 'cloud-pro'],
+  'local-heavy':  ['cloud-free', 'cloud-fast', 'cloud-pro'],
+  'cloud-free':   ['cloud-fast', 'cloud-pro'],
   'cloud-fast':   ['cloud-pro'],
   'cloud-pro':    [],
 };
@@ -90,6 +102,9 @@ const COMPLEXITY_TIMEOUTS: Record<string, number> = {
 /**
  * Execute a single subtask with scoped prompt and model routing.
  * Includes offline fallback: cloud error → local, local error → cloud.
+ *
+ * Phase 3.2: Now resolves SubAgentRole and loads matching Skill to build
+ * a role-constrained prompt before execution.
  */
 export async function executeSubtask(
   subtask: RoutableSubtask,
@@ -101,10 +116,22 @@ export async function executeSubtask(
   const startTime = Date.now();
   const modelId = subtask.assignedModel!;
 
-  // Build scope-constrained prompt for this subtask
+  // ── Phase 3.2: Resolve sub-agent role and load matching skill ──
+  const role = resolveSubAgentRole(subtask.type);
+  const loadedSkill = await findBestSkill(subtask, role);
+
+  if (loadedSkill) {
+    console.log(
+      `[SubtaskExecutor] ${subtask.id}: role=${role.roleId}, skill=${loadedSkill.metadata.name}`,
+    );
+  } else {
+    console.log(`[SubtaskExecutor] ${subtask.id}: role=${role.roleId}, no skill matched`);
+  }
+
+  // Build scope-constrained prompt with role + skill context
   const prompt = context.retryContext
-    ? buildRetryPrompt(subtask, context.retryContext, taskId, context)
-    : buildSubtaskPrompt(subtask, taskId, context);
+    ? buildRetryPrompt(subtask, context.retryContext, taskId, context, role, loadedSkill)
+    : buildScopedPrompt(subtask, taskId, context, role, loadedSkill);
 
   const agent = mastra.getAgent('codingAgent');
   const timeoutMs = COMPLEXITY_TIMEOUTS[subtask.estimatedComplexity ?? 'simple'] ?? 60_000;
@@ -119,6 +146,28 @@ export async function executeSubtask(
     // Collect results from artifact in Mongo
     const collectedResult = await collectSubtaskResult(taskId, subtask.id);
 
+    // ── Phase 3.4: Skill feedback loop ──
+    if (loadedSkill) {
+      const passed = !collectedResult.hasErrors;
+      try {
+        await getSkillRegistry().reportResult(
+          loadedSkill.metadata.name,
+          passed,
+          passed ? 'Subtask completed successfully' : collectedResult.errors.join('; '),
+        );
+      } catch (err) {
+        console.warn('[SubtaskExecutor] Skill report failed:', (err as Error).message);
+      }
+    }
+
+    // ── Phase 4.2: Circuit breaker — record success ──
+    getCircuitBreaker().recordSuccess(modelId);
+
+    // ── Phase 4.3: Budget tracking — record request for cloud-free ──
+    if (modelId.startsWith('openrouter/')) {
+      getBudgetTracker().recordRequest('openrouter', modelId);
+    }
+
     return {
       subtaskId: subtask.id,
       status: collectedResult.hasErrors ? 'partial' : 'success',
@@ -131,6 +180,16 @@ export async function executeSubtask(
     };
   } catch (error) {
     const errMsg = (error as Error).message ?? '';
+
+    // Report skill failure if skill was loaded
+    if (loadedSkill) {
+      try {
+        await getSkillRegistry().reportResult(loadedSkill.metadata.name, false, errMsg);
+      } catch { /* non-critical */ }
+    }
+
+    // ── Phase 4.2: Circuit breaker — record failure ──
+    getCircuitBreaker().recordFailure(modelId);
 
     // ── Offline Fallback (8.4): re-route on infrastructure errors ──
     if (_fallbackAttempt === 0) {
@@ -447,40 +506,106 @@ function getEscalationModel(
   return null;
 }
 
+// ── Skill Loader ─────────────────────────────────────────────────────────────
+
+/**
+ * Find the best matching skill for a subtask + role combination.
+ * Uses semantic search on the subtask description, filtered by role category.
+ * Returns null if no skill matches above the threshold.
+ */
+async function findBestSkill(
+  subtask: RoutableSubtask,
+  role: SubAgentRole,
+): Promise<Skill | null> {
+  try {
+    const registry = getSkillRegistry();
+    const description = (subtask as any).description ?? subtask.type;
+    const results = await registry.search(description, {
+      category: role.roleId === 'file-editor' ? 'coding' : undefined,
+      topK: 1,
+      minScore: 0.35,
+    });
+
+    if (results.length > 0) {
+      // Load full procedure
+      return await registry.load(results[0].metadata.name);
+    }
+  } catch (err) {
+    console.warn('[SubtaskExecutor] Skill search failed:', (err as Error).message);
+  }
+  return null;
+}
+
 // ── Prompt Builders ──────────────────────────────────────────────────────────
 
-function buildSubtaskPrompt(
+/**
+ * Build a scoped prompt with SubAgentRole context and optional loaded skill.
+ * Phase 3.2: Replaces the old buildSubtaskPrompt with role-aware version.
+ */
+function buildScopedPrompt(
   subtask: RoutableSubtask,
   taskId: string,
   context: SubtaskContext,
+  role: SubAgentRole,
+  skill: Skill | null,
 ): string {
-  return [
+  const sections: string[] = [
+    `## Role: ${role.name}`,
+    role.description,
+    '',
+  ];
+
+  // Inject skill procedure if available
+  if (skill) {
+    sections.push(
+      `## Procedure (Skill: ${skill.metadata.name})`,
+      `> ${skill.metadata.description}`,
+      '',
+      skill.procedure,
+      '',
+    );
+  }
+
+  sections.push(
     `## Subtask: ${subtask.id}`,
-    `Typ: ${subtask.type} | Complexity: ${subtask.estimatedComplexity ?? 'simple'}`,
-    ``,
-    `### Opis zadania`,
-    (subtask as any).description ?? 'Brak opisu',
-    ``,
-    `### Pliki do edycji`,
+    `Type: ${subtask.type} | Complexity: ${subtask.estimatedComplexity ?? 'simple'}`,
+    '',
+    `### Task Description`,
+    (subtask as any).description ?? 'No description provided',
+    '',
+    `### Target Files`,
     subtask.targetFiles.length > 0
       ? subtask.targetFiles.map((f) => `- ${f}`).join('\n')
-      : '(brak wyspecyfikowanych — ustal sam)',
-    ``,
-    `### Kontekst z poprzednich subtasków`,
+      : '(none specified — determine yourself)',
+    '',
+    `### Context from Previous Subtasks`,
     context.previousResults.length > 0
       ? context.previousResults
           .map((r) => `[${r.subtaskId}] ${r.status}: ${r.diagnostics.substring(0, 200)}`)
           .join('\n')
-      : '(pierwszy subtask — brak kontekstu)',
-    ``,
-    `### Instrukcje`,
-    `- Pracuj TYLKO na plikach z listy powyżej (chyba że to 'create' task)`,
-    `- Nie edytuj plików poza swoim scope`,
-    `- Użyj coding.write_file_tracked z taskId="${taskId}"`,
-    `- Po zakończeniu opisz co zrobiłeś w coding.update_artifact`,
-    `- Twój subtaskId: ${subtask.id}`,
-    `- Uruchom npx tsc --noEmit po zmianach, aby zweryfikować poprawność`,
-  ].join('\n');
+      : '(first subtask — no context)',
+    '',
+    `### Allowed Tools`,
+    role.allowedTools.map((t) => `- ${t}`).join('\n'),
+    '',
+    `### Instructions`,
+    `- Work ONLY on files from the list above (unless this is a 'create' task)`,
+    `- Do not edit files outside your scope`,
+    `- Use coding.write_file_tracked with taskId="${taskId}"`,
+    `- After completion, describe what you did in coding.update_artifact`,
+    `- Your subtaskId: ${subtask.id}`,
+  );
+
+  // Role-specific instructions
+  if (role.roleId === 'file-editor') {
+    sections.push(`- Run npx tsc --noEmit after changes to verify correctness`);
+  } else if (role.roleId === 'terminal') {
+    sections.push(`- Do NOT edit files — only run verification commands`);
+  } else if (role.roleId === 'qa') {
+    sections.push(`- Do NOT fix bugs — only report them with precise locations`);
+  }
+
+  return sections.join('\n');
 }
 
 function buildRetryPrompt(
@@ -488,38 +613,59 @@ function buildRetryPrompt(
   previousResult: SubtaskResult,
   taskId: string,
   context: SubtaskContext,
+  role?: SubAgentRole,
+  skill?: Skill | null,
 ): string {
-  return [
-    `## RETRY subtask: ${subtask.id} (próba ${(previousResult.qualityCheck?.attempt ?? 1) + 1})`,
-    ``,
-    `### Co poszło nie tak w poprzedniej próbie:`,
-    previousResult.qualityCheck?.reason ?? 'Nieznany powód',
-    ``,
-    `### Poprzednia diagnostyka agenta:`,
-    previousResult.diagnostics || '(brak)',
-    ``,
-    `### Błędy z poprzedniej próby:`,
+  const sections: string[] = [
+    `## RETRY subtask: ${subtask.id} (attempt ${(previousResult.qualityCheck?.attempt ?? 1) + 1})`,
+  ];
+
+  // Include role context on retry too
+  if (role) {
+    sections.push('', `### Role: ${role.name}`, role.description);
+  }
+
+  // Include skill procedure on retry (it may help the fix)
+  if (skill) {
+    sections.push(
+      '',
+      `### Procedure (Skill: ${skill.metadata.name})`,
+      skill.procedure,
+    );
+  }
+
+  sections.push(
+    '',
+    `### What went wrong in the previous attempt:`,
+    previousResult.qualityCheck?.reason ?? 'Unknown reason',
+    '',
+    `### Previous agent diagnostics:`,
+    previousResult.diagnostics || '(none)',
+    '',
+    `### Errors from previous attempt:`,
     previousResult.errors.length > 0
       ? previousResult.errors.join('\n')
-      : '(brak jawnych błędów — ale wynik nie spełnia kryteriów)',
-    ``,
-    `### Pliki zmienione (mogą wymagać poprawki):`,
-    previousResult.filesChanged.map((f) => `- ${f.path}: ${f.summary}`).join('\n') || '(żadne)',
-    ``,
-    `### Oryginalne zadanie:`,
-    (subtask as any).description ?? 'Brak opisu',
-    ``,
-    `### Pliki docelowe:`,
+      : '(no explicit errors — but the result did not meet criteria)',
+    '',
+    `### Files changed (may need correction):`,
+    previousResult.filesChanged.map((f) => `- ${f.path}: ${f.summary}`).join('\n') || '(none)',
+    '',
+    `### Original task:`,
+    (subtask as any).description ?? 'No description provided',
+    '',
+    `### Target files:`,
     subtask.targetFiles.map((f) => `- ${f}`).join('\n'),
-    ``,
-    `### Instrukcje retry:`,
-    `- Przeanalizuj DLACZEGO poprzednia próba nie zadziałała`,
-    `- Przeczytaj pliki docelowe ponownie — mogły się zmienić`,
-    `- Napraw konkretne problemy wymienione powyżej`,
-    `- Użyj coding.write_file_tracked z taskId="${taskId}"`,
-    `- Uruchom npx tsc --noEmit po zmianach`,
-    `- Twój subtaskId: ${subtask.id}`,
-  ].join('\n');
+    '',
+    `### Retry instructions:`,
+    `- Analyze WHY the previous attempt failed`,
+    `- Re-read target files — they may have changed`,
+    `- Fix the specific problems listed above`,
+    `- Use coding.write_file_tracked with taskId="${taskId}"`,
+    `- Run npx tsc --noEmit after changes`,
+    `- Your subtaskId: ${subtask.id}`,
+  );
+
+  return sections.join('\n');
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
