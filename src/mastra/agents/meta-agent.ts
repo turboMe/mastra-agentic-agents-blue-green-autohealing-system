@@ -81,8 +81,7 @@ export const metaAgent: Agent = new Agent({
   id: 'meta-agent',
   name: 'Meta Agent',
   instructions: await buildInstructions(),
-  // model: 'google/gemini-2.5-flash', // ← ORIGINAL — restore after OM testing
-  model: 'ollama/local/gemma4:26b',     // ← TEMP: local model for OM pilot test
+  model: 'google/gemini-2.5-flash',
 
   memory: new Memory({
     options: {
@@ -92,7 +91,32 @@ export const metaAgent: Agent = new Agent({
       observationalMemory: {
         model: 'google/gemini-2.5-flash',
         temporalMarkers: true,
+        observation: {
+          threadTitle: true, // OM auto-generates descriptive thread titles
+        },
       },
+      // Working Memory — persistent scratchpad surviving across sessions
+      workingMemory: {
+        enabled: true,
+        template: `# Meta Agent Working Memory
+
+## User Preferences
+- **Communication style**:
+- **Language**: Polish
+- **Decision authority**: high autonomy
+
+## Active Project Context
+- **Current phase**:
+- **Key decisions**:
+- **Blockers**:
+
+## Learned Patterns
+- **Effective strategies**:
+- **Known pitfalls**:
+`,
+      },
+      // Auto-generate thread titles for Studio readability
+      generateTitle: true,
     },
   }),
 

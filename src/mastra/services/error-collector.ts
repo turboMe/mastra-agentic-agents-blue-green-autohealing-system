@@ -163,6 +163,46 @@ export class ErrorCollector {
         throw new Error('repoMaintenanceWorkflow not found in Mastra registry');
       }
 
+      // ── Phase 2.1: Failure Brain — recall known failures before workflow ──
+      let knownFailuresSection = '';
+      try {
+        const { recallKnowledge } = await import('../lib/failure-brain.js');
+
+        const failureCases = await recallKnowledge(
+          `${error.name}: ${error.message}`,
+          { type: 'failure_case', topK: 3, minScore: 0.4 },
+        );
+        if (failureCases.length > 0) {
+          knownFailuresSection = [
+            ``,
+            `### Znane podobne awarie z historii systemu:`,
+            ...failureCases.map((i: any) =>
+              `- **[score: ${i.score.toFixed(2)}]** ${i.title}\n  ${i.content}`
+            ),
+            ``,
+            `Jeśli któraś z powyższych awarii pasuje do bieżącego problemu, użyj opisanego rozwiązania jako bazy.`,
+          ].join('\n');
+        }
+
+        // Also check autoheal_recipes
+        const recipes = await recallKnowledge(
+          `${error.name}: ${error.message}`,
+          { type: 'autoheal_recipe', topK: 2, minScore: 0.4 },
+        );
+        if (recipes.length > 0) {
+          knownFailuresSection += [
+            ``,
+            `### Sprawdzone receptury auto-naprawy:`,
+            ...recipes.map((i: any) =>
+              `- **[score: ${i.score.toFixed(2)}]** ${i.title}\n  ${i.content}`
+            ),
+          ].join('\n');
+        }
+      } catch (recallErr) {
+        // Non-fatal — workflow proceeds without historical context
+        console.warn('[ErrorCollector] Failure Brain recall failed:', (recallErr as Error).message);
+      }
+
       const prompt = [
         `System wykrył błąd runtime wymagający automatycznej naprawy.`,
         ``,
@@ -176,14 +216,16 @@ export class ErrorCollector {
         `\`\`\``,
         ``,
         context.metadata ? `Dodatkowy kontekst: ${JSON.stringify(context.metadata, null, 2)}` : '',
+        knownFailuresSection,
         ``,
         `Ticket ID: ${ticketId}`,
         ``,
         `Instrukcja: Zbadaj przyczynę tego błędu w kodzie źródłowym.`,
+        knownFailuresSection ? `Sprawdź znane awarie powyżej — jeśli pasują, użyj ich rozwiązania jako bazy.` : '',
         `Znajdź plik i linię odpowiedzialną za problem.`,
         `Przygotuj minimalną poprawkę i przekaż do Code Review.`,
         `Oznacz źródło naprawy jako "system-auto-heal".`,
-      ].join('\n');
+      ].filter(Boolean).join('\n');
 
       // Uruchomienie workflow
       const run = await workflow.createRun();
@@ -230,10 +272,32 @@ export class ErrorCollector {
    */
   async resolveTicket(ticketId: string): Promise<void> {
     const db = await getDb();
+    const ticket = await db.collection<HealingTicket>('auto_healing_tickets').findOne({ ticketId }) as unknown as HealingTicket | null;
+
     await db.collection('auto_healing_tickets').updateOne(
       { ticketId },
       { $set: { status: 'resolved', updatedAt: new Date().toISOString() } },
     );
+
+    // ── Phase 2.1: Save resolution as autoheal_recipe for future Failure Brain recall ──
+    if (ticket) {
+      try {
+        const { writeKnowledge } = await import('../lib/failure-brain.js');
+        await writeKnowledge(
+          'autoheal_recipe',
+          `Fix: ${ticket.errorMessage.slice(0, 100)}`,
+          [
+            `Error: ${ticket.errorMessage}`,
+            `Source: ${ticket.context.source}${ticket.context.origin ? ` (${ticket.context.origin})` : ''}`,
+            `Stack hint: ${(ticket.stackTrace ?? '').split('\n').slice(0, 3).join(' | ')}`,
+            `Resolution: ticket ${ticketId} resolved via workflow ${ticket.workflowRunId ?? 'unknown'}`,
+          ].join('\n'),
+        );
+      } catch (writeErr) {
+        // Non-fatal — ticket is already resolved
+        console.warn('[ErrorCollector] Failed to save autoheal recipe:', (writeErr as Error).message);
+      }
+    }
   }
 
   /**

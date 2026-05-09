@@ -67,7 +67,16 @@ export const codingAgent: Agent = new Agent({
   },
   memory: new Memory({
     options: {
-      lastMessages: 20,
+      lastMessages: 30,
+      // Phase 1.1b — OM keeps context across 15+ subtask orchestrations
+      observationalMemory: {
+        model: 'google/gemini-2.5-flash',
+        temporalMarkers: true,
+        observation: {
+          threadTitle: true,
+        },
+      },
+      generateTitle: true,
     },
   }),
 });

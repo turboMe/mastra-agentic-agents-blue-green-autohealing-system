@@ -152,7 +152,7 @@ Ref: [plan-rozwoju.md](./plan-rozwoju.md) (decyzje architektoniczne)
 3. **[TEST]** Sprawdzić w Mastra Studio → Memory tab → potwierdzić że obserwacje są czytelne
 4. **Rollback plan:** Jeśli OM generuje bzdury lub kosztuje za dużo → usunąć blok `observationalMemory` z config
 
-### 1.1b Observational Memory dla codingAgent
+### 1.1b Observational Memory dla codingAgent — ✅ DONE 2026-05-09
 
 **Zależność:** → 1.1 (metaAgent pilot musi potwierdzić że OM działa poprawnie)
 
@@ -348,7 +348,7 @@ codingAgent w Fazie 3 stanie się orkiestratorem delegującym 5-20 subtasków. P
 > Szacowany czas: 4–6 sesji roboczych
 > Zależność: → Faza 1 (memory_recall, system_knowledge, agent_events)
 
-### 2.1 Failure Brain — recall awarii przed diagnozą (DECYZJA-02, krok 4)
+### 2.1 Failure Brain — recall awarii przed diagnozą (DECYZJA-02, krok 4) — ✅ DONE 2026-05-09
 
 **Zależność:** → 1.4 (memory_recall tool musi działać)
 
