@@ -124,7 +124,7 @@ Presets:
     if (input.allowedTools && input.allowedTools.length > 0) {
       systemPrompt +=
         '\n\n## Available tools (reference only)\n' +
-        input.allowedTools.map((t) => `- ${t}`).join('\n');
+        input.allowedTools.map((t: string) => `- ${t}`).join('\n');
     }
 
     if (input.previousAttempt) {

@@ -33,6 +33,8 @@ import type { Skill } from './skill-registry.js';
 import { loadPrompt } from '../lib/prompt-loader.js';
 import { getCircuitBreaker } from './circuit-breaker.js';
 import { getBudgetTracker } from './budget-tracker.js';
+import { appendToCheckpoint } from './context-checkpoint.js';
+import { assembleContext, formatAssembledContext } from './context-assembler.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -128,10 +130,10 @@ export async function executeSubtask(
     console.log(`[SubtaskExecutor] ${subtask.id}: role=${role.roleId}, no skill matched`);
   }
 
-  // Build scope-constrained prompt with role + skill context
+  // Build scope-constrained prompt with role + skill context + assembled context
   const prompt = context.retryContext
     ? buildRetryPrompt(subtask, context.retryContext, taskId, context, role, loadedSkill)
-    : buildScopedPrompt(subtask, taskId, context, role, loadedSkill);
+    : await buildScopedPrompt(subtask, taskId, context, role, loadedSkill);
 
   const agent = mastra.getAgent('codingAgent');
   const timeoutMs = COMPLEXITY_TIMEOUTS[subtask.estimatedComplexity ?? 'simple'] ?? 60_000;
@@ -167,6 +169,18 @@ export async function executeSubtask(
     if (modelId.startsWith('openrouter/')) {
       getBudgetTracker().recordRequest('openrouter', modelId);
     }
+
+    // ── Phase 5: Auto-checkpoint after subtask completion ──
+    const subtaskStatus = collectedResult.hasErrors ? 'failed' as const : 'success' as const;
+    appendToCheckpoint(taskId, {
+      subtaskStatus: { id: subtask.id, status: subtaskStatus === 'success' ? 'done' : 'failed' },
+      ...(collectedResult.filesChanged.length > 0
+        ? { fileModified: collectedResult.filesChanged.map((f: any) => f.path).join(', ') }
+        : {}),
+      ...(collectedResult.errors.length > 0
+        ? { error: collectedResult.errors[0] }
+        : {}),
+    }).catch(() => { /* non-critical */ });
 
     return {
       subtaskId: subtask.id,
@@ -542,18 +556,36 @@ async function findBestSkill(
  * Build a scoped prompt with SubAgentRole context and optional loaded skill.
  * Phase 3.2: Replaces the old buildSubtaskPrompt with role-aware version.
  */
-function buildScopedPrompt(
+async function buildScopedPrompt(
   subtask: RoutableSubtask,
   taskId: string,
   context: SubtaskContext,
   role: SubAgentRole,
   skill: Skill | null,
-): string {
+): Promise<string> {
   const sections: string[] = [
     `## Role: ${role.name}`,
     role.description,
     '',
   ];
+
+  // ── Phase 5: Auto-assemble rich context (repo-map + semantic search + checkpoint) ──
+  try {
+    const assembled = await assembleContext({
+      description: (subtask as any).description ?? subtask.id,
+      targetFiles: subtask.targetFiles,
+      taskId,
+      tokenBudget: 3072,
+      mentionedIdents: subtask.targetFiles.map((f) => f.split('/').pop()?.replace(/\.[^.]+$/, '') ?? ''),
+    });
+    const assembledText = formatAssembledContext(assembled);
+    if (assembledText.length > 0) {
+      sections.push(assembledText);
+    }
+  } catch (err) {
+    // Non-critical — continue without assembled context
+    console.warn('[SubtaskExecutor] Context assembly failed:', (err as Error).message);
+  }
 
   // Inject skill procedure if available
   if (skill) {

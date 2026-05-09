@@ -296,7 +296,7 @@ export const chefSaveMenuTool = createTool({
       if (!project) return { success: false, error: `Projekt ${context.projectId} nie znaleziony.` };
 
       const version = context.version ?? (await chef.getLatestMenuVersion(context.projectId) + 1);
-      const allDishes = context.sections.flatMap(s => s.dishes ?? []);
+      const allDishes = context.sections.flatMap((s: any) => s.dishes ?? []);
 
       const techniqueDistribution: Record<string, number> = {};
       const allergenMatrix: Record<string, string[]> = {};
@@ -315,7 +315,7 @@ export const chefSaveMenuTool = createTool({
           totalDishes: allDishes.length,
           techniqueDistribution,
           allergenMatrix,
-          temperatureArc: allDishes.map(d => (d as any).temperature ?? 'warm'),
+          temperatureArc: allDishes.map((d: any) => (d as any).temperature ?? 'warm'),
         },
       });
 

@@ -1,6 +1,6 @@
 # Phase 5: Repository Indexing & Context Management
 
-> **Status:** 🚧 In Progress  
+> **Status:** ✅ Complete  
 > **Deployed:** 2026-05-09  
 > **Dependencies:** tree-sitter, better-sqlite3, graphology
 
@@ -22,9 +22,9 @@ Phase 5 adds industry-grade repository navigation and context management to the 
 | `repo.reindex` tool | ✅ Done | `tools/dev/repo-map-tools.ts` |
 | TokenLimiterProcessor | ✅ Done | `agents/coding-agent.ts` |
 | Workspace Tools (auto) | ✅ Done | `workspaces/code-workspace.ts` |
-| Context Checkpoints | ⏳ TODO | — |
-| Semantic Code Search | ⏳ TODO | — |
-| Context Assembler | ⏳ TODO | — |
+| Context Checkpoints | ✅ Done | `services/context-checkpoint.ts` |
+| Semantic Code Search | ✅ Done | `tools/dev/code-search-tools.ts` |
+| Context Assembler | ✅ Done | `services/context-assembler.ts` |
 
 ---
 
@@ -162,17 +162,18 @@ Subsequent runs are incremental (only re-index changed files):
 
 ## Remaining Work
 
-### Phase 3.3: Context Checkpoints
-- Auto-save task state (goal, decisions, modified files, known issues) before context compaction
-- Auto-restore on session resume
-- Storage: `.mastra/checkpoints/{taskId}.json`
+All 5 phases are complete. Potential future enhancements:
 
-### Phase 4: Semantic Code Search
-- Embedding-based code search using `nomic-embed-text` (already in SkillRegistry)
-- AST-aware chunking (function/class boundaries)
-- `code.search` tool for semantic codebase queries
+### Performance Optimization
+- Batch embedding generation for faster initial indexing
+- `sqlite-vec` extension for KNN vector search in SQL (replaces in-memory cosine similarity)
+- File watcher integration for real-time incremental re-indexing
 
-### Phase 5: Context Assembly
-- Unified context assembler combining repo-map + semantic search + memory recall + skill procedures
-- Token-budget-aware allocation across context sections
-- Auto-injection into `subtask-executor.ts` prompt builder
+### Extended Language Support
+- Python (`tree-sitter-python`) for cross-language codebases
+- JSON schema awareness for configuration files
+
+### Context Assembly v2
+- A/B testing framework to measure task success rate with vs without context assembly
+- Dynamic token budget allocation based on task complexity
+- Import graph traversal (follow dependency chains from target files)

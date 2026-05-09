@@ -110,8 +110,8 @@ export const findCompanyLinksTool = createTool({
         const isDir = DIRECTORIES.some(d => url.includes(d));
         const isSocial = url.includes('instagram.com') || url.includes('twitter.com') || url.includes('youtube.com');
         if (!info.website && !isDir && !isSocial) {
-          const words = context.companyName.toLowerCase().split(' ').filter(w => w.length > 3);
-          const match = words.filter(w => url.includes(w) || res.title.toLowerCase().includes(w)).length;
+          const words = context.companyName.toLowerCase().split(' ').filter((w: string) => w.length > 3);
+          const match = words.filter((w: string) => url.includes(w) || res.title.toLowerCase().includes(w)).length;
           if (match > 0 || res.score > 0.8) info.website = res.url;
         }
       }

@@ -191,7 +191,7 @@ export const skillsSearchTool = createTool({
       .toLowerCase()
       .replace(/[^\w\s-]/g, ' ')
       .split(/\s+/)
-      .filter((t) => t.length > 2);
+      .filter((t: string) => t.length > 2);
 
     // Score and sort
     const scored = pool

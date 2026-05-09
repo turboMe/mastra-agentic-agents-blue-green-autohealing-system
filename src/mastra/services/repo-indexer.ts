@@ -71,18 +71,37 @@ const IGNORE_FILES = new Set([
 
 const MAX_FILE_SIZE = 512 * 1024; // 512KB — skip huge files
 
-// ── Singleton ────────────────────────────────────────────────────────────────
+// ── Multi-Repo Registry ──────────────────────────────────────────────────────
+// Each unique rootPath gets its own RepoIndexer instance with separate DB.
 
-let _instance: RepoIndexer | null = null;
+const _instances = new Map<string, RepoIndexer>();
 
+/**
+ * Get or create a RepoIndexer for a specific repository root.
+ * Each repo gets its own SQLite DB at `<rootPath>/.mastra/repo-index.db`.
+ *
+ * @param rootPath - Absolute path to the repository root (required on first call)
+ */
 export function getRepoIndexer(rootPath?: string): RepoIndexer {
-  if (!_instance && rootPath) {
-    _instance = new RepoIndexer(rootPath);
-  }
-  if (!_instance) {
+  if (!rootPath) {
+    // Return first instance if called without args (backward-compat)
+    if (_instances.size > 0) return _instances.values().next().value!;
     throw new Error('[RepoIndexer] Not initialized. Call getRepoIndexer(rootPath) first.');
   }
-  return _instance;
+
+  const existing = _instances.get(rootPath);
+  if (existing) return existing;
+
+  const instance = new RepoIndexer(rootPath);
+  _instances.set(rootPath, instance);
+  return instance;
+}
+
+/**
+ * List all registered indexer instances (for diagnostics).
+ */
+export function listIndexedRepos(): Array<{ path: string; }> {
+  return Array.from(_instances.keys()).map((path) => ({ path }));
 }
 
 // ── Main Class ───────────────────────────────────────────────────────────────
