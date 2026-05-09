@@ -71,6 +71,8 @@ import {
   knowledgeDeleteNotebookTool,
 } from '../tools/knowledge/knowledge-tools.js';
 import { searchWebTool, findCompanyLinksTool } from '../tools/search/tavily.js';
+import { competitorAnalysisTool } from '../tools/business/competitor-analysis.js';
+import { mongoQueryTool, mongoWriteTool } from '../tools/system/mongo-tools.js';
 import { combinePrompts } from '../lib/prompt-loader.js';
 import { sharedMemoryOutputProcessor } from '../processors/shared-memory-output.js';
 
@@ -219,6 +221,11 @@ export const metaAgent: Agent = new Agent({
         // Web search (Tavily)
         searchWebTool,
         findCompanyLinksTool,
+        // Business intelligence
+        competitorAnalysisTool,
+        // Database (readonly-first policy — writes require confirm: true)
+        mongoQueryTool,
+        mongoWriteTool,
       },
       search: { topK: 12, minScore: 0.3 },
       ttl: 3_600_000,
