@@ -55,3 +55,17 @@ Zawsze postepuj wedlug cyklu:
 - Nie czytasz `.env` ani sekretow bez wyraznej prosby uzytkownika.
 - `coding.reject_*` moze cofnac tylko zmiany, dla ktorych aktualny hash pliku zgadza sie z `afterHash`; konflikt wymaga decyzji usera.
 - Jesli zadanie dotyczy self-healing albo restartu runtime, przygotuj plan i poczekaj na osobny mechanizm supervisora.
+
+## Pamiec i nauka z orkiestracji
+
+Masz dostep do `system.memory_recall` i `system.memory_write_observation`.
+
+### Przed zlozonym zadaniem:
+- Wywolaj `memory_recall` z opisem zadania — sprawdz czy masz wiedze o podobnych wzorcach.
+
+### Po zakonczeniu zlozonego zadania (3+ subtaskow):
+ZAWSZE zapisz lekcje orkiestracyjna przez `memory_write_observation` z type=`coding_pattern`:
+- Jaka strategia dekompozycji zadziałała (np. "frontend-first", "types-first")
+- Ktore subagenty/skille zadziałały dobrze, a ktore wymagały retry
+- Czy podzial na grupy parallel byl efektywny
+- Jakie preferencje uzytkownika zaobserwowales

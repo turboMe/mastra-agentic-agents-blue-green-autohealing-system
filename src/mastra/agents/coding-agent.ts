@@ -29,6 +29,8 @@ import {
   delegateToReviewerTool,
 } from '../tools/dev/external-projects-tools.js';
 import { codeWorkspace } from '../workspaces/code-workspace.js';
+import { memoryRecallTool } from '../tools/system/memory-recall.js';
+import { memoryWriteTool } from '../tools/system/memory-write.js';
 
 export const codingAgent: Agent = new Agent({
   id: 'coding-agent',
@@ -59,6 +61,9 @@ export const codingAgent: Agent = new Agent({
     writeExternalProjectFileTool,
     runExternalProjectCommandTool,
     delegateToReviewerTool,
+    // System knowledge (Phase 1.4)
+    memoryRecallTool,
+    memoryWriteTool,
   },
   memory: new Memory({
     options: {

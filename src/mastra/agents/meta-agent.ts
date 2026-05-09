@@ -13,6 +13,8 @@ import { triggerWorkflowTool } from '../tools/system/trigger-workflow.js';
 import { requestApprovalTool } from '../tools/system/request-approval.js';
 import { runWorkerTool } from '../tools/system/run-worker.js';
 import { recallWorkerLessonsTool } from '../tools/system/recall-worker-lessons.js';
+import { memoryRecallTool } from '../tools/system/memory-recall.js';
+import { memoryWriteTool } from '../tools/system/memory-write.js';
 import {
   n8nTriggerWebhookTool,
   n8nHealthTool,
@@ -114,6 +116,9 @@ export const metaAgent: Agent = new Agent({
     addContextTool,
     listContextTool,
     pushSignalTool,
+    // System knowledge (Phase 1.4)
+    memoryRecallTool,
+    memoryWriteTool,
   },
 
   // ── Discoverable tool pool (~50 tools via semantic search) ────────────────

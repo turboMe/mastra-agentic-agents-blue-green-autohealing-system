@@ -287,7 +287,7 @@ codingAgent w Fazie 3 stanie się orkiestratorem delegującym 5-20 subtasków. P
    ```
 3. **[TEST]** Uruchomić extractKnowledge() ręcznie po kilku taskach → sprawdzić `db.system_knowledge.find()`
 
-### 1.4 Narzędzia memory_recall i memory_write (DECYZJA-02, krok 3)
+### 1.4 Narzędzia memory_recall i memory_write (DECYZJA-02, krok 3) — ✅ DONE 2026-05-09
 
 **Zależność:** → 1.3 (system_knowledge musi istnieć)
 
