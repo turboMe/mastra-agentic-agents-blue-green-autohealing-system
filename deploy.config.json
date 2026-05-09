@@ -1,0 +1,28 @@
+{
+  "slots": {
+    "A": {
+      "label": "live",
+      "dir": "/projekty/mastra-agentic-environment/agentic-agents",
+      "port": 4111,
+      "pidFile": "/projekty/mastra-agentic-environment/.deploy/slot-a.pid"
+    },
+    "B": {
+      "label": "staging",
+      "dir": "/projekty/mastra-agentic-environment/agentic-agents-staging",
+      "port": 4222,
+      "pidFile": "/projekty/mastra-agentic-environment/.deploy/slot-b.pid"
+    }
+  },
+  "healthCheck": {
+    "endpoint": "/health",
+    "customEndpoint": "/deploy/health",
+    "timeoutMs": 60000,
+    "intervalMs": 3000,
+    "requiredSuccesses": 1
+  },
+  "rollback": {
+    "autoRevert": false,
+    "keepLogs": true,
+    "logDir": "/projekty/mastra-agentic-environment/.deploy/logs"
+  }
+}

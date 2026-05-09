@@ -51,7 +51,50 @@ import { metaToolCallAppropriatenessScorer } from './scorers/meta-agent-scorer';
 import { marketingDraftingCompletenessScorer } from './scorers/marketing-agent-scorer';
 import { architectRiskSoundnessScorer } from './scorers/automation-architect-scorer';
 
+// Server (custom API routes)
+import { registerApiRoute } from '@mastra/core/server';
+import { execSync } from 'child_process';
+import { readFileSync } from 'fs';
+
+const startedAt = Date.now();
+
+function getVersion(): string {
+  // Próbuj git (live repo)
+  try {
+    return execSync('git rev-parse --short HEAD', { encoding: 'utf-8', timeout: 3000 }).trim();
+  } catch {
+    // Fallback: plik .deploy-version (staging bez .git)
+    try {
+      return readFileSync('.deploy-version', 'utf-8').trim();
+    } catch {
+      return 'unknown';
+    }
+  }
+}
+
+const APP_VERSION = getVersion();
+
 export const mastra: Mastra = new Mastra({
+  server: {
+    apiRoutes: [
+      registerApiRoute('/deploy/health', {
+        method: 'GET',
+        handler: async (c) => {
+          const uptimeMs = Date.now() - startedAt;
+          return c.json({
+            status: 'ok',
+            version: APP_VERSION,
+            uptime: uptimeMs,
+            uptimeHuman: `${Math.floor(uptimeMs / 60000)}m ${Math.floor((uptimeMs % 60000) / 1000)}s`,
+            timestamp: new Date().toISOString(),
+            slot: process.env.DEPLOY_SLOT || 'default',
+            port: process.env.PORT || '4111',
+            pid: process.pid,
+          });
+        },
+      }),
+    ],
+  },
   workflows: {
     weatherWorkflow,
     weeklyContentWorkflow,

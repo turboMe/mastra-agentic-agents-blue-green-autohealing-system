@@ -34,10 +34,10 @@ Aktualny postep:
 - [x] Etap 3: Staging Worktree (izolacja modyfikacji i bezpieczny merge) + podstawy code review.
 - [x] Etap 4: codeReviewAgent i repo-maintenance workflow (Orkiestracja w Mastra).
 - [x] Etap 5: Review Loop + Suspend/Resume + Reviewer Worktree Tools (E2E potwierdzone).
-- [ ] Etap 6: self-healing z logow/testow, bez auto-deploy w trybie manualnym.
-- [ ] Etap 6: subagenci codingowi, routing modeli i tryb offline fallback.
-- [ ] Etap 7: GitHub/PR/CI integracja.
-- [ ] Etap 8: kontrolowane podpiecie wlasnego repo agenta, z approval, rollback i health-checkami.
+- [ ] Etap 6: Blue-Green Deployment — dwie instancje Mastry (Live/Staging), health-check, auto-switch z rollback.
+- [ ] Etap 7: Self-healing z logów/testów, automatyczny trigger workflow bez auto-deploy.
+- [ ] Etap 8: Subagenci codingowi, routing modeli i tryb offline fallback.
+- [ ] Etap 9: GitHub/PR/CI integracja.
 
 Pierwszy naturalny krok:
 
@@ -125,6 +125,22 @@ Zaimplementowano:
 - [x] Automatyczne wypełnianie `diffSummary` (backup w kodzie workflow po zakończeniu pracy codingAgent).
 - [x] Test E2E w Mastra Studio: pełny cykl coding → review (approve) → suspend → resume (confirmMerge: true) → apply_patch → cleanup worktree. Plik wylądował w live repo, commit zmergowany na mastera.
 
+Status Etapu 6 (Blue-Green Deployment) — W TRAKCIE:
+
+Plan:
+1. Health-check endpoint (`/health`) w Mastra — wersja, uptime, slot, PID.
+2. Deploy config (`deploy.config.json`) — definicje slotów A/B, porty, health params.
+3. Deploy script (`scripts/deploy-blue-green.sh`) — build staging → start → health-check → swap/rollback.
+4. Integracja z workflow (nowy krok `deploy-and-verify` po `apply_patch`).
+
+Zaimplementowano:
+- [x] Health endpoint `/health` (registerApiRoute w index.ts) — zwraca git SHA, uptime, slot, port, PID.
+- [x] Deploy config `deploy.config.json` — Slot A (:4111 live), Slot B (:4222 staging), health params, rollback config.
+- [x] Deploy script `scripts/deploy-blue-green.sh` — rsync → build → start staging → health loop → swap/rollback.
+- [x] Kompilacja TSC czysta.
+- [ ] Test manualny: uruchomienie deploy script po apply_patch.
+- [ ] Integracja deploy step z repo-maintenance-workflow.
+
 ---
 
 ### Strategiczne innowacje dla Coding Agenta (Maj 2026)
@@ -138,6 +154,7 @@ Aby agent był jeszcze bardziej autonomiczny i stabilny w trudnych refaktorach, 
 5. [x] **CodeReview & Workflow:** Podział obowiązków między codingAgent i codeReviewAgent w ramach Mastra Workflow.
 6. [x] **Decision Gate + Suspend/Resume:** Bramka decyzyjna z Human-in-the-Loop. Approve → suspend → merge. Needs_changes → pętla naprawcza (max 3).
 7. [x] **Reviewer Worktree Tools:** Narzędzia do inspekcji worktree przez codeReviewAgent (`worktree_diff`, `list_worktree_files`, `read_worktree_file`). Reviewer sam sprawdza pliki zamiast polegać na metadanych.
+8. [ ] **Blue-Green Deployment:** Dwie instancje Mastry z health-check, auto-switch i rollback.
 
 ---
 
