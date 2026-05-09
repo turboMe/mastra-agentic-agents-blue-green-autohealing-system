@@ -299,6 +299,12 @@ initModelAvailability().catch((err) =>
   console.error('[ModelAvailability] Startup check failed:', (err as Error).message),
 );
 
+// ── Mongo TTL Indexes (Phase 0 — Bug #2.9) ──
+import { ensureIndexes } from './lib/mongo-indexes.js';
+ensureIndexes().catch((err) =>
+  console.error('[MongoIndexes] Failed to ensure indexes:', (err as Error).message),
+);
+
 // ── Graceful Shutdown for Dev/Hot-Reload ──
 function cleanupAndExit(signal: string) {
   console.log(`[Mastra] Otrzymano sygnał ${signal}. Zamykanie zasobów przed restartem (Graceful Shutdown)...`);

@@ -22,7 +22,7 @@ Ref: [plan-rozwoju.md](./plan-rozwoju.md) (decyzje architektoniczne)
 > Szacowany czas: 1–2 sesje robocze
 > Zależności: brak
 
-### 0.1 Ujednolicenie expiresAt (Bug #2.4)
+### 0.1 Ujednolicenie expiresAt (Bug #2.4) — ✅ DONE 2026-05-09
 
 **Problem:** `addContextTool` zapisuje `expiresAt` jako `Date`, `sharedMemoryOutputProcessor` jako ISO string. Query `{ $gt: new Date() }` nie łapie stringów.
 
@@ -32,7 +32,7 @@ Ref: [plan-rozwoju.md](./plan-rozwoju.md) (decyzje architektoniczne)
    - Analogicznie `createdAt: now.toISOString()` → zostawić jako string (to nie jest filtrowane)
 2. **[TEST]** Uruchomić metaAgent, wygenerować odpowiedź z decision pattern → sprawdzić w Mongo czy `expiresAt` jest ISODate
 
-### 0.2 TTL Indexy w Mongo (Bug #2.9)
+### 0.2 TTL Indexy w Mongo (Bug #2.9) — ✅ DONE 2026-05-09
 
 **Problem:** Kolekcje `signals` i `shared_memory` mają pole `expiresAt` ale brak TTL indexu — dokumenty nigdy nie wygasają automatycznie.
 
@@ -55,7 +55,7 @@ Ref: [plan-rozwoju.md](./plan-rozwoju.md) (decyzje architektoniczne)
 2. **[EDYCJA]** `index.ts` — wywołać `ensureIndexes()` przy starcie Mastry (po `getDb()`)
 3. **[TEST]** Wstawić dokument z `expiresAt: new Date(Date.now() - 1000)` → sprawdzić czy Mongo go usunie w ciągu 60s
 
-### 0.3 Diagnostyka token_usage = 0 (Bug #2.2)
+### 0.3 Diagnostyka token_usage = 0 (Bug #2.2) — ⏳ Wymaga diagnozy runtime
 
 **Problem:** `token_usage` kolekcja jest pusta. Observability pipeline (DuckDB + CloudExporter) nie zapisuje danych tokenowych.
 
@@ -66,7 +66,7 @@ Ref: [plan-rozwoju.md](./plan-rozwoju.md) (decyzje architektoniczne)
 4. **[EDYCJA]** W zależności od diagnozy — dodać hook do `CloudExporter` lub naprawić span attributes
 5. **Cel minimum:** Po wdrożeniu każdy `agent.generate()` powinien zapisywać `{ model, promptTokens, completionTokens, totalTokens, costUsd, timestamp }`
 
-### 0.4 Auto-save lesson po retry (Bug #2.1)
+### 0.4 Auto-save lesson po retry (Bug #2.1) — ✅ DONE 2026-05-09
 
 **Problem:** `signals` = 0. System nigdy nie zapisuje lekcji z udanych retry/eskalacji.
 
@@ -97,7 +97,7 @@ Ref: [plan-rozwoju.md](./plan-rozwoju.md) (decyzje architektoniczne)
    ```
 3. **[TEST]** Uruchomić task który wymaga retry → sprawdzić `db.signals.find({type:'lesson_learned'})`
 
-### 0.5 Walidacja komend w run_test (Bug #2.5)
+### 0.5 Walidacja komend w run_test (Bug #2.5) — ✅ DONE 2026-05-09
 
 **Problem:** `runTestCommandTool` przyjmuje dowolną komendę. Ryzyko eskalacji.
 

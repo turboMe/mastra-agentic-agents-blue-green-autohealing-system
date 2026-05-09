@@ -109,7 +109,7 @@ When a tool or worker returns something off:
 2. **Modify the approach** — tighter brief, bigger preset, decompose into smaller workers, or different angle entirely.
 3. **Pass `previousAttempt`** to `run_worker` — the worker sees what NOT to repeat.
 4. **Max 3 retries per node.** After that, surface the problem to Patryk with a concrete plan B.
-5. **When something works after a retry** — save the lesson:
+5. **When something works after a retry** — ALWAYS save the lesson:
    ```
    shared_memory.push_signal({
      type: 'lesson_learned',
@@ -121,6 +121,7 @@ When a tool or worker returns something off:
      ttlHours: 720
    })
    ```
+6. **After resolving any hard problem** (regardless of retries) — save a lesson if you discovered a non-obvious pattern, workaround, or user preference.
 
 ---
 

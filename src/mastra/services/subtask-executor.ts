@@ -9,6 +9,8 @@
  *   Attempt 3 → quality check → fail → mark 'needs_human'
  */
 
+import { randomUUID } from 'crypto';
+
 import type { Mastra } from '@mastra/core/mastra';
 import type { Agent } from '@mastra/core/agent';
 import {
@@ -322,6 +324,26 @@ export async function retryFailedSubtasks(
         escalationHistory: [{ model: result.assignedModel, reason: quality.reason }],
       };
       retryResult.status = 'success';
+
+      // ── Phase 0 — Bug #2.1: Auto-save lesson after successful retry ──
+      try {
+        const db = await getDb();
+        await db.collection('signals').insertOne({
+          id: randomUUID(),
+          type: 'lesson_learned',
+          sourceAgent: 'subtask-executor',
+          data: {
+            task_pattern: `${subtask.type} on ${subtask.targetFiles.join(', ')}`,
+            lesson: `Retry succeeded: ${retryQuality.reason}. Original failure: ${quality.reason}`,
+            preset: retryResult.assignedModel,
+          },
+          expiresAt: new Date(Date.now() + 720 * 3600 * 1000), // 30 days
+          createdAt: new Date().toISOString(),
+        });
+      } catch (err) {
+        console.warn('[SubtaskExecutor] Failed to save lesson:', (err as Error).message);
+      }
+
       finalResults.push(retryResult);
       continue;
     }
@@ -354,6 +376,28 @@ export async function retryFailedSubtasks(
       };
 
       escalatedResult.status = escalatedQuality.passed ? 'success' : 'needs_human';
+
+      // ── Phase 0 — Bug #2.1: Auto-save lesson after successful escalation ──
+      if (escalatedQuality.passed) {
+        try {
+          const db = await getDb();
+          await db.collection('signals').insertOne({
+            id: randomUUID(),
+            type: 'lesson_learned',
+            sourceAgent: 'subtask-executor',
+            data: {
+              task_pattern: `${subtask.type} on ${subtask.targetFiles.join(', ')}`,
+              lesson: `Escalation from ${retryResult.assignedModel} to ${escalationModel.modelId} succeeded. Original failures: ${quality.reason}; ${retryQuality.reason}`,
+              preset: escalationModel.modelId,
+            },
+            expiresAt: new Date(Date.now() + 720 * 3600 * 1000), // 30 days
+            createdAt: new Date().toISOString(),
+          });
+        } catch (err) {
+          console.warn('[SubtaskExecutor] Failed to save escalation lesson:', (err as Error).message);
+        }
+      }
+
       finalResults.push(escalatedResult);
     } else {
       // No escalation model available → mark needs_human

@@ -359,13 +359,30 @@ export const runTestCommandTool = createTool({
         };
       }
 
+      // ── Command Allowlist (Phase 0 — Bug #2.5) ──
+      const ALLOWED_PREFIXES = [
+        'npx tsc', 'npx vitest', 'npx jest', 'npx eslint',
+        'npm test', 'npm run test', 'npm run lint', 'npm run build',
+        'node --check', 'cat ', 'head ', 'tail ', 'wc ',
+      ];
+      const command = context.command.trim();
+      const isAllowed = ALLOWED_PREFIXES.some((p) => command.startsWith(p));
+      if (!isAllowed) {
+        return {
+          success: false,
+          taskId: context.taskId,
+          output: '',
+          message: `Command not in allowlist. Allowed prefixes: ${ALLOWED_PREFIXES.join(', ')}`,
+        };
+      }
+
       let exitCode = 0;
       let output = '';
       let status: 'passed' | 'failed' = 'passed';
 
       try {
         const workspacePath = await getWorkspacePath(context.taskId);
-        const { stdout, stderr } = await execAsync(context.command, { cwd: workspacePath, timeout: 60000 });
+        const { stdout, stderr } = await execAsync(command, { cwd: workspacePath, timeout: 60000 });
         output = stdout || stderr;
       } catch (err: any) {
         exitCode = err.code ?? 1;

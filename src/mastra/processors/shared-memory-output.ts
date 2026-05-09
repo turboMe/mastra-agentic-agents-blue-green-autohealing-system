@@ -87,7 +87,7 @@ export class SharedMemoryOutputProcessor extends BaseProcessor<'shared-memory-ou
               fullText: text.slice(0, 2000),
               tokenUsage: result.usage,
               createdAt: now.toISOString(),
-              expiresAt: ttl.toISOString(),
+              expiresAt: ttl,  // Must be Date (not string) for TTL index and { $gt: new Date() } queries
             },
           },
           { upsert: true },
