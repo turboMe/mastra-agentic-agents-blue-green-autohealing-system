@@ -12,6 +12,9 @@ import { Workspace, LocalFilesystem, LocalSandbox, WORKSPACE_TOOLS } from '@mast
 import { initGlobalErrorHandlers } from './services/global-error-handler.js';
 import { getErrorCollector } from './services/error-collector.js';
 
+// GPU Guard (Etap 8 — VRAM protection)
+import { initGpuGuard, getGpuGuard } from './services/gpu-guard.js';
+
 
 
 // Workflows
@@ -135,6 +138,27 @@ export const mastra: Mastra = new Mastra({
           });
         },
       }),
+      // ── GPU Guard: VRAM monitoring endpoint ──
+      registerApiRoute('/deploy/gpu-status', {
+        method: 'GET',
+        handler: async (c: any) => {
+          try {
+            const guard = getGpuGuard();
+            const snapshot = guard.getSnapshot(true);
+            return c.json({
+              ...snapshot,
+              timestamp: snapshot.timestamp.toISOString(),
+              vramBudgetMb: (await import('./config/model-capabilities.js')).VRAM_BUDGET_MB,
+            });
+          } catch (err) {
+            return c.json({
+              error: 'GpuGuard unavailable',
+              message: (err as Error).message,
+              gpuAvailable: false,
+            }, 500);
+          }
+        },
+      }),
     ],
   },
   workflows: {
@@ -234,3 +258,6 @@ mastra.addGateway(new OllamaGateway());
 
 // ── Self-healing: Global Error Handlers (Etap 7) ──
 initGlobalErrorHandlers();
+
+// ── GPU Guard: VRAM Protection (Etap 8) ──
+initGpuGuard();

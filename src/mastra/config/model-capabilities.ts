@@ -150,18 +150,33 @@ const localModels: ModelCapability[] = [
     avgLatencyMs: 12000,
     available: true,
   },
+  // ── Tier: local-reasoning — diagnosis, planning, code review ──
   {
-    modelId: 'ollama/local/huihui_ai/qwen3.5-abliterated:35b',
-    name: 'Qwen 3.5 35B (abliterated)',
+    modelId: 'ollama/local/phi4-reasoning:14b',
+    name: 'Phi-4 Reasoning 14B',
     tier: 'local-heavy',
-    maxComplexity: 'moderate',
-    strengths: ['reasoning', 'uncensored', 'code-generation'],
-    weaknesses: ['speed', 'vram-overflow', 'stability'],
-    vramMb: 23000,
-    safeContextWindow: 2048,    // ❌ Wymaga swap — ultra-conservative
-    concurrentSlots: 1,
+    maxComplexity: 'complex',
+    strengths: ['reasoning', 'planning', 'diagnosis', 'code-review', 'impact-analysis'],
+    weaknesses: ['code-generation', 'multi-file-edits'],
+    vramMb: 10000,
+    safeContextWindow: 8192,    // Komfortowo na 16GB VRAM
+    concurrentSlots: 1,          // Może działać parallel z micro/light!
     costPerCall: 0,
-    avgLatencyMs: 30000,
+    avgLatencyMs: 10000,
+    available: true,
+  },
+  {
+    modelId: 'ollama/local/magistral:24b',
+    name: 'Magistral 24B (Mistral)',
+    tier: 'local-heavy',
+    maxComplexity: 'complex',
+    strengths: ['reasoning', 'chain-of-thought', 'diagnosis', 'critique', 'complex-analysis'],
+    weaknesses: ['speed', 'very-long-context'],
+    vramMb: 15000,
+    safeContextWindow: 4096,    // ⚠️ Tight na 16GB — solo mode
+    concurrentSlots: 1,          // Solo — zajmuje prawie cały GPU
+    costPerCall: 0,
+    avgLatencyMs: 15000,
     available: true,
   },
 ];
@@ -302,7 +317,35 @@ export function getCheapestCapableModel(
 }
 
 /**
- * Total VRAM budget in MB (from GPU).
- * Override via env: MODEL_VRAM_BUDGET_MB
+ * Total VRAM budget in MB — usable by Ollama models.
+ *
+ * Resolution priority:
+ * 1. Env var MODEL_VRAM_BUDGET_MB (for containers / CI / manual override)
+ * 2. Dynamic detection via GpuGuard (auto-detect GPU, reserve for compositor)
+ * 3. Fallback: 0 (cloud-only mode if no GPU and no override)
+ *
+ * NOTE: This is the *planning* budget — the Smart Router also does
+ * *runtime* pre-flight checks via GpuGuard.getSnapshot() before dispatch.
  */
-export const VRAM_BUDGET_MB = parseInt(process.env.MODEL_VRAM_BUDGET_MB ?? '15000', 10);
+function resolveVramBudget(): number {
+  // Explicit override takes priority (useful for containers, CI, headless servers)
+  const envOverride = process.env.MODEL_VRAM_BUDGET_MB;
+  if (envOverride) {
+    const parsed = parseInt(envOverride, 10);
+    if (!isNaN(parsed) && parsed >= 0) return parsed;
+  }
+
+  // Dynamic detection — lazy import to avoid circular dependency
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getGpuGuard } = require('../services/gpu-guard.js');
+    const guard = getGpuGuard();
+    return guard.getSafeVramBudgetMb();
+  } catch {
+    // GpuGuard not available (e.g. missing nvidia-smi in container)
+    console.warn('[ModelCapabilities] GpuGuard unavailable — using 0 MB VRAM budget (cloud-only)');
+    return 0;
+  }
+}
+
+export const VRAM_BUDGET_MB = resolveVramBudget();

@@ -13,6 +13,7 @@ import {
   complexityMeetsRequirement,
   VRAM_BUDGET_MB,
 } from '../config/model-capabilities.js';
+import { getGpuGuard, type GpuSnapshot } from './gpu-guard.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,13 +40,29 @@ interface RouteDecision {
 /**
  * Tracks VRAM usage across concurrent local model assignments.
  * Cloud models have unlimited slots (rate limited by API).
+ *
+ * TWO layers of protection:
+ * 1. Planning budget (VRAM_BUDGET_MB) — calculated at startup
+ * 2. Runtime pre-flight (GpuGuard.canLoadModel) — live nvidia-smi check
  */
 class VramBudgetTracker {
   private usedVramMb = 0;
   private readonly budgetMb: number;
+  private readonly gpuSnapshot: GpuSnapshot | null;
 
-  constructor(budgetMb: number = VRAM_BUDGET_MB) {
-    this.budgetMb = budgetMb;
+  constructor(budgetMb: number = VRAM_BUDGET_MB, gpuSnapshot?: GpuSnapshot) {
+    // Use the SMALLER of planning budget and live available VRAM
+    // This catches cases where other processes consumed VRAM since startup
+    const liveBudget = gpuSnapshot?.availableForModelsMb ?? Infinity;
+    this.budgetMb = Math.min(budgetMb, liveBudget);
+    this.gpuSnapshot = gpuSnapshot ?? null;
+
+    if (gpuSnapshot && liveBudget < budgetMb) {
+      console.warn(
+        `[SmartRouter] Live VRAM (${liveBudget}MB) < planning budget (${budgetMb}MB) — ` +
+        `using live value. System VRAM pressure detected.`,
+      );
+    }
   }
 
   canFit(model: ModelCapability): boolean {
@@ -67,6 +84,11 @@ class VramBudgetTracker {
 
   get available(): number {
     return this.budgetMb - this.usedVramMb;
+  }
+
+  /** Whether GPU is available at all (vs cloud-only) */
+  get gpuAvailable(): boolean {
+    return this.gpuSnapshot?.gpuAvailable ?? (this.budgetMb > 0);
   }
 }
 
@@ -127,11 +149,20 @@ function selectModel(
 ): RouteDecision {
   const complexity: TaskComplexity = subtask.estimatedComplexity ?? 'simple';
 
+  // If no GPU available at all, skip local candidates entirely
+  const skipLocal = !vramTracker.gpuAvailable;
+
   // Get all capable models sorted by cost
   const candidates = modelRegistry
-    .filter((m) => m.available && complexityMeetsRequirement(m.maxComplexity, complexity))
+    .filter((m) => {
+      if (!m.available) return false;
+      if (!complexityMeetsRequirement(m.maxComplexity, complexity)) return false;
+      // Skip local models if GPU unavailable (container without GPU, etc.)
+      if (skipLocal && m.vramMb > 0) return false;
+      return true;
+    })
     .sort((a, b) => {
-      if (preferLocal) {
+      if (preferLocal && !skipLocal) {
         const aLocal = a.vramMb > 0 ? 0 : 1;
         const bLocal = b.vramMb > 0 ? 0 : 1;
         if (aLocal !== bLocal) return aLocal - bLocal;
@@ -143,8 +174,22 @@ function selectModel(
   // Try to fit a local model first
   for (const model of candidates) {
     if (model.vramMb > 0) {
-      // Local model — check VRAM budget
+      // Local model — check VRAM budget (planning layer)
       if (vramTracker.canFit(model)) {
+        // Runtime layer — live GpuGuard pre-flight check
+        try {
+          const guard = getGpuGuard();
+          const check = guard.canLoadModel(model.vramMb);
+          if (!check.allowed) {
+            console.warn(
+              `[SmartRouter] Runtime VRAM check BLOCKED ${model.name}: ${check.reason}`,
+            );
+            continue; // Skip to next candidate
+          }
+        } catch {
+          // GpuGuard unavailable — rely on planning budget only
+        }
+
         vramTracker.allocate(model);
         return {
           subtaskId: subtask.id,
@@ -211,6 +256,16 @@ export function routeSubtasks(
   subtasks: RoutableSubtask[],
   preferLocal: boolean = true,
 ): RoutingResult {
+  // Step 0: Get live GPU snapshot for runtime protection
+  let liveSnapshot: GpuSnapshot | undefined;
+  try {
+    const guard = getGpuGuard();
+    liveSnapshot = guard.getSnapshot(true); // Force fresh read
+    console.log(guard.formatSnapshot(liveSnapshot));
+  } catch {
+    console.warn('[SmartRouter] GpuGuard unavailable — using planning budget only');
+  }
+
   // Step 1: Build parallel groups from dependency graph
   const parallelGroups = buildParallelGroups(subtasks);
 
@@ -221,7 +276,8 @@ export function routeSubtasks(
 
   const groups = parallelGroups.map((group, groupIndex) => {
     // Each group gets fresh VRAM budget (previous group's models unloaded)
-    const vramTracker = new VramBudgetTracker();
+    // Pass live snapshot so budget adapts to actual GPU state
+    const vramTracker = new VramBudgetTracker(VRAM_BUDGET_MB, liveSnapshot);
     let groupMaxLatency = 0;
     let groupVram = 0;
 
