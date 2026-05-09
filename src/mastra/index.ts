@@ -321,6 +321,27 @@ export const mastra: Mastra = new Mastra({
           }
         },
       }),
+      // ── Dashboard UI (Faza 7.6 — Sprint 2) ──
+      // Single-file HTML + Chart.js, no build step. Consumes /dashboard/* JSON endpoints.
+      registerApiRoute('/dashboard-ui', {
+        method: 'GET',
+        handler: async (c: any) => {
+          try {
+            const fs = await import('node:fs/promises');
+            const path = await import('node:path');
+            // Hardcoded source path (bundled mode resolves import.meta.dirname to .mastra/output/)
+            const htmlPath = path.resolve(
+              '/projekty/mastra-agentic-environment/agentic-agents',
+              'dashboard',
+              'index.html',
+            );
+            const html = await fs.readFile(htmlPath, 'utf8');
+            return c.html(html);
+          } catch (err) {
+            return c.json({ error: 'Dashboard UI not found', details: (err as Error).message }, 500);
+          }
+        },
+      }),
     ],
   },
   workflows: {

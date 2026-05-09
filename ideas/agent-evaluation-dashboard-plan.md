@@ -1,17 +1,22 @@
 # 7.6 Agent Evaluation Dashboard — Plan Implementacji
 
-> **Status:** ✅ **Sprint 1 ZROBIONE** (data + API + tool) | ⏳ Sprint 2 (UI) odłożone
-> **Data planu:** 2026-05-09 | **Sprint 1 ukończony:** 2026-05-09
-> **Estymacja oryginalna:** 4-6 dni MVP. **Faktyczne:** Sprint 1 ~3-4h (znacznie szybciej dzięki odkryciu że Mastra już zapisuje scorery natywnie)
-> **Dokumentacja Sprint 1:** [`docs/AGENT-EVALUATION-DASHBOARD.md`](../docs/AGENT-EVALUATION-DASHBOARD.md)
+> **Status:** ✅ **Sprint 1 + 2 ZROBIONE** (data + API + tool + UI dashboard)
+> **Data planu:** 2026-05-09 | **Ukończono:** 2026-05-09
+> **Estymacja oryginalna:** 4-6 dni MVP. **Faktyczne:** ~5-6h łącznie
+>   - Sprint 1: ~3-4h (znacznie szybciej dzięki odkryciu że Mastra już zapisuje scorery natywnie)
+>   - Sprint 2: ~1-2h (zero-build podejście: vanilla JS + Chart.js CDN zamiast Vite/React)
+> **Dokumentacja:** [`docs/AGENT-EVALUATION-DASHBOARD.md`](../docs/AGENT-EVALUATION-DASHBOARD.md)
+> **Dashboard URL:** http://localhost:4111/dashboard-ui
 
 ---
 
-## TL;DR — Stan po Sprincie 1
+## TL;DR — Stan po Sprincie 1 + 2
 
-**Sprint 1 ✅ ZROBIONE.** Cała data layer + API + agent tool gotowe do użycia.
+**Sprint 1 + 2 ✅ ZROBIONE.** Cała data layer + API + agent tool + UI dashboard gotowe.
 
-**Kluczowe odkrycie podczas implementacji:** Mastra **automatycznie** zapisuje wyniki scorerów do kolekcji `mastra_scorers` (przez `MongoDBStore` scores domain). Etap 1 oryginalnego planu (1.5d "persystencja scorerów") okazał się **zbędny** — wystarczyło tylko czytać z istniejącej kolekcji.
+**Kluczowe odkrycia podczas implementacji:**
+1. Mastra **automatycznie** zapisuje wyniki scorerów do kolekcji `mastra_scorers` (przez `MongoDBStore` scores domain). Etap 1 oryginalnego planu (1.5d "persystencja scorerów") okazał się **zbędny** — wystarczyło tylko czytać z istniejącej kolekcji.
+2. Dla MVP UI nie potrzeba Vite/React/Tailwind — **vanilla JS + Chart.js via CDN** w jednym pliku HTML jest wystarczająco bogate i szybsze do utrzymania (zero deps, zero build step, hot-reload przez fs.readFile).
 
 Co działa:
 - ✅ `agent_events` collection — własna telemetry (logAgentEvent)
@@ -23,10 +28,10 @@ Co działa:
 - ✅ Skill `_skills/meta/agent-performance-analysis.md`
 - ✅ Dokumentacja `docs/AGENT-EVALUATION-DASHBOARD.md`
 - ✅ MongoDB 7.0 `$percentile` działa dla latency P50/P95/P99
+- ✅ **UI Dashboard pod `/dashboard-ui`** — vanilla JS + Chart.js, dark theme, 6 wykresów + 3 tabele + 5 metryki, filtrowanie + auto-refresh
+- ✅ **Smoke test passed** — HTML serwowany (200 OK, 26KB), API endpoint działa
 
-**Sprint 2 (UI dashboard) — odłożone.** Plan poniżej jest gotowy do uruchomienia gdy będzie potrzeba.
-
-**Co NIE działa od razu:** Mastra Studio (UI na localhost:4111) jest read-only. Nie da się dodać własnego panelu bez forkowania. Rozwiązanie: **osobny dashboard** jako statyczny HTML/React serwowany przez Mastra (nie wymaga osobnego serwera).
+**Co NIE działa od razu:** Mastra Studio (UI na localhost:4111) jest read-only. Dlatego nasz dashboard jest osobnym route'em pod `/dashboard-ui` na tym samym porcie.
 
 ---
 
@@ -329,7 +334,15 @@ Zarejestrować w meta-agencie i analytics-agencie.
 
 ---
 
-## Etap 6 — UI Dashboard ⏳ ODŁOŻONE (Sprint 2)
+## Etap 6 — UI Dashboard ✅ ZROBIONE (Sprint 2)
+
+> **Update 2026-05-09:** Zaimplementowane w **prostszej wersji niż pierwotnie planowano**.
+> Zamiast Vite + React + Tailwind + Recharts (1.5d setup) → vanilla JS + Chart.js via CDN (1-2h).
+> Szczegóły: `dashboard/index.html` + route `/dashboard-ui` w `index.ts`.
+> Wszystko opisane w `docs/AGENT-EVALUATION-DASHBOARD.md`.
+
+<details>
+<summary>Oryginalny plan (Vite/React) — niepotrzebny w obecnej skali</summary>
 
 ### 6.1 Stack
 - **Vite + React + TypeScript** (osobny build w `dashboard/`)
@@ -374,6 +387,32 @@ apiRoutes: [
 - Agent multi-select
 - Auto-refresh toggle (15s polling)
 
+</details>
+
+### Co zostało faktycznie zaimplementowane (Sprint 2)
+
+**Stack (zero-build):**
+- 1 plik HTML (`dashboard/index.html`, ~26KB)
+- Vanilla JS (ES2022 modules)
+- Chart.js 4.4.6 via jsdelivr CDN
+- Inline CSS (~150 linii, dark theme)
+
+**Layout:**
+- Filters bar: window picker (24h/7d/14d/30d/90d), granularity (hour/day), refresh button, auto-refresh toggle (30s), status indicator
+- Overview cards (5): Tasks · Success Rate · Cost · Avg Latency · Tool Calls
+- Wykresy:
+  1. **Agents** — stacked bar chart (completed vs failed per agent)
+  2. **Models** — doughnut chart (cost USD by model, fallback do invocations dla local)
+  3. **Cost trend** — line chart (USD per day)
+  4. **Latency** — grouped bar chart (P50/P95/P99 per agent)
+  5. **Timeline** — stacked area (events bucketed by hour/day)
+  6. **Skills** — horizontal bar chart (top 10 by uses)
+- Tabele: agents · models · scorers (z color-coded pill badges)
+
+**Serwowanie:** route `/dashboard-ui` w `index.ts` używa `fs.readFile` przy każdym requeście — hot-reload za darmo (edytujesz HTML → F5 → widzisz zmiany).
+
+**Smoke test:** ✅ `curl /dashboard-ui` zwraca 200 (26KB HTML), `/dashboard/overview` zwraca poprawny JSON.
+
 ---
 
 ## Etap 7 — Dokumentacja + skill ✅ ZROBIONE
@@ -404,16 +443,20 @@ Zawiera: red flags table, drift detection, anti-patterns, full example flow.
 - [x] Skill `_skills/meta/agent-performance-analysis.md` napisany
 - [x] TypeScript: ✅ czysty (`npx tsc --noEmit` 0 błędów)
 
-### Sprint 2 ⏳ ODŁOŻONE (UI dashboard)
-- [ ] Dashboard widoczny pod `/dashboard-ui`, pokazuje:
-  - [ ] Success rate per agent (bar chart)
-  - [ ] Top 10 skills (bar chart) 
-  - [ ] Model usage (pie chart)
-  - [ ] Latency P50/P95/P99 (histogram per agent)
-  - [ ] Cost trend (line chart, USD/day)
-- [ ] Filtry: date range, agent picker
-- [ ] Auto-refresh (15s)
-- [ ] Smoke test: 1 dzień produkcyjnego użycia, dashboard pokazuje sensowne dane
+### Sprint 2 ✅ DONE (UI dashboard)
+- [x] Dashboard widoczny pod `/dashboard-ui`, pokazuje:
+  - [x] Success rate per agent (stacked bar chart) + tabela
+  - [x] Top 10 skills (horizontal bar chart)
+  - [x] Model usage (doughnut chart) + tabela z providerem i kosztem
+  - [x] Latency P50/P95/P99 (grouped bar chart per agent)
+  - [x] Cost trend (line chart, USD/day)
+  - [x] Event timeline (stacked area chart)
+  - [x] Scorers (tabela z avg score i pass rate)
+  - [x] Overview cards (5 metryk)
+- [x] Filtry: window picker (24h/7d/14d/30d/90d), granularity (hour/day)
+- [x] Auto-refresh toggle (30s)
+- [x] Color-coded success rates (zielony/żółty/czerwony)
+- [x] Smoke test: HTTP 200 + valid JSON ✅
 
 ---
 
@@ -439,10 +482,11 @@ Zawiera: red flags table, drift detection, anti-patterns, full example flow.
 | 3. Aggregation service | 1 dzień | ~1h | ✅ Done |
 | 4. API routes | 0.5 dnia | ~30min | ✅ Done |
 | 5. Tool dla agentów | 0.5 dnia | ~30min | ✅ Done |
-| 6. UI Dashboard | 1.5 dnia | — | ⏳ Sprint 2 |
+| 6. UI Dashboard | 1.5 dnia | ~1-2h | ✅ Done (zero-build approach) |
 | 7. Dokumentacja | 0.5 dnia | ~30min | ✅ Done |
 | **Sprint 1 (data + tool)** | **~3.5 dnia** | **~3-4h** | ✅ DONE |
-| **Sprint 2 (UI)** | **~1.5 dnia** | — | ⏳ Pending |
+| **Sprint 2 (UI)** | **~1.5 dnia** | **~1-2h** | ✅ DONE |
+| **TOTAL ŁĄCZNIE** | **~5 dni** | **~5-6h** | ✅ |
 
 ---
 
@@ -451,16 +495,17 @@ Zawiera: red flags table, drift detection, anti-patterns, full example flow.
 1. **Sprint 1 (MVP "data-only"):** Etapy 1-4 + 5 ✅ **ZROBIONE**
    - meta-agent + analytics-agent mogą odpowiadać na pytania "jak działają agenci" przez tool
    - 8 API endpointów gotowych do konsumpcji przez dowolny UI
-   - **Już można pisać do produkcji.**
 
-2. **Sprint 2 (Visual UI):** Etap 6 (1.5 dnia) ⏳ **ODŁOŻONE**
-   - Po tym: pełny dashboard pod `/dashboard-ui`
-   - Vite + React + Recharts, serwowany przez Mastra static route
+2. **Sprint 2 (Visual UI):** Etap 6 ✅ **ZROBIONE**
+   - Pełny dashboard pod `/dashboard-ui`
+   - Zero-build approach: vanilla JS + Chart.js CDN (zamiast Vite/React)
+   - Dostępny natychmiast po `npm run dev` (bez osobnej kompilacji UI)
 
-3. **Sprint 3 (Polish):** iteracje na podstawie real usage (0.5 dnia)
-   - Cache wyników agregacji (TTL 60s)
-   - Alerty (success rate < 80% → Telegram)
+3. **Sprint 3 (Polish) — Backlog:**
+   - Cache wyników agregacji (TTL 60s) — przyda się gdy >50 użytkowników
+   - Alerty (success rate < 80% → Telegram) — workflow cron, łatwe do dodania
    - Daily rollup gdy `agent_events` urośnie >1M
+   - Drill-down: klik w wiersz tabeli → szczegóły taska (`/dashboard/task/:id`)
 
 ---
 

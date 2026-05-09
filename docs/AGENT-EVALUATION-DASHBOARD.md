@@ -1,7 +1,8 @@
 # Agent Evaluation Dashboard
 
-> **Status:** Sprint 1 zakończony — dane + API + tool. UI dashboardu (Sprint 2) na razie odłożony.
-> **Lokalizacja kodu:** `src/mastra/lib/model-pricing.ts`, `src/mastra/services/dashboard-stats.ts`, `src/mastra/tools/system/agent-performance-report.ts`, `src/mastra/index.ts`
+> **Status:** ✅ Sprint 1 + 2 zakończone — dane + API + tool + UI.
+> **Otwórz dashboard:** http://localhost:4111/dashboard-ui (po `npm run dev`)
+> **Lokalizacja kodu:** `src/mastra/lib/model-pricing.ts`, `src/mastra/services/dashboard-stats.ts`, `src/mastra/tools/system/agent-performance-report.ts`, `dashboard/index.html`, `src/mastra/index.ts`
 > **Audyt:** kat. 19 (Self-Improvement)
 
 ---
@@ -25,7 +26,21 @@ Wszystko czytane z **istniejących źródeł** — żadna nowa kolekcja nie był
 
 ---
 
-## Architektura (Sprint 1)
+## Quick Start
+
+```bash
+# Uruchom serwer Mastra (włącznie z dashboardem — żaden osobny proces nie jest potrzebny)
+npm run dev
+
+# Otwórz w przeglądarce
+http://localhost:4111/dashboard-ui
+```
+
+Dashboard automatycznie ładuje dane z `/dashboard/*` JSON endpoints. Filtry: window (24h / 7d / 14d / 30d / 90d), granularity (hour/day), auto-refresh (30s).
+
+---
+
+## Architektura
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -49,19 +64,14 @@ Wszystko czytane z **istniejących źródeł** — żadna nowa kolekcja nie był
 └─────────────────────────────────────────────────────────────┘
                            ▲
                            │
-        ┌──────────────────┴────────────────────┐
-        ▼                                       ▼
-┌─────────────────────┐               ┌────────────────────────┐
-│ HTTP API            │               │ AGENT TOOL             │
-│ /dashboard/overview │               │ system.agent_          │
-│ /dashboard/agents   │               │   performance_report   │
-│ /dashboard/skills   │               │ (meta + analytics)     │
-│ /dashboard/models   │               └────────────────────────┘
-│ /dashboard/latency  │
-│ /dashboard/cost     │
-│ /dashboard/scores   │
-│ /dashboard/timeline │
-└─────────────────────┘
+        ┌──────────────────┼──────────────────┬──────────────┐
+        ▼                  ▼                  ▼              ▼
+┌─────────────────┐ ┌─────────────────┐ ┌──────────────┐ ┌─────────────┐
+│ HTTP JSON API   │ │ DASHBOARD UI    │ │ AGENT TOOL   │ │ ANALYTICS   │
+│ /dashboard/*    │ │ /dashboard-ui   │ │ system.agent │ │ AGENT       │
+│ (8 endpoints)   │ │ (HTML + JS +    │ │ _performance │ │ (always-on) │
+│                 │ │  Chart.js)      │ │ _report      │ │             │
+└─────────────────┘ └─────────────────┘ └──────────────┘ └─────────────┘
 ```
 
 ---
@@ -241,16 +251,39 @@ Schema (skrót):
 
 ---
 
-## Co NIE jest jeszcze zrobione (Sprint 2 i dalej)
+## UI Dashboard (Sprint 2 — done)
+
+**Lokalizacja:** [`dashboard/index.html`](../dashboard/index.html) — pojedynczy plik HTML.
+
+**Stack (zero-build):**
+- Vanilla JS (ES2022 modules) — bez React/Vite/build step
+- [Chart.js 4.4.6](https://www.chartjs.org/) via jsdelivr CDN
+- Inline CSS (~150 linii, dark theme, ~250 zmiennych CSS)
+
+**Komponenty na ekranie:**
+1. **Filters bar** — window picker (24h/7d/14d/30d/90d), granularity (hour/day), refresh button, auto-refresh toggle (30s), status indicator
+2. **Overview cards** — 5 metryk: Tasks, Success Rate, Cost, Avg Latency, Tool Calls
+3. **Agents & Models** — bar chart (success/failure stacked) + doughnut chart (cost by model)
+4. **Cost & Latency** — line chart (USD per day) + grouped bar chart (P50/P95/P99 per agent)
+5. **Activity & Skills** — stacked area timeline + horizontal bar chart (top 10 skills)
+6. **Detailed Tables** — agents / models / scorers (z pill badges dla success rate i avg score)
+
+**Kolory:** zielony >=90% success, żółty 70-90%, czerwony <70%. Cost-aware: jeśli wszystkie modele to local Ollama ($0), pie chart automatycznie przełącza się na invocations zamiast cost.
+
+**Serwowanie:** `/dashboard-ui` route w `index.ts` czyta plik z dysku przy każdym requeście (`fs.readFile`). Hot-reload działa — edytujesz HTML, zmieniasz okno, F5 i widzisz zmiany. Bez build step.
+
+---
+
+## Co NIE jest jeszcze zrobione (backlog)
 
 | Funkcjonalność | Status | Notatka |
 |---------------|--------|---------|
-| UI Dashboard (React/Vite) | ⏳ Sprint 2 | Plan w `ideas/agent-evaluation-dashboard-plan.md` Etap 6 |
 | Skill→event linkage przez `metadata.skillId` | ⚠️ Częściowe | Niektóre skills emitują, niektóre nie. Audit potrzebny |
 | Cache wyników agregacji (TTL 60s) | ⏳ Sprint 3 | Przy heavy load aktualnie każdy request agreguje od zera |
 | Alerty (np. "success rate spadł poniżej 80%") | ⏳ Backlog | Można wbudować przez Telegram tool z workflow cron |
 | Daily rollup → `agent_events_daily` | ⏳ Backlog | Gdy `agent_events` urośnie >1M rekordów |
 | Per-task cost na poziomie pojedynczego eventu | ⏳ Możliwe | Wymaga refactoru `logAgentEvent` żeby zapisywał `costUsd` przy zapisie |
+| Drill-down: klik w wiersz tabeli → szczegóły taska | ⏳ Backlog | Wymaga nowego endpointu `/dashboard/task/:id` |
 
 ---
 
