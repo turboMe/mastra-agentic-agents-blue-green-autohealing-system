@@ -22,14 +22,24 @@ import {
   removeWorktreeTool,
   applyWorktreePatchTool,
 } from '../tools/dev/code-worktree.js';
+import {
+  createExternalProjectTool,
+  writeExternalProjectFileTool,
+  runExternalProjectCommandTool,
+  delegateToReviewerTool,
+} from '../tools/dev/external-projects-tools.js';
 import { codeWorkspace } from '../workspaces/code-workspace.js';
 
 export const codingAgent: Agent = new Agent({
   id: 'coding-agent',
   name: 'Coding Agent',
-  instructions: await loadPrompt('coding/base'),
+  instructions: await loadPrompt('coding/base') + '\n\nOdpowiadaj krótko i rzeczowo, zwłaszcza gdy użytkownik pyta o status zadań.',
   model: workflowModels.coding.default,
   workspace: codeWorkspace,
+  defaultOptions: { maxSteps: 30 },
+  defaultGenerateOptionsLegacy: { maxSteps: 30 },
+  defaultStreamOptionsLegacy: { maxSteps: 30 },
+  defaultNetworkOptions: { maxSteps: 30 },
   tools: {
     createCodeTaskArtifactTool,
     updateCodeTaskArtifactTool,
@@ -45,6 +55,10 @@ export const codingAgent: Agent = new Agent({
     acceptFileChangeTool,
     acceptAllChangesTool,
     writeFileTrackedTool,
+    createExternalProjectTool,
+    writeExternalProjectFileTool,
+    runExternalProjectCommandTool,
+    delegateToReviewerTool,
   },
   memory: new Memory({
     options: {

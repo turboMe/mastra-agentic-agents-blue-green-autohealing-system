@@ -38,6 +38,7 @@ Aktualny postep:
 - [x] Etap 7: Self-healing z logów/testów, automatyczny trigger workflow bez auto-deploy.
 - [x] Etap 8: Subagenci codingowi, routing modeli i tryb offline fallback.
 - [x] Etap 9: GitHub/PR/CI integracja.
+- [ ] Etap 10: Self-Improvement Loop — graceful swap, watchdog 10min auto-rollback, external project workspace.
 
 Pierwszy naturalny krok:
 
@@ -176,6 +177,11 @@ Aby agent był jeszcze bardziej autonomiczny i stabilny w trudnych refaktorach, 
 20. [x] **PR Body Builder (Etap 9.3):** `services/pr-body-builder.ts` — generuje ustrukturyzowane opisy PR: root cause, tabela zmian (plik/subtask/model/status), dispatch summary (succeeded/failed/needsHuman), review verdict, quality checklist. Generuje tytuł PR (auto-heal prefix) i labels (`bot`, `auto-heal`, `local-model`/`cloud-model`, `high-risk`, `needs-human`).
 21. [x] **Decision Gate PR Mode (Etap 9.4):** `decision-gate` refactored: `GITHUB_PR_MODE=true` → commit w worktree → push branch → create PR z body/labels → waitForCI → suspend. Resume: merge PR via API (squash) → delete remote branch → git pull local → remove worktree. `GITHUB_PR_MODE=false` → legacy local merge. Endpoint `/deploy/github-status`.
 22. [x] **Branch Cleanup (Etap 9.6):** Jednorazowe wyczyszczenie 6 stałych worktrees i task-* branchy. Auto-cleanup po `mergePR` (deleteRemoteBranch + remove_worktree). `.gitignore` zahardowany (sekrety, credentials, klucze prywatne, bazy danych).
+23. [ ] **Graceful Swap (Etap 10.1):** `deploy-blue-green.sh` rozszerzony o prawdziwy swap: backup buildu Live → kill staging → kill Live → restart staging code na porcie Live (:4111) → health verify → launch watchdog. Emergency rollback z backupu jeśli post-swap health fail. `deploy.config.json` rozszerzony o sekcję `watchdog` i `rollback.backupDir`.
+24. [ ] **Watchdog Auto-Rollback (Etap 10.2):** `scripts/watchdog.sh` — 10-minutowy monitor post-swap. Co 30s sprawdza: process alive, `/health` endpoint, Mongo error count. 3 consecutive failures → auto-kill nowy Live → restore z backupu → alert via n8n webhook. Po 10 min bez problemów → "promoted". PID tracking w `.deploy/watchdog.pid`.
+25. [ ] **Deploy Workflow Dual Mode (Etap 10.3):** `deploy-and-verify` step obsługuje `DEPLOY_AUTO_SWAP=true` (pełny swap + watchdog) i `DEPLOY_AUTO_SWAP=false` (dry-run, domyślne bezpieczne). Timeout zwiększony do 5 min dla swap mode.
+26. [ ] **External Projects Workspace (Etap 10.4):** `workspaces/external-project-workspace.ts` — fabryka izolowanych workspace'ów dla kodowania INNYCH projektów. Katalog bazowy: `/projekty/agent-projects/<name>`. Safety: blokada dostępu do `/projekty/mastra-agentic-environment/`. Obsługa: git init, npm init, TypeScript template. Registry in-memory + listing z dysku.
+
 
 ---
 

@@ -209,32 +209,157 @@ if [ "$DRY_RUN" = "--dry-run" ]; then
   exit 0
 fi
 
-log_info "Step 5: Swap — staging becomes live..."
+# ══════════════════════════════════════════════════════════════════
+#  Step 5b: GRACEFUL SWAP — staging becomes live (Etap 10.1)
+# ══════════════════════════════════════════════════════════════════
 
-# Zapisz dane przed swapem
+log_info "Step 5: Graceful Swap — staging becomes live on :$LIVE_PORT..."
+
 LIVE_VERSION=$(cd "$LIVE_DIR" && git rev-parse --short HEAD 2>/dev/null || echo 'unknown')
 STAGING_VERSION=$(cat "$STAGING_DIR/.deploy-version" 2>/dev/null || echo 'unknown')
 
-log_info "Live version:    $LIVE_VERSION"
-log_info "Staging version: $STAGING_VERSION"
+log_info "Live version (current):  $LIVE_VERSION"
+log_info "Staging version (new):   $STAGING_VERSION"
 
-# Staging działa na :4222. Żeby zamienić, musimy:
-# 1. Zatrzymać live (:4111)
-# 2. Uruchomić staging na :4111
-# Ale to wymaga restartu terminala Mastra. Na razie zostawiamy staging na :4222.
+# ── 5b.1: Backup current Live build for rollback ──
+ROLLBACK_DIR="$DEPLOY_DIR/rollback/$(timestamp)"
+mkdir -p "$ROLLBACK_DIR"
 
-log_warn "═══════════════════════════════════════"
-log_warn "  Staging zweryfikowany i działa na :$STAGING_PORT"
-log_warn "  Aby przełączyć na nowy kod:"
-log_warn "  1. Zatrzymaj Mastra Studio (Ctrl+C w terminalu)"
-log_warn "  2. Uruchom: cd $STAGING_DIR && pnpm dev"
-log_warn "  Lub poczekaj na integrację z workflow (Etap 6b)"
-log_warn "═══════════════════════════════════════"
+log_info "Creating rollback backup → $ROLLBACK_DIR"
+
+# Kopiujemy zbudowany output (szybki rollback bez rebuildu)
+if [ -d "$LIVE_DIR/.mastra/output" ]; then
+  cp -a "$LIVE_DIR/.mastra/output" "$ROLLBACK_DIR/output"
+fi
+# Zapisujemy wersję i .env
+echo "$LIVE_VERSION" > "$ROLLBACK_DIR/.deploy-version"
+cp "$LIVE_DIR/.env" "$ROLLBACK_DIR/.env" 2>/dev/null || true
+# Zapisujemy ścieżkę do źródłowego katalogu live
+echo "$LIVE_DIR" > "$ROLLBACK_DIR/.live-dir"
+# Link do najnowszego rollbacku
+ln -sfn "$ROLLBACK_DIR" "$DEPLOY_DIR/rollback/latest"
+
+log_ok "Rollback backup created (version: $LIVE_VERSION)"
+
+# ── 5b.2: Kill staging on :4222 (already verified healthy) ──
+log_info "Stopping staging (:$STAGING_PORT)..."
+kill "$STAGING_PID" 2>/dev/null || true
+sleep 2
+rm -f "$DEPLOY_DIR/slot-b.pid"
+
+# ── 5b.3: Kill old Live on :4111 ──
+log_info "Stopping old Live (:$LIVE_PORT)..."
+if [ -f "$DEPLOY_DIR/slot-a.pid" ]; then
+  OLD_LIVE_PID=$(cat "$DEPLOY_DIR/slot-a.pid" 2>/dev/null || echo "")
+  if [ -n "$OLD_LIVE_PID" ] && kill -0 "$OLD_LIVE_PID" 2>/dev/null; then
+    kill "$OLD_LIVE_PID" 2>/dev/null || true
+    # Czekamy na graceful shutdown (max 10s)
+    for i in $(seq 1 10); do
+      kill -0 "$OLD_LIVE_PID" 2>/dev/null || break
+      sleep 1
+    done
+    # Force kill jeśli wciąż żyje
+    kill -9 "$OLD_LIVE_PID" 2>/dev/null || true
+  fi
+fi
+
+# Dodatkowe zabezpieczenie: kill cokolwiek na porcie Live
+ORPHAN_PID=$(lsof -ti :"$LIVE_PORT" 2>/dev/null || echo "")
+if [ -n "$ORPHAN_PID" ]; then
+  log_warn "Killing orphan process on :$LIVE_PORT (PID: $ORPHAN_PID)"
+  kill "$ORPHAN_PID" 2>/dev/null || true
+  sleep 1
+fi
+
+log_ok "Old Live stopped"
+
+# ── 5b.4: Start staging code on Live port (:4111) ──
+log_info "Starting NEW Live from staging code on :$LIVE_PORT..."
+
+cd "$STAGING_DIR"
+PORT=$LIVE_PORT DEPLOY_SLOT=A node .mastra/output/index.mjs > "$DEPLOY_DIR/logs/live-$(timestamp).log" 2>&1 &
+NEW_LIVE_PID=$!
+echo "$NEW_LIVE_PID" > "$DEPLOY_DIR/slot-a.pid"
+
+log_info "New Live started with PID $NEW_LIVE_PID"
+
+# ── 5b.5: Verify new Live health on :4111 ──
+log_info "Verifying new Live health on :$LIVE_PORT..."
+
+SWAP_HEALTHY=false
+SWAP_ELAPSED=0
+SWAP_TIMEOUT=30
+
+while [ $SWAP_ELAPSED -lt $SWAP_TIMEOUT ]; do
+  sleep "$HEALTH_INTERVAL"
+  SWAP_ELAPSED=$((SWAP_ELAPSED + HEALTH_INTERVAL))
+
+  SWAP_RESPONSE=$(curl -sf "http://localhost:${LIVE_PORT}/health" 2>/dev/null || echo "")
+  if [ -n "$SWAP_RESPONSE" ]; then
+    if echo "$SWAP_RESPONSE" | python3 -c "import json,sys; d=json.load(sys.stdin); assert d.get('success')==True or d.get('status')=='ok'" 2>/dev/null; then
+      SWAP_HEALTHY=true
+      break
+    fi
+  fi
+
+  log_info "Post-swap health check ($SWAP_ELAPSED/${SWAP_TIMEOUT}s)..."
+done
+
+if [ "$SWAP_HEALTHY" = true ]; then
+  log_ok "═══════════════════════════════════════"
+  log_ok "  SWAP COMPLETE ✅"
+  log_ok "  New Live running on :$LIVE_PORT"
+  log_ok "  Version: $STAGING_VERSION"
+  log_ok "  PID: $NEW_LIVE_PID"
+  log_ok "  Rollback: $ROLLBACK_DIR"
+  log_ok "═══════════════════════════════════════"
+
+  # ── 5b.6: Launch watchdog ──
+  WATCHDOG_SCRIPT="$SCRIPT_DIR/watchdog.sh"
+  if [ -f "$WATCHDOG_SCRIPT" ]; then
+    log_info "Launching watchdog (10-minute observation)..."
+    bash "$WATCHDOG_SCRIPT" \
+      --live-port "$LIVE_PORT" \
+      --live-pid "$NEW_LIVE_PID" \
+      --rollback-dir "$ROLLBACK_DIR" \
+      --config "$CONFIG_FILE" \
+      --log "$DEPLOY_DIR/logs/watchdog-$(timestamp).log" &
+    WATCHDOG_PID=$!
+    echo "$WATCHDOG_PID" > "$DEPLOY_DIR/watchdog.pid"
+    log_ok "Watchdog started (PID $WATCHDOG_PID) — monitoring for 10 minutes"
+  else
+    log_warn "Watchdog script not found at $WATCHDOG_SCRIPT — skipping observation"
+  fi
+else
+  log_error "═══════════════════════════════════════"
+  log_error "  POST-SWAP HEALTH CHECK FAILED!"
+  log_error "  Initiating EMERGENCY ROLLBACK..."
+  log_error "═══════════════════════════════════════"
+
+  # Kill failed new Live
+  kill "$NEW_LIVE_PID" 2>/dev/null || true
+  sleep 2
+
+  # Restore from rollback backup
+  if [ -d "$ROLLBACK_DIR/output" ]; then
+    log_info "Restoring Live from rollback backup..."
+    cd "$LIVE_DIR"
+    PORT=$LIVE_PORT DEPLOY_SLOT=A node "$ROLLBACK_DIR/output/index.mjs" > "$DEPLOY_DIR/logs/rollback-$(timestamp).log" 2>&1 &
+    RESTORED_PID=$!
+    echo "$RESTORED_PID" > "$DEPLOY_DIR/slot-a.pid"
+    log_ok "Live restored from backup (PID $RESTORED_PID, version: $LIVE_VERSION)"
+  else
+    log_error "NO ROLLBACK BACKUP FOUND! Live is DOWN. Manual intervention required."
+    exit 2
+  fi
+
+  exit 1
+fi
 
 log_ok "═══════════════════════════════════════"
-log_ok "  DEPLOY VERIFICATION COMPLETE"
-log_ok "  Staging healthy on :$STAGING_PORT"
+log_ok "  DEPLOY COMPLETE"
+log_ok "  Live: :$LIVE_PORT (PID $NEW_LIVE_PID)"
 log_ok "  Version: $STAGING_VERSION"
-log_ok "  PID: $STAGING_PID"
+log_ok "  Watchdog: active (10 min)"
 log_ok "  Log: $LOG_FILE"
 log_ok "═══════════════════════════════════════"

@@ -295,7 +295,18 @@ initGlobalErrorHandlers();
 // ── GPU Guard: VRAM Protection (Etap 8) ──
 initGpuGuard();
 
-// ── Model Availability: Verify models at startup (Etap 8.1) ──
 initModelAvailability().catch((err) =>
   console.error('[ModelAvailability] Startup check failed:', (err as Error).message),
 );
+
+// ── Graceful Shutdown for Dev/Hot-Reload ──
+function cleanupAndExit(signal: string) {
+  console.log(`[Mastra] Otrzymano sygnał ${signal}. Zamykanie zasobów przed restartem (Graceful Shutdown)...`);
+  // Zmuszamy proces do całkowitego zakończenia, co uwalnia porty (np. 4111) oraz zdejmuje locki z DuckDB.
+  // Środowisko deweloperskie (nodemon / mastra dev) automatycznie uruchomi nowy proces po tym, jak ten zginie.
+  process.exit(0);
+}
+
+process.once('SIGUSR2', () => cleanupAndExit('SIGUSR2')); // Nodemon / TS-node dev restart
+process.once('SIGTERM', () => cleanupAndExit('SIGTERM')); // Systemctl stop / standard kill
+process.once('SIGINT', () => cleanupAndExit('SIGINT'));   // Ctrl+C

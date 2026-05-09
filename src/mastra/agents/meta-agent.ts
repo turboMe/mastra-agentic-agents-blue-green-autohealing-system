@@ -79,7 +79,7 @@ export const metaAgent: Agent = new Agent({
   id: 'meta-agent',
   name: 'Meta Agent',
   instructions: await buildInstructions(),
-  model: 'google/gemini-2.5-pro',
+  model: 'google/gemini-2.5-flash',
 
   memory: new Memory({
     options: {

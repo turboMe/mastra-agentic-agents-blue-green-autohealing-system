@@ -657,7 +657,7 @@ const deployOutputSchema = z.object({
 
 const deployAndVerify = createStep({
   id: 'deploy-and-verify',
-  description: 'Buduje i weryfikuje nowy kod w staging (dry-run). Nie zamienia live.',
+  description: 'Buduje i weryfikuje nowy kod w staging. Z DEPLOY_AUTO_SWAP=true robi pełny swap + watchdog.',
   inputSchema: z.object({
     taskId: z.string(),
     action: z.enum(['approved_and_merged', 'loop_back', 'blocked', 'max_iterations_reached']),
@@ -691,14 +691,23 @@ const deployAndVerify = createStep({
 
       const scriptPath = resolve(projectRoot, 'scripts/deploy-blue-green.sh');
 
-      const output = execSync(`bash "${scriptPath}" --dry-run`, {
+      // Etap 10: tryb swap (--dry-run vs pełny swap z watchdog)
+      const autoSwap = process.env.DEPLOY_AUTO_SWAP === 'true';
+      const mode = autoSwap ? '' : '--dry-run';
+      const timeout = autoSwap ? 300_000 : 180_000;  // 5 min dla swap, 3 min dla dry-run
+
+      console.log(`[deploy-and-verify] Mode: ${autoSwap ? 'FULL SWAP + watchdog' : 'dry-run (safe)'}`);
+
+      const output = execSync(`bash "${scriptPath}" ${mode}`, {
         encoding: 'utf-8',
-        timeout: 180_000,  // 3 minuty max
+        timeout,
         cwd: projectRoot,
       });
 
-      // Sprawdź czy output zawiera potwierdzenie sukcesu
-      const isHealthy = output.includes('DRY RUN COMPLETE');
+      // Sprawdź wynik
+      const isDryRunSuccess = output.includes('DRY RUN COMPLETE');
+      const isSwapSuccess = output.includes('SWAP COMPLETE') || output.includes('DEPLOY COMPLETE');
+      const isHealthy = isDryRunSuccess || isSwapSuccess;
 
       // Wyciągnij wersję z outputu
       const versionMatch = output.match(/Version:\s+(\S+)/);
@@ -715,13 +724,17 @@ const deployAndVerify = createStep({
         }
       }
 
+      const modeLabel = autoSwap
+        ? 'Swap wykonany, watchdog uruchomiony (10 min obserwacji)'
+        : 'Staging zbudowany i zweryfikowany (dry-run)';
+
       return {
         taskId: inputData.taskId,
         deployStatus: isHealthy ? 'deployed_and_verified' as const : 'deploy_failed' as const,
         version,
         message: isHealthy
-          ? `Staging zbudowany i zweryfikowany (wersja: ${version}). Nowy kod gotowy do wdrożenia.`
-          : 'Deploy dry-run nie potwierdził zdrowia staging.',
+          ? `${modeLabel}. Wersja: ${version}.`
+          : `Deploy ${autoSwap ? 'swap' : 'dry-run'} nie potwierdził zdrowia.`,
       };
     } catch (error: any) {
       return {
