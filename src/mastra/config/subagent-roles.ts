@@ -68,6 +68,13 @@ export const SUBTASK_TYPE_TO_ROLE: Record<string, string> = {
   review: 'qa',
   check: 'qa',
   validate: 'qa',
+  e2e: 'qa',
+
+  // Research / browser tasks (Phase F2)
+  research: 'researcher',
+  browse: 'researcher',
+  scrape: 'researcher',
+  search: 'researcher',
 };
 
 /** Default role when subtask type is unknown */
@@ -148,7 +155,8 @@ export const SUBAGENT_ROLES: Record<string, SubAgentRole> = {
     name: 'QA SubAgent',
     description:
       'Verifies the correctness of code changes. Runs type-checking, ' +
-      'linting, and smoke tests. Produces structured quality signals. ' +
+      'linting, smoke tests, and e2e browser tests via Playwright. ' +
+      'Produces structured quality signals. ' +
       'Does NOT edit files — only reports issues for the orchestrator to fix.',
     allowedTools: [
       // Read
@@ -161,10 +169,51 @@ export const SUBAGENT_ROLES: Record<string, SubAgentRole> = {
       // Artifact (read + update for quality notes)
       'coding.get_artifact',
       'coding.update_artifact',
+      // Browser automation (Phase F2 — Playwright MCP)
+      'browser_navigate',
+      'browser_click',
+      'browser_fill',
+      'browser_snapshot',
+      'browser_screenshot',
     ],
     defaultModelTier: 'local-micro',
     promptTemplate: 'coding/subagent-qa',
-    skills: ['run-verification'],
+    skills: ['run-verification', 'e2e-testing-playwright'],
+  },
+
+  /**
+   * Researcher SubAgent (Phase F2)
+   *
+   * Performs web research, scraping, and data extraction.
+   * Uses Tavily search + Playwright browser + Firecrawl for thorough research.
+   * Reports findings back to orchestrator in structured format.
+   */
+  'researcher': {
+    roleId: 'researcher',
+    name: 'Research SubAgent',
+    description:
+      'Performs autonomous web research, scraping, and data extraction. ' +
+      'Uses multi-query expansion, source triangulation, and confidence scoring. ' +
+      'Reports findings in structured format with source citations.',
+    allowedTools: [
+      // Read
+      'workspace.view',
+      // Web search
+      'search.web',
+      'search.find_company_links',
+      // Browser automation (Playwright MCP)
+      'browser_navigate',
+      'browser_click',
+      'browser_fill',
+      'browser_snapshot',
+      'browser_screenshot',
+      // Artifact management
+      'coding.create_artifact',
+      'coding.update_artifact',
+    ],
+    defaultModelTier: 'cloud-fast',
+    promptTemplate: 'coding/subagent-researcher',
+    skills: ['web-research-strategy', 'playwright-browser-automation'],
   },
 };
 
