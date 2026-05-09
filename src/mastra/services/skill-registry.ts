@@ -102,6 +102,12 @@ export class SkillRegistry {
         const content = await readFile(filePath, 'utf-8');
         const { metadata: rawMeta, body } = parseFrontmatter(content);
 
+        // Skip supporting files (reference docs, agent prompts, etc.)
+        // that don't have proper skill frontmatter (name + description).
+        if (!rawMeta.name && !rawMeta.description) {
+          continue;
+        }
+
         // Derive name from frontmatter or filename
         const name = rawMeta.name || basename(filePath, extname(filePath));
 
