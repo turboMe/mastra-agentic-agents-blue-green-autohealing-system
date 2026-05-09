@@ -252,6 +252,22 @@ async function checkProviderReachable(provider: string): Promise<boolean> {
         }
       }
 
+      case 'openrouter': {
+        const key = process.env.OPENROUTER_API_KEY;
+        if (!key) return false;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        try {
+          const res = await fetch('https://openrouter.ai/api/v1/models', {
+            headers: { Authorization: `Bearer ${key}` },
+            signal: controller.signal,
+          });
+          return res.ok;
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
       default:
         console.warn(`[ModelAvailability] Unknown provider: ${provider}`);
         return false;

@@ -4,6 +4,7 @@
  */
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
+import { randomUUID } from 'crypto';
 import { logAgentEvent } from '../../lib/agent-event-log.js';
 import { marketingAgent } from '../../agents/marketing-agent.js';
 import { salesAgent } from '../../agents/sales-agent.js';
@@ -71,12 +72,17 @@ CAN be called multiple times in parallel when tasks are independent.`,
 
     try {
       const start = Date.now();
+      const delegationThreadId = context.threadId || `delegation-${randomUUID()}`;
+      const delegationResourceId = context.resourceId || 'meta-agent';
+
       const response = await agent.generate(
         context.taskDescription,
         {
-          threadId: context.threadId,
-          resourceId: context.resourceId,
-        } as any,
+          memory: {
+            thread: delegationThreadId,
+            resource: delegationResourceId,
+          },
+        },
       );
 
       logAgentEvent({

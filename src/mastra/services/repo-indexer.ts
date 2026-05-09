@@ -423,19 +423,42 @@ export class RepoIndexer {
 
   async index(): Promise<{ indexed: number; removed: number; total: number; durationMs: number }> {
     const start = Date.now();
-    await this.ensureParser();
+    
+    try {
+      await this.ensureParser();
+    } catch (e) {
+      console.error('[RepoIndexer] ensureParser failed:', (e as Error).stack);
+      throw e;
+    }
 
     // 1. SCAN
-    const scanned = await this.scanFiles();
+    let scanned: Map<string, { hash: string; size: number; language: string }>;
+    try {
+      scanned = await this.scanFiles();
+    } catch (e) {
+      console.error('[RepoIndexer] scanFiles failed:', (e as Error).stack);
+      throw e;
+    }
 
     // 2. DIFF
-    const { changed, removed } = this.diffFiles(scanned);
+    let changed: string[];
+    let removed: string[];
+    try {
+      ({ changed, removed } = this.diffFiles(scanned));
+    } catch (e) {
+      console.error('[RepoIndexer] diffFiles failed:', (e as Error).stack);
+      throw e;
+    }
 
     // 3-4. PARSE + EXTRACT + PERSIST
     for (const filePath of changed) {
       const info = scanned.get(filePath)!;
-      const tags = await this.extractSymbols(filePath, info.language);
-      this.persistTags(filePath, tags, info);
+      try {
+        const tags = await this.extractSymbols(filePath, info.language);
+        this.persistTags(filePath, tags, info);
+      } catch (e) {
+        console.warn(`[RepoIndexer] Failed to index file ${filePath}:`, (e as Error).message);
+      }
     }
 
     // Clean removed files

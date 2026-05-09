@@ -16,6 +16,7 @@ import { runWorkerTool } from '../tools/system/run-worker.js';
 import { recallWorkerLessonsTool } from '../tools/system/recall-worker-lessons.js';
 import { memoryRecallTool } from '../tools/system/memory-recall.js';
 import { memoryWriteTool } from '../tools/system/memory-write.js';
+import { currentTimeTool } from '../tools/system/current-time.js';
 import { skillSearchTool } from '../tools/system/skill-search.js';
 import {
   n8nTriggerWebhookTool,
@@ -84,6 +85,10 @@ export const metaAgent: Agent = new Agent({
   name: 'Meta Agent',
   instructions: await buildInstructions(),
   model: resolveModelId(agentModels.metaAgent),
+  defaultOptions: { maxSteps: 20 },
+  defaultGenerateOptionsLegacy: { maxSteps: 20 },
+  defaultStreamOptionsLegacy: { maxSteps: 20 },
+  defaultNetworkOptions: { maxSteps: 20 },
 
   memory: new Memory({
     options: {
@@ -147,6 +152,8 @@ export const metaAgent: Agent = new Agent({
     memoryWriteTool,
     // Skill discovery (Phase 2.3) — find skills, delegate execution to codingAgent
     skillSearchTool,
+    // Utility
+    currentTimeTool,
   },
 
   // ── Discoverable tool pool (~50 tools via semantic search) ────────────────

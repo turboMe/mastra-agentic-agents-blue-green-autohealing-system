@@ -18,6 +18,7 @@ const KNOWLEDGE_TYPES: KnowledgeType[] = [
   'failure_case', 'coding_pattern', 'autoheal_recipe',
   'tool_contract', 'prompt_rule', 'user_preference',
   'project_fact', 'architecture_decision',
+  'system_diagnostic', 'workflow_result', 'operational_note', 'env_config',
 ];
 
 const KNOWLEDGE_TTL_DAYS = 90;

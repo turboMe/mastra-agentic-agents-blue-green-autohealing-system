@@ -33,7 +33,11 @@ export type KnowledgeType =
   | 'prompt_rule'
   | 'user_preference'
   | 'project_fact'
-  | 'architecture_decision';
+  | 'architecture_decision'
+  | 'system_diagnostic'
+  | 'workflow_result'
+  | 'operational_note'
+  | 'env_config';
 
 export interface SystemKnowledge {
   knowledgeId: string;

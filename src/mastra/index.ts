@@ -334,9 +334,12 @@ ensureIndexes().catch((err) =>
 );
 
 // ── Skill Registry (Phase 2.2) ──
+// NOTE: import.meta.dirname resolves to .mastra/output/ in bundled mode,
+// so we use explicit source path to find _skills/ directory.
 import { getSkillRegistry } from './services/skill-registry.js';
 import { resolve } from 'path';
-getSkillRegistry().initialize(resolve(import.meta.dirname ?? '.', '_skills')).catch((err) =>
+const SKILLS_DIR = resolve('/projekty/mastra-agentic-environment/agentic-agents', 'src', 'mastra', '_skills');
+getSkillRegistry().initialize(SKILLS_DIR).catch((err) =>
   console.error('[SkillRegistry] Initialization failed:', (err as Error).message),
 );
 

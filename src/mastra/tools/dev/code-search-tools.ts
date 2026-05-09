@@ -133,6 +133,10 @@ async function ensureEmbeddings(repoPath: string): Promise<{ embedded: number; c
     }
 
     try {
+      // bge-m3 produces NaN embeddings for very short texts (variable names like 'db', 'now')
+      if (chunk.content.length < 8) {
+        continue;
+      }
       const embedding = await generateEmbedding(chunk.content);
       const embeddingBuffer = Buffer.from(new Float32Array(embedding).buffer);
 
