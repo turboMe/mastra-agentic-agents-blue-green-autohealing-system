@@ -1,19 +1,30 @@
 # 7.6 Agent Evaluation Dashboard — Plan Implementacji
 
-> **Status:** 📋 Plan szczegółowy | **Data:** 2026-05-09
-> **Wykonalność:** ✅ TAK, w pełni realne — mamy ~70% fundamentów
-> **Estymacja:** 4-6 dni roboczych dla MVP
+> **Status:** ✅ **Sprint 1 ZROBIONE** (data + API + tool) | ⏳ Sprint 2 (UI) odłożone
+> **Data planu:** 2026-05-09 | **Sprint 1 ukończony:** 2026-05-09
+> **Estymacja oryginalna:** 4-6 dni MVP. **Faktyczne:** Sprint 1 ~3-4h (znacznie szybciej dzięki odkryciu że Mastra już zapisuje scorery natywnie)
+> **Dokumentacja Sprint 1:** [`docs/AGENT-EVALUATION-DASHBOARD.md`](../docs/AGENT-EVALUATION-DASHBOARD.md)
 
 ---
 
-## TL;DR — Czy to możliwe?
+## TL;DR — Stan po Sprincie 1
 
-**TAK, w 100% wykonalne.** Cały szkielet infrastruktury już istnieje:
-- ✅ `agent_events` collection ma już `status`, `durationMs`, `model`, `tokenUsage`
-- ✅ `BudgetTracker` zlicza requesty per provider/model
-- ✅ `registerApiRoute()` działa — możemy dodać `/api/dashboard/*` bez patchowania Mastra
-- ✅ MongoDB 7.0+ wspiera `$percentile` (latency P50/P95/P99)
-- ⚠️ Brakuje: persystencji wyników scorerów, mappingu skill→event, kalkulacji USD, prostego UI
+**Sprint 1 ✅ ZROBIONE.** Cała data layer + API + agent tool gotowe do użycia.
+
+**Kluczowe odkrycie podczas implementacji:** Mastra **automatycznie** zapisuje wyniki scorerów do kolekcji `mastra_scorers` (przez `MongoDBStore` scores domain). Etap 1 oryginalnego planu (1.5d "persystencja scorerów") okazał się **zbędny** — wystarczyło tylko czytać z istniejącej kolekcji.
+
+Co działa:
+- ✅ `agent_events` collection — własna telemetry (logAgentEvent)
+- ✅ `mastra_scorers` collection — Mastra-managed scorer results (saveScore auto)
+- ✅ `lib/model-pricing.ts` — 12 modeli z hardcoded pricing + env override
+- ✅ `services/dashboard-stats.ts` — 8 funkcji agregujących
+- ✅ 8 API routes pod `/dashboard/*` (Mastra rezerwuje `/api/*`)
+- ✅ Tool `system.agent_performance_report` w meta + analytics agentach
+- ✅ Skill `_skills/meta/agent-performance-analysis.md`
+- ✅ Dokumentacja `docs/AGENT-EVALUATION-DASHBOARD.md`
+- ✅ MongoDB 7.0 `$percentile` działa dla latency P50/P95/P99
+
+**Sprint 2 (UI dashboard) — odłożone.** Plan poniżej jest gotowy do uruchomienia gdy będzie potrzeba.
 
 **Co NIE działa od razu:** Mastra Studio (UI na localhost:4111) jest read-only. Nie da się dodać własnego panelu bez forkowania. Rozwiązanie: **osobny dashboard** jako statyczny HTML/React serwowany przez Mastra (nie wymaga osobnego serwera).
 
@@ -111,7 +122,15 @@ PLUS: Tool `system.agent_performance_report` — zwraca JSON do agentów,
 
 ---
 
-## Etap 1 — Persystencja scorerów (1.5 dnia) 🔴 KRYTYCZNE
+## ~~Etap 1 — Persystencja scorerów~~ ❌ NIE JEST POTRZEBNE
+
+> **Update 2026-05-09:** Mastra **już zapisuje** wyniki scorerów do kolekcji `mastra_scorers`
+> automatycznie przez storage interface (`MongoDBStore` ma scores domain). Wystarczy
+> czytać z tej kolekcji w `getScoreStats()` w `services/dashboard-stats.ts` (już zrobione).
+> Pierwotny plan poniżej zostawiam dla referencji historycznej.
+
+<details>
+<summary>Oryginalny plan (zachowany dla kontekstu)</summary>
 
 **Cel:** Bez tego nie mamy success rates per skill ani jakości odpowiedzi.
 
@@ -155,9 +174,11 @@ Mastra evaluuje scorery przez `scorers: { ... }` przy agencie. Trzeba:
 - Wywołać agenta, sprawdzić czy `eval_results` ma nowe rekordy
 - Sprawdzić TTL działa (insert + setTimeout test)
 
+</details>
+
 ---
 
-## Etap 2 — Cost Calculator + Pricing Table (0.5 dnia)
+## Etap 2 — Cost Calculator + Pricing Table ✅ ZROBIONE
 
 ### 2.1 Kolekcja `model_pricing`
 ```typescript
@@ -189,7 +210,11 @@ Cache pricing in memory (TTL 1h).
 
 ---
 
-## Etap 3 — Aggregation Service (1 dzień)
+**Status:** Zaimplementowane jako `lib/model-pricing.ts` (NIE jako kolekcja MongoDB — hardcoded + env override było wystarczające dla MVP). Można później przenieść do MongoDB jeśli potrzeba historycznej dokładności cen.
+
+---
+
+## Etap 3 — Aggregation Service ✅ ZROBIONE
 
 `services/dashboard-stats.ts` — wszystkie funkcje agregujące.
 
@@ -233,7 +258,11 @@ export async function getLatencyPercentiles(window: TimeWindow): Promise<{
 
 ---
 
-## Etap 4 — API Routes (0.5 dnia)
+**Status:** Zaimplementowane jako `services/dashboard-stats.ts`. **Plus** dodane: `getScoreStats(window)` i `getTimeline(window, granularity)`.
+
+---
+
+## Etap 4 — API Routes ✅ ZROBIONE
 
 W `src/mastra/index.ts` dodać:
 ```typescript
@@ -258,7 +287,11 @@ Query params: `?from=2026-05-01&to=2026-05-09&agentId=meta-agent`
 
 ---
 
-## Etap 5 — Tool dla agentów (0.5 dnia)
+**Status:** Zaimplementowane w `src/mastra/index.ts`. **Uwaga:** prefix to `/dashboard/*` zamiast `/api/dashboard/*` — Mastra rezerwuje `/api/*` dla swoich endpointów.
+
+---
+
+## Etap 5 — Tool dla agentów ✅ ZROBIONE
 
 `tools/system/agent-performance-report.ts`:
 ```typescript
@@ -292,7 +325,11 @@ Zarejestrować w meta-agencie i analytics-agencie.
 
 ---
 
-## Etap 6 — UI Dashboard (1.5 dnia)
+**Status:** Zaimplementowane jako `tools/system/agent-performance-report.ts`, zarejestrowane w meta-agent (ToolSearchProcessor pool) i analytics-agent (always-on).
+
+---
+
+## Etap 6 — UI Dashboard ⏳ ODŁOŻONE (Sprint 2)
 
 ### 6.1 Stack
 - **Vite + React + TypeScript** (osobny build w `dashboard/`)
@@ -339,26 +376,36 @@ apiRoutes: [
 
 ---
 
-## Etap 7 — Dokumentacja + skill (0.5 dnia)
+## Etap 7 — Dokumentacja + skill ✅ ZROBIONE
 
-### 7.1 Skill `_skills/meta/agent-performance-analysis.md`
-Jak analizować performance system'u, jak interpretować metryki, kiedy alarmować.
+### 7.1 Skill `_skills/meta/agent-performance-analysis.md` ✅
+Framework: kiedy investigate, jakie metryki, jak interpretować, jak rekomendować działania.
+Zawiera: red flags table, drift detection, anti-patterns, full example flow.
 
-### 7.2 Dokumentacja `docs/AGENT-EVALUATION-DASHBOARD.md`
-- Architektura
-- Jak dodać nowy scorer
-- Jak rozszerzyć dashboard o nowy wykres
-- Disaster recovery (co jeśli `eval_results` urośnie?)
+### 7.2 Dokumentacja `docs/AGENT-EVALUATION-DASHBOARD.md` ✅
+- Architektura ze schematem ASCII
+- Pricing table (12 modeli)
+- 8 API endpoints z przykładami curl
+- Tool API z przykładem wywołania
+- Wymagania uruchomieniowe (MongoDB 7.0+ dla `$percentile`)
+- Troubleshooting (3 typowe problemy)
+- Instrukcja rozszerzania (jak dodać nowy breakdown / scorer / cenę modelu)
 
 ---
 
 ## Definicja ukończenia (Acceptance Criteria)
 
-- [ ] Kolekcja `eval_results` istnieje, scorery zapisują wyniki automatycznie
-- [ ] Kolekcja `model_pricing` zaseedowana 6+ modelami
-- [ ] 6 endpointów API zwraca poprawne dane
-- [ ] Tool `system.agent_performance_report` działa i jest w meta + analytics agentach
-- [ ] Dashboard widoczny pod `/dashboard`, pokazuje:
+### Sprint 1 ✅ DONE
+- [x] ~~Kolekcja `eval_results` istnieje~~ → Mastra używa `mastra_scorers` natywnie
+- [x] Pricing zaseedowane 12 modelami w `lib/model-pricing.ts` (anthropic, openai, google, openrouter, ollama)
+- [x] 8 endpointów API zwraca poprawne dane (overview, agents, skills, models, latency, cost, scores, timeline)
+- [x] Tool `system.agent_performance_report` działa i jest w meta + analytics agentach
+- [x] Dokumentacja `docs/AGENT-EVALUATION-DASHBOARD.md` napisana
+- [x] Skill `_skills/meta/agent-performance-analysis.md` napisany
+- [x] TypeScript: ✅ czysty (`npx tsc --noEmit` 0 błędów)
+
+### Sprint 2 ⏳ ODŁOŻONE (UI dashboard)
+- [ ] Dashboard widoczny pod `/dashboard-ui`, pokazuje:
   - [ ] Success rate per agent (bar chart)
   - [ ] Top 10 skills (bar chart) 
   - [ ] Model usage (pie chart)
@@ -366,8 +413,6 @@ Jak analizować performance system'u, jak interpretować metryki, kiedy alarmowa
   - [ ] Cost trend (line chart, USD/day)
 - [ ] Filtry: date range, agent picker
 - [ ] Auto-refresh (15s)
-- [ ] Dokumentacja + skill napisane
-- [ ] TypeScript: ✅ czysty
 - [ ] Smoke test: 1 dzień produkcyjnego użycia, dashboard pokazuje sensowne dane
 
 ---
@@ -387,31 +432,35 @@ Jak analizować performance system'u, jak interpretować metryki, kiedy alarmowa
 
 ## Estymacja czasowa
 
-| Etap | Czas | Krytyczność |
-|------|------|-------------|
-| 1. Eval persistence | 1.5 dnia | 🔴 Krytyczne |
-| 2. Cost calculator | 0.5 dnia | 🟡 Ważne |
-| 3. Aggregation service | 1 dzień | 🔴 Krytyczne |
-| 4. API routes | 0.5 dnia | 🔴 Krytyczne |
-| 5. Tool dla agentów | 0.5 dnia | 🟡 Ważne |
-| 6. UI Dashboard | 1.5 dnia | 🟢 Nice-to-have (start z agent tool) |
-| 7. Dokumentacja | 0.5 dnia | 🟡 Ważne |
-| **TOTAL MVP** | **~5 dni** | |
-| **TOTAL bez UI** | **~3.5 dnia** | |
+| Etap | Estymacja | Faktyczne | Status |
+|------|-----------|-----------|--------|
+| 1. Eval persistence | 1.5 dnia | **0d** | ✅ Mastra robi to natywnie |
+| 2. Cost calculator | 0.5 dnia | ~0.5h | ✅ Done |
+| 3. Aggregation service | 1 dzień | ~1h | ✅ Done |
+| 4. API routes | 0.5 dnia | ~30min | ✅ Done |
+| 5. Tool dla agentów | 0.5 dnia | ~30min | ✅ Done |
+| 6. UI Dashboard | 1.5 dnia | — | ⏳ Sprint 2 |
+| 7. Dokumentacja | 0.5 dnia | ~30min | ✅ Done |
+| **Sprint 1 (data + tool)** | **~3.5 dnia** | **~3-4h** | ✅ DONE |
+| **Sprint 2 (UI)** | **~1.5 dnia** | — | ⏳ Pending |
 
 ---
 
 ## Sugerowana kolejność wdrażania
 
-1. **Sprint 1 (MVP "data-only"):** Etapy 1-4 + 5 (3.5 dnia)
-   - Po tym: meta-agent może odpowiadać na pytania "jak działają agenci" przez tool
-   - API gotowe do konsumpcji przez dowolny UI
+1. **Sprint 1 (MVP "data-only"):** Etapy 1-4 + 5 ✅ **ZROBIONE**
+   - meta-agent + analytics-agent mogą odpowiadać na pytania "jak działają agenci" przez tool
+   - 8 API endpointów gotowych do konsumpcji przez dowolny UI
    - **Już można pisać do produkcji.**
 
-2. **Sprint 2 (Visual UI):** Etap 6 (1.5 dnia)
-   - Po tym: pełny dashboard pod `/dashboard`
+2. **Sprint 2 (Visual UI):** Etap 6 (1.5 dnia) ⏳ **ODŁOŻONE**
+   - Po tym: pełny dashboard pod `/dashboard-ui`
+   - Vite + React + Recharts, serwowany przez Mastra static route
 
-3. **Sprint 3 (Polish):** Etap 7 + iteracje na podstawie real usage (0.5 dnia)
+3. **Sprint 3 (Polish):** iteracje na podstawie real usage (0.5 dnia)
+   - Cache wyników agregacji (TTL 60s)
+   - Alerty (success rate < 80% → Telegram)
+   - Daily rollup gdy `agent_events` urośnie >1M
 
 ---
 

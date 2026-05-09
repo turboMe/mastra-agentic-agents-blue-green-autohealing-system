@@ -1,0 +1,327 @@
+# Agent Evaluation Dashboard
+
+> **Status:** Sprint 1 zakończony — dane + API + tool. UI dashboardu (Sprint 2) na razie odłożony.
+> **Lokalizacja kodu:** `src/mastra/lib/model-pricing.ts`, `src/mastra/services/dashboard-stats.ts`, `src/mastra/tools/system/agent-performance-report.ts`, `src/mastra/index.ts`
+> **Audyt:** kat. 19 (Self-Improvement)
+
+---
+
+## Co to jest
+
+Warstwa agregacji telemetrii agentów — odpowiada na pytania:
+
+- Który agent ma najlepszy success rate?
+- Ile wydaliśmy w tym tygodniu na cloud LLM?
+- Który skill jest używany najczęściej?
+- Który agent ma największą latencję (P95/P99)?
+- Czy scorery wskazują na regresję jakości?
+
+Wszystko czytane z **istniejących źródeł** — żadna nowa kolekcja nie była potrzebna:
+
+| Źródło | Co tam jest |
+|--------|-------------|
+| `agent_events` (MongoDB) | Logi tasków, tool calls, błędów, opóźnień, użycia tokenów |
+| `mastra_scorers` (MongoDB) | Wyniki scorerów (Mastra zapisuje to **automatycznie** gdy `sampling.rate > 0`) |
+
+---
+
+## Architektura (Sprint 1)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ DATA LAYER                                                   │
+│ ├─ agent_events     (logAgentEvent — własna telemetry)      │
+│ └─ mastra_scorers   (Mastra storage — saveScore automatic)  │
+└─────────────────────────────────────────────────────────────┘
+                           ▲
+                           │ aggregation pipelines
+                           │
+┌─────────────────────────────────────────────────────────────┐
+│ services/dashboard-stats.ts                                  │
+│ ├─ getOverview(window)              high-level summary       │
+│ ├─ getAgentSuccessRates(window)     per-agent breakdown      │
+│ ├─ getSkillUsageStats(window)       skill_used events        │
+│ ├─ getModelBreakdown(window)        per-model usage + cost   │
+│ ├─ getLatencyPercentiles(window)    P50/P95/P99              │
+│ ├─ getCostBreakdown(window)         USD per agent/model/day  │
+│ ├─ getScoreStats(window)            scorer results agg.      │
+│ └─ getTimeline(window, granularity) hour/day buckets         │
+└─────────────────────────────────────────────────────────────┘
+                           ▲
+                           │
+        ┌──────────────────┴────────────────────┐
+        ▼                                       ▼
+┌─────────────────────┐               ┌────────────────────────┐
+│ HTTP API            │               │ AGENT TOOL             │
+│ /dashboard/overview │               │ system.agent_          │
+│ /dashboard/agents   │               │   performance_report   │
+│ /dashboard/skills   │               │ (meta + analytics)     │
+│ /dashboard/models   │               └────────────────────────┘
+│ /dashboard/latency  │
+│ /dashboard/cost     │
+│ /dashboard/scores   │
+│ /dashboard/timeline │
+└─────────────────────┘
+```
+
+---
+
+## Pricing (USD per 1M tokens)
+
+`lib/model-pricing.ts` zawiera hardcoded ceny dla głównych modeli, plus override przez env var:
+
+```bash
+# Nadpisanie pricingu dla pojedynczych modeli
+export MODEL_PRICING_OVERRIDE_JSON='{"my-custom-model":{"inputPer1M":1.0,"outputPer1M":2.0,"provider":"openai"}}'
+```
+
+Zaseedowane modele (stan na 2026-05):
+
+| Model | Input $/1M | Output $/1M | Provider |
+|-------|-----------|-------------|----------|
+| claude-opus-4-7 | $15 | $75 | anthropic |
+| claude-sonnet-4-6 | $3 | $15 | anthropic |
+| claude-haiku-4-5 | $1 | $5 | anthropic |
+| gpt-4o | $2.50 | $10 | openai |
+| gpt-4o-mini | $0.15 | $0.60 | openai |
+| o1 | $15 | $60 | openai |
+| gemini-2.5-pro | $1.25 | $5 | google |
+| gemini-2.5-flash | $0.075 | $0.30 | google |
+| qwen3:* / llama3.1:* (Ollama) | $0 | $0 | ollama (local GPU) |
+
+Modele nieznane: koszt = 0, provider = "unknown" (nie psuje agregacji, tylko zaniża sumę — dodaj je do tabeli żeby widzieć prawdziwy koszt).
+
+---
+
+## API Endpoints
+
+Wszystkie endpointy:
+- są **read-only**
+- akceptują query params: `?since=<window>` i `?until=<ISO_date>`
+- `since` może być relatywne (`7d`, `24h`, `30m`) lub ISO date (`2026-05-01`)
+- domyślne okno: ostatnie **7 dni**
+
+### Lista endpointów
+
+| Endpoint | Co zwraca |
+|----------|-----------|
+| `GET /dashboard/overview` | Summary: totalTasks, successRate, totalCostUsd, avgLatencyMs |
+| `GET /dashboard/agents` | Per-agent: tasks, success rate, latency, cost, tokens |
+| `GET /dashboard/skills` | Per-skill: uses, agents, avg duration |
+| `GET /dashboard/models` | Per-model: invocations, tokens, cost, agents using it |
+| `GET /dashboard/latency` | Per-agent P50/P95/P99 latency |
+| `GET /dashboard/cost` | Cost USD: byAgent + byModel + byDay |
+| `GET /dashboard/scores` | Scorer results: avg score, pass rate, distribution |
+| `GET /dashboard/timeline?granularity=hour\|day` | Event counts bucketed |
+
+### Przykłady
+
+```bash
+# Last 24h overview
+curl http://localhost:4111/dashboard/overview?since=24h
+
+# Cost breakdown for May 2026
+curl "http://localhost:4111/dashboard/cost?since=2026-05-01&until=2026-05-31"
+
+# Latency percentiles last 7 days
+curl http://localhost:4111/dashboard/latency
+
+# Score quality drift over last 30 days
+curl http://localhost:4111/dashboard/scores?since=30d
+```
+
+### Przykładowa odpowiedź `/dashboard/overview`
+
+```json
+{
+  "window": { "from": "2026-05-02T...", "to": "2026-05-09T..." },
+  "totalTasks": 142,
+  "successRate": 0.937,
+  "totalErrors": 9,
+  "totalToolCalls": 487,
+  "toolErrorRate": 0.018,
+  "totalTokens": 1283450,
+  "totalCostUsd": 4.213789,
+  "uniqueAgents": 8,
+  "uniqueModels": 5,
+  "avgLatencyMs": 3128
+}
+```
+
+---
+
+## Agent tool: `system.agent_performance_report`
+
+Ten sam dataset, ale dostępny dla agentów — żeby meta-agent / analytics-agent mógł sam analizować swoje performance.
+
+### Sygnatura
+
+```typescript
+{
+  since?: "7d" | "24h" | "2026-05-01"     // default: "7d"
+  until?: "2026-05-09"                     // default: now
+  agentId?: "meta-agent"                   // filter to single agent
+  includeBreakdown?: ["agents", "skills", "models", "latency", "cost", "scores"]
+}
+```
+
+### Zwraca
+
+- `period` — okno dat
+- `overview` — top-level stats (zawsze)
+- `breakdown` — wybrane sekcje
+- `summary` — gotowy markdown do wyświetlenia userowi
+
+### Przykładowe wywołanie przez agenta
+
+User pyta: *"Ile wydaliśmy w tym tygodniu na cloud LLM i który agent najwięcej?"*
+
+Agent wywołuje:
+```javascript
+system.agent_performance_report({
+  since: "7d",
+  includeBreakdown: ["cost", "models"]
+})
+```
+
+Odpowiedź zawiera `summary`:
+```
+📊 Performance report — 2026-05-02 → 2026-05-09
+Tasks: 142 | Success: 93.7% | Cost: $4.2138 | Avg latency: 3128ms | Agents: 8
+
+Top models:
+  • claude-sonnet-4-6: 234× — $3.4521
+  • gpt-4o-mini: 156× — $0.1234
+  • qwen3:14b: 412× — $0.0000
+
+Most expensive agent: meta-agent — $2.8721
+```
+
+Zarejestrowane w:
+- `meta-agent` — w ToolSearchProcessor pool (discoverable on demand)
+- `analytics-agent` — w bazowych tools (zawsze dostępne)
+
+---
+
+## Skąd biorą się dane
+
+### `agent_events` (własna telemetry)
+
+Funkcja `logAgentEvent()` w `lib/agent-event-log.ts`. Żeby dashboard widział tasks, agenci muszą emitować eventy:
+
+- `task_started` — gdy agent rozpoczyna wykonanie
+- `task_completed` — gdy zakończył sukcesem (z `durationMs`, `tokenUsage`, `model`)
+- `task_failed` — gdy błąd
+- `tool_called` / `tool_error` — per tool call
+- `skill_used` — gdy agent użył skilla (z `metadata.skillId` lub `toolId`)
+- `delegation`, `retry_*`, `autoheal_*`, `approval_*` — pozostałe sygnały
+
+### `mastra_scorers` (zarządzane przez Mastra)
+
+Mastra **automatycznie** zapisuje wynik scorera do `mastra_scorers` gdy:
+1. Scorer jest zarejestrowany w agencie (`scorers: { ... }`)
+2. `sampling.rate > 0`
+3. Storage backend ma scores domain (MongoDB tak, mamy `MongoDBStore`)
+
+Schema (skrót):
+```
+{ id, scorerId, entityId, entityType: 'AGENT', runId,
+  score: number, source: 'LIVE'|'TEST',
+  scorer: {...}, entity: {...},
+  analyzeStepResult, preprocessStepResult,
+  createdAt, updatedAt }
+```
+
+---
+
+## Wymagania uruchomieniowe
+
+- **MongoDB 7.0+** — `getLatencyPercentiles()` używa `$percentile` (wymaga MongoDB 7.0). Mamy `mongo:7` w docker-compose ✅
+- **Storage scopes** — Scores domain w composite store (już skonfigurowany ✅)
+
+---
+
+## Co NIE jest jeszcze zrobione (Sprint 2 i dalej)
+
+| Funkcjonalność | Status | Notatka |
+|---------------|--------|---------|
+| UI Dashboard (React/Vite) | ⏳ Sprint 2 | Plan w `ideas/agent-evaluation-dashboard-plan.md` Etap 6 |
+| Skill→event linkage przez `metadata.skillId` | ⚠️ Częściowe | Niektóre skills emitują, niektóre nie. Audit potrzebny |
+| Cache wyników agregacji (TTL 60s) | ⏳ Sprint 3 | Przy heavy load aktualnie każdy request agreguje od zera |
+| Alerty (np. "success rate spadł poniżej 80%") | ⏳ Backlog | Można wbudować przez Telegram tool z workflow cron |
+| Daily rollup → `agent_events_daily` | ⏳ Backlog | Gdy `agent_events` urośnie >1M rekordów |
+| Per-task cost na poziomie pojedynczego eventu | ⏳ Możliwe | Wymaga refactoru `logAgentEvent` żeby zapisywał `costUsd` przy zapisie |
+
+---
+
+## Walidacja
+
+### TypeScript
+```bash
+npx tsc --noEmit  # ✅ czysta kompilacja
+```
+
+### Smoke test API (po starcie serwera)
+```bash
+curl -s http://localhost:4111/dashboard/overview | jq .
+curl -s http://localhost:4111/dashboard/agents | jq '.data[0]'
+curl -s http://localhost:4111/dashboard/cost?since=24h | jq .
+```
+
+### Smoke test agent tool
+
+W Mastra Studio, do meta-agent:
+> "Pokaż mi raport wydajności z ostatnich 7 dni z breakdown na koszty i modele."
+
+Meta powinien wywołać `system.agent_performance_report({ since: "7d", includeBreakdown: ["cost", "models"] })`.
+
+---
+
+## Rozszerzanie
+
+### Dodanie nowego breakdown
+
+1. Napisz funkcję agregującą w `services/dashboard-stats.ts`
+2. Dodaj API route w `index.ts`
+3. (Opcjonalnie) dodaj key do `BREAKDOWNS` w `agent-performance-report.ts`
+4. Dodaj sekcję do `buildSummary()` jeśli ma być w summary
+
+### Aktualizacja cen modeli
+
+Edytuj `DEFAULT_MODEL_PRICING` w `lib/model-pricing.ts` lub ustaw `MODEL_PRICING_OVERRIDE_JSON` w `.env`.
+
+### Nowy scorer
+
+Wystarczy zarejestrować w agencie z `sampling.rate > 0`. Mastra automatycznie zapisze do `mastra_scorers`. `getScoreStats()` zacznie pokazywać go natychmiast.
+
+---
+
+## Troubleshooting
+
+### `/dashboard/overview` zwraca `totalTasks: 0`
+
+Brak event'ów `task_completed` lub `task_failed` w okresie. Sprawdź:
+```bash
+db.query({ collection: "agent_events", operation: "count",
+  filter: { type: { $in: ["task_completed", "task_failed"] } } })
+```
+
+Jeśli 0 — agenci nie emitują tasków. Trzeba zintegrować `logAgentEvent()` w workflow execute lub agent generate hooks.
+
+### `/dashboard/scores` zwraca pustą tablicę
+
+Mastra nie zapisuje scorów. Możliwe przyczyny:
+1. Brak scorerów zarejestrowanych w agentach (sprawdź `agents/*.ts → scorers: { ... }`)
+2. `sampling.rate = 0`
+3. Storage scores domain nie skonfigurowany — sprawdź `storage` w `index.ts`
+
+### Cost = 0 dla wszystkich agentów
+
+Albo modele są lokalne (Ollama, koszt = 0 by design), albo brak `model` w event'ach. Sprawdź:
+```bash
+db.query({ collection: "agent_events", operation: "distinct", field: "model" })
+```
+
+### Latency endpoints zwracają błąd "$percentile not supported"
+
+MongoDB poniżej 7.0. Update do `mongo:7` w docker-compose lub dodaj fallback z aplikacyjnym obliczaniem percentyli.

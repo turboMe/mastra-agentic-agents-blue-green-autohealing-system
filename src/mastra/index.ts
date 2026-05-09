@@ -212,6 +212,115 @@ export const mastra: Mastra = new Mastra({
           }
         },
       }),
+      // ── Agent Evaluation Dashboard (Faza 7.6 — Sprint 1) ──
+      // Read-only aggregation endpoints. All accept ?since=7d|24h|YYYY-MM-DD
+      // and optional ?until=YYYY-MM-DD. Defaults to last 7 days.
+      registerApiRoute('/dashboard/overview', {
+        method: 'GET',
+        handler: async (c: any) => {
+          try {
+            const stats = await import('./services/dashboard-stats.js');
+            const url = new URL(c.req.url, 'http://localhost');
+            const window = stats.buildWindow(url.searchParams.get('since') ?? undefined, url.searchParams.get('until') ?? undefined);
+            return c.json(await stats.getOverview(window));
+          } catch (err) {
+            return c.json({ error: (err as Error).message }, 500);
+          }
+        },
+      }),
+      registerApiRoute('/dashboard/agents', {
+        method: 'GET',
+        handler: async (c: any) => {
+          try {
+            const stats = await import('./services/dashboard-stats.js');
+            const url = new URL(c.req.url, 'http://localhost');
+            const window = stats.buildWindow(url.searchParams.get('since') ?? undefined, url.searchParams.get('until') ?? undefined);
+            return c.json({ data: await stats.getAgentSuccessRates(window), window });
+          } catch (err) {
+            return c.json({ error: (err as Error).message }, 500);
+          }
+        },
+      }),
+      registerApiRoute('/dashboard/skills', {
+        method: 'GET',
+        handler: async (c: any) => {
+          try {
+            const stats = await import('./services/dashboard-stats.js');
+            const url = new URL(c.req.url, 'http://localhost');
+            const window = stats.buildWindow(url.searchParams.get('since') ?? undefined, url.searchParams.get('until') ?? undefined);
+            return c.json({ data: await stats.getSkillUsageStats(window), window });
+          } catch (err) {
+            return c.json({ error: (err as Error).message }, 500);
+          }
+        },
+      }),
+      registerApiRoute('/dashboard/models', {
+        method: 'GET',
+        handler: async (c: any) => {
+          try {
+            const stats = await import('./services/dashboard-stats.js');
+            const url = new URL(c.req.url, 'http://localhost');
+            const window = stats.buildWindow(url.searchParams.get('since') ?? undefined, url.searchParams.get('until') ?? undefined);
+            return c.json({ data: await stats.getModelBreakdown(window), window });
+          } catch (err) {
+            return c.json({ error: (err as Error).message }, 500);
+          }
+        },
+      }),
+      registerApiRoute('/dashboard/latency', {
+        method: 'GET',
+        handler: async (c: any) => {
+          try {
+            const stats = await import('./services/dashboard-stats.js');
+            const url = new URL(c.req.url, 'http://localhost');
+            const window = stats.buildWindow(url.searchParams.get('since') ?? undefined, url.searchParams.get('until') ?? undefined);
+            return c.json({ data: await stats.getLatencyPercentiles(window), window });
+          } catch (err) {
+            return c.json({ error: (err as Error).message }, 500);
+          }
+        },
+      }),
+      registerApiRoute('/dashboard/cost', {
+        method: 'GET',
+        handler: async (c: any) => {
+          try {
+            const stats = await import('./services/dashboard-stats.js');
+            const url = new URL(c.req.url, 'http://localhost');
+            const window = stats.buildWindow(url.searchParams.get('since') ?? undefined, url.searchParams.get('until') ?? undefined);
+            return c.json({ data: await stats.getCostBreakdown(window), window });
+          } catch (err) {
+            return c.json({ error: (err as Error).message }, 500);
+          }
+        },
+      }),
+      registerApiRoute('/dashboard/scores', {
+        method: 'GET',
+        handler: async (c: any) => {
+          try {
+            const stats = await import('./services/dashboard-stats.js');
+            const url = new URL(c.req.url, 'http://localhost');
+            const window = stats.buildWindow(url.searchParams.get('since') ?? undefined, url.searchParams.get('until') ?? undefined);
+            return c.json({ data: await stats.getScoreStats(window), window });
+          } catch (err) {
+            return c.json({ error: (err as Error).message }, 500);
+          }
+        },
+      }),
+      registerApiRoute('/dashboard/timeline', {
+        method: 'GET',
+        handler: async (c: any) => {
+          try {
+            const stats = await import('./services/dashboard-stats.js');
+            const url = new URL(c.req.url, 'http://localhost');
+            const window = stats.buildWindow(url.searchParams.get('since') ?? undefined, url.searchParams.get('until') ?? undefined);
+            const granParam = url.searchParams.get('granularity');
+            const granularity = granParam === 'day' ? 'day' : 'hour';
+            return c.json({ data: await stats.getTimeline(window, granularity), window, granularity });
+          } catch (err) {
+            return c.json({ error: (err as Error).message }, 500);
+          }
+        },
+      }),
     ],
   },
   workflows: {

@@ -7,6 +7,7 @@ import {
   n8nListWorkflowsTool,
   n8nGetWorkflowTool,
 } from '../tools/n8n/n8n-tools.js';
+import { agentPerformanceReportTool } from '../tools/system/agent-performance-report.js';
 import { loadPrompt } from '../lib/prompt-loader.js';
 
 export const analyticsAgent = new Agent({
@@ -29,5 +30,7 @@ export const analyticsAgent = new Agent({
     listContextTool,
     addContextTool,
     pushSignalTool,
+    // Agent performance report (Faza 7.6)
+    agentPerformanceReportTool,
   },
 });

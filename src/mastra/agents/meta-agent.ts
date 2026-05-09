@@ -84,6 +84,7 @@ import {
 import { searchWebTool, findCompanyLinksTool } from '../tools/search/tavily.js';
 import { competitorAnalysisTool } from '../tools/business/competitor-analysis.js';
 import { mongoQueryTool, mongoWriteTool } from '../tools/system/mongo-tools.js';
+import { agentPerformanceReportTool } from '../tools/system/agent-performance-report.js';
 import { combinePrompts } from '../lib/prompt-loader.js';
 import { sharedMemoryOutputProcessor } from '../processors/shared-memory-output.js';
 
@@ -250,6 +251,8 @@ export const metaAgent: Agent = new Agent({
         // Database (readonly-first policy — writes require confirm: true)
         mongoQueryTool,
         mongoWriteTool,
+        // Agent performance reporting (Faza 7.6)
+        agentPerformanceReportTool,
       },
       search: { topK: 12, minScore: 0.3 },
       ttl: 3_600_000,
