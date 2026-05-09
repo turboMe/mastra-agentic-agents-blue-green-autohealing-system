@@ -1,10 +1,10 @@
 # Skill Registry — External Skills Import
 
-> Status: ✅ Complete | Imported: 2026-05-09 | Updated: 2026-05-09 (batch 4)
+> Status: ✅ Complete | Imported: 2026-05-09 | Updated: 2026-05-09 (batch 5 — devops & coding expansion)
 
 ## Overview
 
-Imported 17 high-quality skills from five repositories into our SkillRegistry:
+Imported 21 high-quality skills from multiple repositories into our SkillRegistry:
 - [anthropics/skills](https://github.com/anthropics/skills) (131k ⭐) — 4 skills
 - [openai/skills](https://github.com/openai/skills) (18.7k ⭐) — 6 skills
 - [claude-office-skills/skills](https://github.com/claude-office-skills/skills) (106 ⭐) — 5 skills
@@ -128,7 +128,38 @@ pivot tables, formulas, conditional formatting, data validation.
 - No bundles (self-contained, uses `pip install openpyxl`)
 - Use case: Spreadsheet generation, financial reports, data export, automated dashboards
 
+## Batch 5 — DevOps & Coding Expansion (Custom-Written)
+
+Sources: [chaterm/terminal-skills](https://github.com/chaterm/terminal-skills) (MIT),
+[wshobson/agents](https://github.com/wshobson/agents) (MIT),
+[dash0hq/agent-skills](https://github.com/dash0hq/agent-skills) (Apache 2.0).
+
+### 18. `docker-helper` → `devops/` (NEW CATEGORY)
+**Docker lifecycle management** — Dockerfile analysis, Compose debugging,
+container diagnostics, network troubleshooting, image management.
+- No bundles (self-contained)
+- Use case: DevOps debugging, container orchestration, image optimization
+
+### 19. `log-analyzer` → `devops/`
+**System log analysis** — journalctl, Docker logs, structured log parsing (JSON/logfmt),
+error pattern detection, cross-service timeline correlation.
+- No bundles (self-contained)
+- Use case: Failure diagnosis, root cause analysis, system triage
+
+### 20. `api-tester` → `coding/`
+**REST/GraphQL API testing** — curl-based endpoint testing, response validation,
+auth flow testing, batch endpoint sweeps, performance baselines.
+- No bundles (self-contained)
+- Use case: API contract validation, endpoint debugging, integration testing
+
+### 21. `sql-optimizer` → `coding/`
+**SQL query optimization** — EXPLAIN plan analysis, index strategy advisory,
+query rewriting (N+1 detection, subquery→JOIN, keyset pagination), PostgreSQL/SQLite/DuckDB.
+- No bundles (self-contained)
+- Use case: Database performance tuning, slow query diagnosis, index management
+
 ## Infrastructure Changes
+
 
 ### SkillRegistry Guard Clause
 Added filter in `skill-registry.ts` to skip `.md` files without YAML
@@ -145,12 +176,13 @@ These were updated to match our flat naming convention:
 ### `.gitignore`
 Added `_external/` (cloned Anthropic repo used as source material).
 
-## Skill Inventory (32 total)
+## Skill Inventory (36 total)
 
 | Category | Count | Skills |
 |----------|:-----:|--------|
-| `terminal` | 7 | git-conflict-resolver, swe-repo-explorer, agentic-terminal-problem-solving, code-modification-agent, terminal-code-dev, nodejs-dependency-fixer, **yeet** |
-| `coding` | 18 | fix-typescript-error, safe-file-edit, run-verification, webapp-testing, mcp-builder, frontend-design, **pdf**, **security-best-practices**, **gh-fix-ci**, **screenshot**, **cli-creator**, **docx-manipulation**, **office-to-md**, **pdf-extraction**, **diagram-creator**, **doc-parser**, **md-to-office**, **xlsx-manipulation** |
+| `terminal` | 7 | git-conflict-resolver, swe-repo-explorer, agentic-terminal-problem-solving, code-modification-agent, terminal-code-dev, nodejs-dependency-fixer, yeet |
+| `coding` | 20 | fix-typescript-error, safe-file-edit, run-verification, webapp-testing, mcp-builder, frontend-design, pdf, security-best-practices, gh-fix-ci, screenshot, cli-creator, docx-manipulation, office-to-md, pdf-extraction, diagram-creator, doc-parser, md-to-office, xlsx-manipulation, **api-tester**, **sql-optimizer** |
+| `devops` | 2 | **docker-helper**, **log-analyzer** |
 | `n8n` | 6 | n8n-common-patterns, n8n-node-catalog, n8n-workflow-rules, n8n-security-review, n8n-expression-syntax, n8n-security-checklist |
 | `meta` | 1 | skill-creator |
 
@@ -175,7 +207,7 @@ Our format is a **superset** of the Agent Skills standard:
 ## Verification
 
 - TypeScript compilation: `npx tsc --noEmit` → 0 errors
-- Skill files with frontmatter: 26
+- Skill files with frontmatter: 30
 - Reference/support files (skipped by guard): ~10
 
 ## Source Licensing Summary

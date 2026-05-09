@@ -1,9 +1,13 @@
 # 🛠️ Plan Implementacji Nowych Skilli — Mastra SkillRegistry
 
-> **Status:** Do implementacji  
+> **Status:** 🔄 W trakcie implementacji (4/12 skilli done)  
 > **Data:** 2026-05-09  
 > **Cel:** Rozszerzenie rejestru z ~32 → ~44 skilli  
-> **Estymacja:** ~6-7h na wszystkie 12 skilli
+> **Estymacja:** ~6-7h na wszystkie 12 skilli  
+> **Postęp:**  
+> - ✅ **TIER 1 (P0):** docker-helper, log-analyzer, api-tester, sql-optimizer — DONE  
+> - ⬜ **TIER 2 (P1):** test-generator, web-scraper, agentic-actions-auditor, prompt-tester — TODO  
+> - ⬜ **TIER 3 (P2):** bash-standards, cicd-pipeline, k8s-helper, otel-instrumentation — TODO
 
 ---
 
@@ -88,7 +92,7 @@ src/mastra/_skills/
 
 ---
 
-## 🏆 TIER 1 — Priorytet P0 (Natychmiast)
+## ✅ TIER 1 — Priorytet P0 (Natychmiast) — DONE
 
 ---
 
