@@ -1,15 +1,17 @@
 # Skill Registry — External Skills Import
 
-> Status: ✅ Complete | Imported: 2026-05-09
+> Status: ✅ Complete | Imported: 2026-05-09 | Updated: 2026-05-09
 
 ## Overview
 
-Imported 4 high-quality skills from the [anthropics/skills](https://github.com/anthropics/skills)
-repository (131k ⭐) into our SkillRegistry. These skills follow the
-[Agent Skills Spec](https://agentskills.io/specification) and are fully
-compatible with our YAML-frontmatter-based indexing system.
+Imported 10 high-quality skills from two major repositories into our SkillRegistry:
+- [anthropics/skills](https://github.com/anthropics/skills) (131k ⭐) — 4 skills
+- [openai/skills](https://github.com/openai/skills) (18.7k ⭐) — 6 skills
 
-## Imported Skills
+All skills follow the [Agent Skills Spec](https://agentskills.io/specification)
+and are fully compatible with our YAML-frontmatter-based indexing system.
+
+## Imported from Anthropic
 
 ### 1. `webapp-testing` → `coding/`
 **Playwright testing toolkit** — decision tree for static/dynamic apps,
@@ -40,6 +42,41 @@ draft → test → evaluate → improve → package.
 - Bundle: `skill-creator-assets/` (eval review HTML template)
 - Use case: Autonomous skill creation and self-improvement
 
+## Imported from OpenAI
+
+### 5. `pdf` → `coding/`
+**Open-source PDF toolkit** — read/create/review PDFs with visual verification.
+Uses `reportlab`, `pdfplumber`, `pypdf`, and Poppler (all Apache 2.0).
+- No bundles (self-contained, uses system/pip packages)
+- Use case: PDF generation, text extraction, visual layout verification
+
+### 6. `security-best-practices` → `coding/`
+**Security review for JS/TS/Python/Go** — framework-specific best practices
+with 10 reference files covering React, Next.js, Express, Django, FastAPI, etc.
+- Bundle: `security-best-practices-references/` (10 framework-specific guides)
+- Use case: Security audits, secure-by-default coding, vulnerability reports
+
+### 7. `gh-fix-ci` → `coding/`
+**GitHub CI debugger** — inspect failing PR checks, fetch Actions logs,
+summarize failures, draft fix plans.
+- Bundle: `gh-fix-ci-scripts/` (inspect_pr_checks.py)
+- Use case: Self-healing CI pipeline, automated PR fix
+
+### 8. `yeet` → `terminal/`
+**Git one-shot flow** — stage, commit, push, and open a GitHub PR in one command.
+- No bundles (self-contained)
+- Use case: Quick git workflow automation
+
+### 9. `screenshot` → `coding/`
+**Desktop screenshot capture** — Linux-focused, Python helper + OS fallbacks.
+- Bundle: `screenshot-scripts/` (take_screenshot.py + helpers)
+- Use case: QA debugging, visual verification, UI testing
+
+### 10. `cli-creator` → `coding/`
+**CLI tool builder** — guide for creating composable CLI tools in Rust/TS/Python.
+- Bundle: `cli-creator-references/` (agent-cli-patterns.md)
+- Use case: Building durable command-line tools
+
 ## Infrastructure Changes
 
 ### SkillRegistry Guard Clause
@@ -57,12 +94,12 @@ These were updated to match our flat naming convention:
 ### `.gitignore`
 Added `_external/` (cloned Anthropic repo used as source material).
 
-## Skill Inventory (19 total)
+## Skill Inventory (25 total)
 
 | Category | Count | Skills |
 |----------|:-----:|--------|
-| `terminal` | 6 | git-conflict-resolver, swe-repo-explorer, agentic-terminal-problem-solving, code-modification-agent, terminal-code-dev, nodejs-dependency-fixer |
-| `coding` | 6 | fix-typescript-error, safe-file-edit, run-verification, webapp-testing, mcp-builder, frontend-design |
+| `terminal` | 7 | git-conflict-resolver, swe-repo-explorer, agentic-terminal-problem-solving, code-modification-agent, terminal-code-dev, nodejs-dependency-fixer, **yeet** |
+| `coding` | 11 | fix-typescript-error, safe-file-edit, run-verification, webapp-testing, mcp-builder, frontend-design, **pdf**, **security-best-practices**, **gh-fix-ci**, **screenshot**, **cli-creator** |
 | `n8n` | 6 | n8n-common-patterns, n8n-node-catalog, n8n-workflow-rules, n8n-security-review, n8n-expression-syntax, n8n-security-checklist |
 | `meta` | 1 | skill-creator |
 
