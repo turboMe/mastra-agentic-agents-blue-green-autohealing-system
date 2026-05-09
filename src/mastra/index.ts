@@ -8,6 +8,10 @@ import { MastraCompositeStore } from '@mastra/core/storage';
 import { Observability, DefaultExporter, CloudExporter, SensitiveDataFilter } from '@mastra/observability';
 import { Workspace, LocalFilesystem, LocalSandbox, WORKSPACE_TOOLS } from '@mastra/core/workspace';
 
+// Self-healing (Etap 7)
+import { initGlobalErrorHandlers } from './services/global-error-handler.js';
+import { getErrorCollector } from './services/error-collector.js';
+
 
 
 // Workflows
@@ -90,6 +94,44 @@ export const mastra: Mastra = new Mastra({
             slot: process.env.DEPLOY_SLOT || 'default',
             port: process.env.PORT || '4111',
             pid: process.pid,
+          });
+        },
+      }),
+      // ── Self-healing: crash-test endpoint (Etap 7) ──
+      registerApiRoute('/deploy/crash-test', {
+        method: 'GET',
+        handler: async (c: any) => {
+          // Symulowany błąd do testowania ErrorCollector
+          const errorType = new URL(c.req.url, 'http://localhost').searchParams.get('type') || 'TypeError';
+          const simulatedError = new TypeError('Cannot read property \'value\' of undefined');
+          simulatedError.name = errorType;
+
+          const collector = getErrorCollector();
+          const result = await collector.reportError(simulatedError, {
+            source: 'api',
+            origin: '/deploy/crash-test',
+            metadata: { simulated: true },
+          });
+
+          return c.json({
+            crashSimulated: true,
+            healingTriggered: result.triggered,
+            reason: result.reason,
+            ticketId: result.ticketId,
+            timestamp: new Date().toISOString(),
+          });
+        },
+      }),
+      // ── Self-healing: status aktywnych napraw ──
+      registerApiRoute('/deploy/auto-heal-status', {
+        method: 'GET',
+        handler: async (c: any) => {
+          const collector = getErrorCollector();
+          const tickets = await collector.getActiveTickets();
+          return c.json({
+            activeTickets: tickets.length,
+            tickets,
+            timestamp: new Date().toISOString(),
           });
         },
       }),
@@ -188,5 +230,7 @@ export const mastra: Mastra = new Mastra({
 });
 
 
-
 mastra.addGateway(new OllamaGateway());
+
+// ── Self-healing: Global Error Handlers (Etap 7) ──
+initGlobalErrorHandlers();

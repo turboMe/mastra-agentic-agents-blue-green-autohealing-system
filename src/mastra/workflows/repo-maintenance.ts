@@ -2,6 +2,7 @@ import { createStep, createWorkflow } from '@mastra/core/workflows';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { getDb } from '../lib/mongo.js';
+import { getErrorCollector } from '../services/error-collector.js';
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -337,6 +338,17 @@ const deployAndVerify = createStep({
       // Wyciągnij wersję z outputu
       const versionMatch = output.match(/Version:\s+(\S+)/);
       const version = versionMatch?.[1] || 'unknown';
+
+      // Jeśli deploy się powiódł i task pochodzi z auto-heal, zamknij ticket
+      if (isHealthy && inputData.taskId.startsWith('heal-')) {
+        try {
+          const collector = getErrorCollector();
+          await collector.resolveTicket(inputData.taskId);
+          console.log(`[deploy-and-verify] Auto-heal ticket ${inputData.taskId} resolved.`);
+        } catch {
+          // Nie blokuj deploy jeśli cleanup ticketa nie zadziała
+        }
+      }
 
       return {
         taskId: inputData.taskId,

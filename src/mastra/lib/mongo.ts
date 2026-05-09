@@ -77,6 +77,11 @@ export async function ensureIndexes(): Promise<void> {
     db.collection('maintenance_tasks').createIndex({ id: 1 }, { unique: true, sparse: true }),
     db.collection('maintenance_tasks').createIndex({ status: 1, updatedAt: -1 }),
     db.collection('maintenance_tasks').createIndex({ source: 1, createdAt: -1 }),
+    // Self-healing tickets (Etap 7)
+    db.collection('auto_healing_tickets').createIndex({ ticketId: 1 }, { unique: true }),
+    db.collection('auto_healing_tickets').createIndex({ errorSignature: 1, status: 1 }),
+    db.collection('auto_healing_tickets').createIndex({ status: 1, createdAt: -1 }),
+    db.collection('auto_healing_tickets').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
     // Memory / signals (TTL)
     db.collection('signals').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
     db.collection('shared_memory').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),

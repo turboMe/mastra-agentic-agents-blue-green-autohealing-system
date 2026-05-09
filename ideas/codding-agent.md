@@ -6,7 +6,7 @@ Ten dokument jest instrukcja wdrozeniowa dla deva. Nie zaklada pelnego zaufania 
 
 ## 0. Status wdrozenia i decyzja architektoniczna
 
-Aktualizacja: 2026-05-08.
+Aktualizacja: 2026-05-09.
 
 Decyzja:
 
@@ -35,7 +35,7 @@ Aktualny postep:
 - [x] Etap 4: codeReviewAgent i repo-maintenance workflow (Orkiestracja w Mastra).
 - [x] Etap 5: Review Loop + Suspend/Resume + Reviewer Worktree Tools (E2E potwierdzone).
 - [x] Etap 6: Blue-Green Deployment — dwie instancje Mastry (Live/Staging), health-check, auto-switch z rollback.
-- [ ] Etap 7: Self-healing z logów/testów, automatyczny trigger workflow bez auto-deploy.
+- [x] Etap 7: Self-healing z logów/testów, automatyczny trigger workflow bez auto-deploy.
 - [ ] Etap 8: Subagenci codingowi, routing modeli i tryb offline fallback.
 - [ ] Etap 9: GitHub/PR/CI integracja.
 
@@ -134,6 +134,20 @@ Zaimplementowano:
 - [x] Integracja deploy step z `repo-maintenance-workflow` (krok `deploy-and-verify`).
 - [x] Oczyszczenie historii repozytorium (GitHub push fix).
 
+Status Etapu 7 (Self-Healing Error Collector) — ZAKOŃCZONO:
+
+Zaimplementowano:
+- [x] `ErrorCollector` service — dedup (hash signature), cooldown (60s), limit aktywnych (3), TTL (24h), self-protection.
+- [x] Global Error Handlers — `process.on('uncaughtException')` + `process.on('unhandledRejection')`.
+- [x] Kolekcja Mongo `auto_healing_tickets` z indeksami (ticketId unique, signature+status, TTL expiry).
+- [x] Crash-test endpoint `/deploy/crash-test` do symulowania awarii i testowania E2E.
+- [x] Status endpoint `/deploy/auto-heal-status` do diagnostyki aktywnych napraw.
+- [x] Integracja ticket resolution w `deploy-and-verify` (auto-zamykanie po udanym deploy).
+- [x] Rejestracja globalnych handlerów przy starcie Mastry w `index.ts`.
+- [x] Konfiguracja ENV: `ERROR_COLLECTOR_ENABLED`, `COOLDOWN_MS`, `MAX_ACTIVE`, `TTL_HOURS`.
+- [x] Dokumentacja: `docs/SELF-HEALING-ERROR-COLLECTOR.md`.
+- [x] Kompilacja TSC czysta (0 błędów).
+
 ---
 
 ### Strategiczne innowacje dla Coding Agenta (Maj 2026)
@@ -148,6 +162,7 @@ Aby agent był jeszcze bardziej autonomiczny i stabilny w trudnych refaktorach, 
 6. [x] **Decision Gate + Suspend/Resume:** Bramka decyzyjna z Human-in-the-Loop. Approve → suspend → merge. Needs_changes → pętla naprawcza (max 3).
 7. [x] **Reviewer Worktree Tools:** Narzędzia do inspekcji worktree przez codeReviewAgent (`worktree_diff`, `list_worktree_files`, `read_worktree_file`). Reviewer sam sprawdza pliki zamiast polegać na metadanych.
 8. [x] **Blue-Green Deployment:** Dwie instancje Mastry, skrypt izolujący build, weryfikacja logiki deploymentu (dry-run) przez dedykowany krok w workflow po zmergowaniu kodu.
+9. [x] **Self-Healing Error Collector:** `ErrorCollector` z deduplikacją, cooldownem i limitem. Globalne handlery `uncaughtException`/`unhandledRejection`. Auto-trigger `repo-maintenance-workflow`. Crash-test endpoint do E2E.
 
 ---
 
