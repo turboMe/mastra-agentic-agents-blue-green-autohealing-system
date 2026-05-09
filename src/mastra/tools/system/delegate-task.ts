@@ -4,6 +4,7 @@
  */
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
+import { logAgentEvent } from '../../lib/agent-event-log.js';
 import { marketingAgent } from '../../agents/marketing-agent.js';
 import { salesAgent } from '../../agents/sales-agent.js';
 import { analyticsAgent } from '../../agents/analytics-agent.js';
@@ -69,6 +70,7 @@ CAN be called multiple times in parallel when tasks are independent.`,
     }
 
     try {
+      const start = Date.now();
       const response = await agent.generate(
         context.taskDescription,
         {
@@ -77,12 +79,29 @@ CAN be called multiple times in parallel when tasks are independent.`,
         } as any,
       );
 
+      logAgentEvent({
+        type: 'delegation',
+        agentId: context.targetAgent,
+        status: 'success',
+        input: context.taskDescription.slice(0, 500),
+        output: response.text.slice(0, 500),
+        durationMs: Date.now() - start,
+      });
+
       return {
         success: true,
         result: response.text,
         agentUsed: context.targetAgent,
       };
     } catch (error) {
+      logAgentEvent({
+        type: 'delegation',
+        agentId: context.targetAgent,
+        status: 'error',
+        input: context.taskDescription.slice(0, 500),
+        errorMessage: (error as Error).message,
+      });
+
       return {
         success: false,
         result: `Sub-agent zgłosił błąd: ${(error as Error).message}`,

@@ -14,6 +14,7 @@
 
 import { createHash } from 'crypto';
 import { getDb } from '../lib/mongo.js';
+import { logAgentEvent } from '../lib/agent-event-log.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -206,6 +207,15 @@ export class ErrorCollector {
       );
 
       console.log(`[ErrorCollector] ✅ Workflow triggered for ticket ${ticketId} (run: ${(run as any).runId ?? 'unknown'})`);
+
+      logAgentEvent({
+        type: 'autoheal_triggered',
+        agentId: 'error-collector',
+        taskId: ticketId,
+        status: 'pending',
+        input: error.message.slice(0, 500),
+        metadata: { source: context.source, origin: context.origin, workflowRunId: (run as any).runId },
+      });
     } catch (triggerError: any) {
       await collection.updateOne(
         { ticketId },

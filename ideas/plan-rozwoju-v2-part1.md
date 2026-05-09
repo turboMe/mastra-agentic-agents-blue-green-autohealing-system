@@ -124,7 +124,7 @@ Ref: [plan-rozwoju.md](./plan-rozwoju.md) (decyzje architektoniczne)
 > Szacowany czas: 3–5 sesji roboczych
 > Zależność: → Faza 0 (TTL indexy, expiresAt fix)
 
-### 1.1 Observational Memory dla metaAgent (DECYZJA-01)
+### 1.1 Observational Memory dla metaAgent (DECYZJA-01) — ✅ DONE 2026-05-09
 
 **Zależność:** → 0.2 (TTL indexy — OM zapisuje do Mongo)
 
@@ -179,7 +179,7 @@ codingAgent w Fazie 3 stanie się orkiestratorem delegującym 5-20 subtasków. P
 2. **[TEST]** Zlecić codingAgent task z 10+ subtaskami → sprawdzić czy po subtasku #15 nadal pamięta wyniki subtasku #1-3 (via obserwacje)
 3. **Timing:** Wdrożyć PO potwierdzeniu że OM dla metaAgent działa stabilnie (krok 1.1). Jeśli metaAgent pilot wykaże problemy → naprawić je ZANIM włączymy OM dla codingAgent.
 
-### 1.2 Agent Event Log — schemat i zapis (DECYZJA-02, krok 1)
+### 1.2 Agent Event Log — schemat i zapis (DECYZJA-02, krok 1) — ✅ DONE 2026-05-09
 
 **Zależność:** → 0.2 (TTL indexy)
 
@@ -241,7 +241,7 @@ codingAgent w Fazie 3 stanie się orkiestratorem delegującym 5-20 subtasków. P
 5. **[EDYCJA]** `services/error-collector.ts` — dodać `logAgentEvent({type:'autoheal_triggered'})` w `_triggerWorkflow()`
 6. **[TEST]** Uruchomić coding task → sprawdzić `db.agent_events.find().sort({timestamp:-1}).limit(10)`
 
-### 1.3 Memory Extractor — kompresja logów do wiedzy (DECYZJA-02, krok 2)
+### 1.3 Memory Extractor — kompresja logów do wiedzy (DECYZJA-02, krok 2) — ✅ DONE 2026-05-09
 
 **Zależność:** → 1.2 (Agent Event Log musi zbierać dane)
 

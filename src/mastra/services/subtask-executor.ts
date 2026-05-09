@@ -21,6 +21,7 @@ import {
 } from '../config/model-capabilities.js';
 import type { RoutableSubtask, RoutingResult } from './smart-router.js';
 import { getDb } from '../lib/mongo.js';
+import { logAgentEvent } from '../lib/agent-event-log.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -301,6 +302,7 @@ export async function retryFailedSubtasks(
       result.qualityCheck = { passed: true, reason: quality.reason, attempt: 1, escalationHistory: [] };
       // Even if status was 'partial' or 'failed' from executor, quality says OK
       result.status = 'success';
+      logAgentEvent({ type: 'task_completed', agentId: 'codingAgent', taskId, subtaskId: result.subtaskId, model: result.assignedModel, status: 'success' });
       finalResults.push(result);
       continue;
     }
@@ -343,6 +345,8 @@ export async function retryFailedSubtasks(
       } catch (err) {
         console.warn('[SubtaskExecutor] Failed to save lesson:', (err as Error).message);
       }
+
+      logAgentEvent({ type: 'retry_success', agentId: 'codingAgent', taskId, subtaskId: result.subtaskId, model: retryResult.assignedModel, status: 'success', metadata: { attempt: 2 } });
 
       finalResults.push(retryResult);
       continue;
@@ -398,6 +402,8 @@ export async function retryFailedSubtasks(
         }
       }
 
+      logAgentEvent({ type: escalatedQuality.passed ? 'task_completed' : 'task_failed', agentId: 'codingAgent', taskId, subtaskId: result.subtaskId, model: escalationModel.modelId, status: escalatedQuality.passed ? 'success' : 'error', metadata: { attempt: 3, escalation: true } });
+
       finalResults.push(escalatedResult);
     } else {
       // No escalation model available → mark needs_human
@@ -408,6 +414,7 @@ export async function retryFailedSubtasks(
         attempt: 2,
         escalationHistory: [{ model: result.assignedModel, reason: quality.reason }],
       };
+      logAgentEvent({ type: 'task_failed', agentId: 'codingAgent', taskId, subtaskId: result.subtaskId, model: retryResult.assignedModel, status: 'error', errorMessage: retryQuality.reason, metadata: { noEscalationPath: true } });
       finalResults.push(retryResult);
     }
   }

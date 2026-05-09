@@ -20,5 +20,20 @@ export async function ensureIndexes(): Promise<void> {
     { expiresAt: 1 }, { expireAfterSeconds: 0 },
   );
 
-  console.log('[MongoIndexes] TTL indexes ensured for: signals, shared_memory, auto_healing_tickets');
+  // ── Agent Event Log indexes (Phase 1.2) ────────────────────────────────
+  await db.collection('agent_events').createIndex(
+    { expiresAt: 1 }, { expireAfterSeconds: 0 },
+  );
+  await db.collection('agent_events').createIndex({ type: 1, timestamp: -1 });
+  await db.collection('agent_events').createIndex({ agentId: 1, timestamp: -1 });
+  await db.collection('agent_events').createIndex({ taskId: 1 });
+
+  // ── System Knowledge indexes (Phase 1.3) ───────────────────────────────
+  await db.collection('system_knowledge').createIndex(
+    { expiresAt: 1 }, { expireAfterSeconds: 0 },
+  );
+  await db.collection('system_knowledge').createIndex({ type: 1, createdAt: -1 });
+  await db.collection('system_knowledge').createIndex({ knowledgeId: 1 }, { unique: true });
+
+  console.log('[MongoIndexes] TTL indexes ensured for: signals, shared_memory, auto_healing_tickets, agent_events, system_knowledge');
 }

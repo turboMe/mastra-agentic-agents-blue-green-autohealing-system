@@ -79,12 +79,18 @@ export const metaAgent: Agent = new Agent({
   id: 'meta-agent',
   name: 'Meta Agent',
   instructions: await buildInstructions(),
-  model: 'google/gemini-2.5-flash',
+  // model: 'google/gemini-2.5-flash', // ← ORIGINAL — restore after OM testing
+  model: 'ollama/local/gemma4:26b',     // ← TEMP: local model for OM pilot test
 
   memory: new Memory({
     options: {
       // 30 messages — enough to see full retry loops and parallel call traces in context
       lastMessages: 30,
+      // Phase 1.1 — Observational Memory: compresses long conversations into structured observations
+      observationalMemory: {
+        model: 'google/gemini-2.5-flash',
+        temporalMarkers: true,
+      },
     },
   }),
 
