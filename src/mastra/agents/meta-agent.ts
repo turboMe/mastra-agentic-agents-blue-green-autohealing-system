@@ -15,6 +15,7 @@ import { runWorkerTool } from '../tools/system/run-worker.js';
 import { recallWorkerLessonsTool } from '../tools/system/recall-worker-lessons.js';
 import { memoryRecallTool } from '../tools/system/memory-recall.js';
 import { memoryWriteTool } from '../tools/system/memory-write.js';
+import { skillSearchTool } from '../tools/system/skill-search.js';
 import {
   n8nTriggerWebhookTool,
   n8nHealthTool,
@@ -143,6 +144,8 @@ export const metaAgent: Agent = new Agent({
     // System knowledge (Phase 1.4)
     memoryRecallTool,
     memoryWriteTool,
+    // Skill discovery (Phase 2.3) — find skills, delegate execution to codingAgent
+    skillSearchTool,
   },
 
   // ── Discoverable tool pool (~50 tools via semantic search) ────────────────

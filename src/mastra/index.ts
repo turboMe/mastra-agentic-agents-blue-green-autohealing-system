@@ -305,6 +305,13 @@ ensureIndexes().catch((err) =>
   console.error('[MongoIndexes] Failed to ensure indexes:', (err as Error).message),
 );
 
+// ── Skill Registry (Phase 2.2) ──
+import { getSkillRegistry } from './services/skill-registry.js';
+import { resolve } from 'path';
+getSkillRegistry().initialize(resolve(import.meta.dirname ?? '.', '_skills')).catch((err) =>
+  console.error('[SkillRegistry] Initialization failed:', (err as Error).message),
+);
+
 // ── Graceful Shutdown for Dev/Hot-Reload ──
 function cleanupAndExit(signal: string) {
   console.log(`[Mastra] Otrzymano sygnał ${signal}. Zamykanie zasobów przed restartem (Graceful Shutdown)...`);

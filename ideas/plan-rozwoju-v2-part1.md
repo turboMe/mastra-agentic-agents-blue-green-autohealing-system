@@ -386,7 +386,7 @@ codingAgent w Fazie 3 stanie się orkiestratorem delegującym 5-20 subtasków. P
    ```
 4. **[TEST]** Wywołać ten sam błąd 2x → za drugim razem workflow powinien znaleźć `failure_case` z pierwszego razu
 
-### 2.2 Skill Registry — parser i indeksowanie (DECYZJA-05)
+### 2.2 Skill Registry — parser i indeksowanie (DECYZJA-05) — ✅ DONE 2026-05-09
 
 **Zależność:** → 1.4 (embedder musi działać dla semantic search)
 
@@ -453,7 +453,7 @@ codingAgent w Fazie 3 stanie się orkiestratorem delegującym 5-20 subtasków. P
    await skillRegistry.initialize('./src/mastra/_skills');
    ```
 
-### 2.3 Narzędzia skill.search, skill.load, skill.report_result
+### 2.3 Narzędzia skill.search, skill.load, skill.report_result — ✅ DONE 2026-05-09
 
 **Zależność:** → 2.2
 

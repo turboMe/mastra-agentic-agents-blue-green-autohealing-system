@@ -31,6 +31,9 @@ import {
 import { codeWorkspace } from '../workspaces/code-workspace.js';
 import { memoryRecallTool } from '../tools/system/memory-recall.js';
 import { memoryWriteTool } from '../tools/system/memory-write.js';
+import { skillSearchTool } from '../tools/system/skill-search.js';
+import { skillLoadTool } from '../tools/system/skill-load.js';
+import { skillReportTool } from '../tools/system/skill-report.js';
 
 export const codingAgent: Agent = new Agent({
   id: 'coding-agent',
@@ -64,6 +67,10 @@ export const codingAgent: Agent = new Agent({
     // System knowledge (Phase 1.4)
     memoryRecallTool,
     memoryWriteTool,
+    // Skill Registry (Phase 2.3)
+    skillSearchTool,
+    skillLoadTool,
+    skillReportTool,
   },
   memory: new Memory({
     options: {

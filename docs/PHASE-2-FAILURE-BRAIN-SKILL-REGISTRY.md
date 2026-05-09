@@ -73,3 +73,95 @@ To verify Failure Brain:
 ## Verification
 
 All code changes compile cleanly: `npx tsc --noEmit` → 0 errors.
+
+---
+
+## 2.2 Skill Registry ✅
+
+### Concept
+
+A central service that scans `_skills/` for markdown files with YAML frontmatter,
+generates embeddings for semantic search, and provides search/load/report APIs.
+
+### Architecture
+
+```
+Mastra startup
+  └→ index.ts: getSkillRegistry().initialize('_skills/')
+       ├→ Scan directories recursively for *.md files
+       ├→ Parse YAML frontmatter (name, description, keywords, category, etc.)
+       ├→ Generate embeddings via lib/embedder.js
+       └→ Build in-memory search index
+
+Agent needs a skill
+  └→ skill.search("fix typescript error")
+       └→ Cosine similarity against embeddings → ranked results
+```
+
+### Files Created
+
+| File | Purpose |
+|------|---------|
+| `lib/yaml-frontmatter.ts` | Parse/update YAML frontmatter in markdown files |
+| `services/skill-registry.ts` | Core registry: scan, index, search, load, report |
+| `_skills/coding/fix-typescript-error.md` | Starter skill: TS error diagnosis & fix |
+| `_skills/coding/safe-file-edit.md` | Starter skill: worktree-based safe editing |
+| `_skills/coding/run-verification.md` | Starter skill: verification & verdict |
+
+### Existing Skills Inventory
+
+The registry also indexes existing skills with frontmatter:
+- **terminal/** — 6 skills (git-conflict-resolver, swe-repo-explorer, etc.)
+- **n8n/** — 6 skills (workflow rules, node catalog, expression syntax, etc.)
+- **coding/** — 3 new starter skills
+
+Total: **15+ skills** at initialization.
+
+### Key Design Decisions
+
+- **Singleton pattern**: `getSkillRegistry()` ensures single instance
+- **Async embeddings**: Generated in parallel at startup, non-fatal on failure
+- **Keyword fallback**: If embeddings unavailable, falls back to term matching
+- **In-memory index**: No external database needed; skills are small (<50 files)
+- **`import.meta.dirname`**: Used to resolve `_skills/` relative to compiled output
+
+---
+
+## 2.3 Skill Tools ✅
+
+### Tools Created
+
+| Tool | Agent | Purpose |
+|------|-------|---------|
+| `skill.search` | metaAgent + codingAgent | Semantic search by task description |
+| `skill.load` | codingAgent | Load full skill procedure for execution |
+| `skill.report_result` | codingAgent | Feedback loop (updates success_rate in YAML) |
+
+### Feedback Loop
+
+```
+Agent discovers skill → loads procedure → executes it
+  ├→ Success: skill.report_result(name, true)
+  │    └→ success_rate ↑, total_uses++, last_used updated
+  └→ Failure: skill.report_result(name, false, "reason")
+       └→ success_rate ↓, notes for improvement
+```
+
+The success_rate is persisted in the YAML frontmatter of each skill file.
+Over time, this creates a natural quality signal — low-rate skills can be
+improved or deprecated, high-rate skills gain confidence.
+
+### Agent Integration
+
+- **metaAgent**: Gets `skill.search` only (discovery). Delegates execution to codingAgent.
+- **codingAgent**: Gets all 3 tools (search + load + report). Executes skills directly.
+
+### Testing
+
+```bash
+# Verify skill discovery
+curl http://localhost:4111/api/agents/coding-agent/generate \
+  -d '{"messages":[{"role":"user","content":"search for skills about typescript errors"}]}'
+
+# Expected: skill.search returns fix-typescript-error with high score
+```
