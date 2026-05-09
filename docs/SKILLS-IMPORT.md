@@ -1,13 +1,15 @@
 # Skill Registry — External Skills Import
 
-> Status: ✅ Complete | Imported: 2026-05-09 | Updated: 2026-05-09 (batch 3)
+> Status: ✅ Complete | Imported: 2026-05-09 | Updated: 2026-05-09 (batch 4)
 
 ## Overview
 
-Imported 15 high-quality skills from three major repositories into our SkillRegistry:
+Imported 17 high-quality skills from five repositories into our SkillRegistry:
 - [anthropics/skills](https://github.com/anthropics/skills) (131k ⭐) — 4 skills
 - [openai/skills](https://github.com/openai/skills) (18.7k ⭐) — 6 skills
 - [claude-office-skills/skills](https://github.com/claude-office-skills/skills) (106 ⭐) — 5 skills
+- [bowenliang123/markdown-exporter](https://github.com/bowenliang123/markdown-exporter) (218 ⭐) — 1 skill
+- [haris-musa/excel-mcp-server](https://github.com/haris-musa/excel-mcp-server) (3.8k ⭐) — 1 skill (patterns extracted)
 
 All skills follow the [Agent Skills Spec](https://agentskills.io/specification)
 and are fully compatible with our YAML-frontmatter-based indexing system.
@@ -110,6 +112,22 @@ OCR, figure/table extraction, multi-column handling, batch processing.
 - No bundles (self-contained)
 - Use case: Academic paper parsing, complex PDF analysis, document intelligence
 
+## Imported from Community Open Source (Apache 2.0 / MIT)
+
+### 16. `md-to-office` → `coding/`
+**Markdown→Office export engine** — reverse pipeline complement to `office-to-md`.
+Converts Markdown to DOCX, XLSX, PPTX, PDF, HTML, CSV, JSON, XML, LaTeX, ipynb
+using `markdown-exporter` CLI (Apache 2.0, 218 ⭐).
+- No bundles (self-contained, uses `pip install md-exporter`)
+- Use case: Report generation, document export, bidirectional document pipeline
+
+### 17. `xlsx-manipulation` → `coding/`
+**Excel workbook automation** — create, read, modify .xlsx files using `openpyxl` (MIT).
+Patterns distilled from excel-mcp-server (3.8k ⭐). Covers formatting, charts,
+pivot tables, formulas, conditional formatting, data validation.
+- No bundles (self-contained, uses `pip install openpyxl`)
+- Use case: Spreadsheet generation, financial reports, data export, automated dashboards
+
 ## Infrastructure Changes
 
 ### SkillRegistry Guard Clause
@@ -127,12 +145,12 @@ These were updated to match our flat naming convention:
 ### `.gitignore`
 Added `_external/` (cloned Anthropic repo used as source material).
 
-## Skill Inventory (30 total)
+## Skill Inventory (32 total)
 
 | Category | Count | Skills |
 |----------|:-----:|--------|
 | `terminal` | 7 | git-conflict-resolver, swe-repo-explorer, agentic-terminal-problem-solving, code-modification-agent, terminal-code-dev, nodejs-dependency-fixer, **yeet** |
-| `coding` | 16 | fix-typescript-error, safe-file-edit, run-verification, webapp-testing, mcp-builder, frontend-design, **pdf**, **security-best-practices**, **gh-fix-ci**, **screenshot**, **cli-creator**, **docx-manipulation**, **office-to-md**, **pdf-extraction**, **diagram-creator**, **doc-parser** |
+| `coding` | 18 | fix-typescript-error, safe-file-edit, run-verification, webapp-testing, mcp-builder, frontend-design, **pdf**, **security-best-practices**, **gh-fix-ci**, **screenshot**, **cli-creator**, **docx-manipulation**, **office-to-md**, **pdf-extraction**, **diagram-creator**, **doc-parser**, **md-to-office**, **xlsx-manipulation** |
 | `n8n` | 6 | n8n-common-patterns, n8n-node-catalog, n8n-workflow-rules, n8n-security-review, n8n-expression-syntax, n8n-security-checklist |
 | `meta` | 1 | skill-creator |
 
@@ -157,7 +175,7 @@ Our format is a **superset** of the Agent Skills standard:
 ## Verification
 
 - TypeScript compilation: `npx tsc --noEmit` → 0 errors
-- Skill files with frontmatter: 24
+- Skill files with frontmatter: 26
 - Reference/support files (skipped by guard): ~10
 
 ## Source Licensing Summary
@@ -167,6 +185,8 @@ Our format is a **superset** of the Agent Skills standard:
 | Anthropic (skills) | Proprietary¹ | ❌ | ❌ |
 | OpenAI (skills) | Apache 2.0 | ✅ | ✅ |
 | claude-office-skills | MIT | ✅ | ✅ |
+| markdown-exporter | Apache 2.0 | ✅ | ✅ |
+| excel-mcp-server | MIT | ✅ | ✅ |
 
 ¹ We imported only the 4 skills explicitly marked "community" from Anthropic.
 All other Anthropic office skills (xlsx, docx, pptx, pdf) were rejected
