@@ -280,21 +280,84 @@ const decisionGate = createStep({
   },
 });
 
-// ── Workflow ──────────────────────────────────────────────────────────────────
+// ── Step 4: Deploy & Verify (dry-run build + health check) ───────────────────
 
-const repoMaintenanceWorkflow = createWorkflow({
-  id: 'repo-maintenance-workflow',
-  description: 'Self-healing workflow: Coding → Review → Decision Gate (suspend/loop/block)',
-  inputSchema: codingTaskSchema,
-  outputSchema: z.object({
+const deployOutputSchema = z.object({
+  taskId: z.string(),
+  deployStatus: z.enum(['deployed_and_verified', 'deploy_failed', 'skipped']),
+  version: z.string().optional(),
+  message: z.string(),
+});
+
+const deployAndVerify = createStep({
+  id: 'deploy-and-verify',
+  description: 'Buduje i weryfikuje nowy kod w staging (dry-run). Nie zamienia live.',
+  inputSchema: z.object({
     taskId: z.string(),
     action: z.enum(['approved_and_merged', 'loop_back', 'blocked', 'max_iterations_reached']),
     message: z.string(),
   }),
+  outputSchema: deployOutputSchema,
+  execute: async ({ inputData }) => {
+    if (!inputData) throw new Error('Input data not found');
+
+    // Tylko jeśli decision-gate zakończył się merge'em
+    if (inputData.action !== 'approved_and_merged') {
+      return {
+        taskId: inputData.taskId,
+        deployStatus: 'skipped' as const,
+        message: `Deploy pominięty — action: ${inputData.action}`,
+      };
+    }
+
+    try {
+      const { execSync } = await import('child_process');
+      const { resolve } = await import('path');
+      const scriptPath = resolve(process.cwd(), 'scripts/deploy-blue-green.sh');
+
+      const output = execSync(`bash "${scriptPath}" --dry-run`, {
+        encoding: 'utf-8',
+        timeout: 180_000,  // 3 minuty max
+        cwd: process.cwd(),
+      });
+
+      // Sprawdź czy output zawiera potwierdzenie sukcesu
+      const isHealthy = output.includes('DRY RUN COMPLETE');
+
+      // Wyciągnij wersję z outputu
+      const versionMatch = output.match(/Version:\s+(\S+)/);
+      const version = versionMatch?.[1] || 'unknown';
+
+      return {
+        taskId: inputData.taskId,
+        deployStatus: isHealthy ? 'deployed_and_verified' as const : 'deploy_failed' as const,
+        version,
+        message: isHealthy
+          ? `Staging zbudowany i zweryfikowany (wersja: ${version}). Nowy kod gotowy do wdrożenia.`
+          : 'Deploy dry-run nie potwierdził zdrowia staging.',
+      };
+    } catch (error: any) {
+      return {
+        taskId: inputData.taskId,
+        deployStatus: 'deploy_failed' as const,
+        message: `Deploy failed: ${error.message?.slice(0, 500)}`,
+      };
+    }
+  },
+});
+
+// ── Workflow ──────────────────────────────────────────────────────────────────
+
+const repoMaintenanceWorkflow = createWorkflow({
+  id: 'repo-maintenance-workflow',
+  description: 'Self-healing workflow: Coding → Review → Decision Gate → Deploy Verify',
+  inputSchema: codingTaskSchema,
+  outputSchema: deployOutputSchema,
 })
   .then(executeCodingAgent)
   .then(executeReviewAgent)
-  .then(decisionGate);
+  .then(decisionGate)
+  .then(deployAndVerify);
 
 repoMaintenanceWorkflow.commit();
 

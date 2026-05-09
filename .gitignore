@@ -6,6 +6,15 @@ dist
 .env
 *.db
 *.db-*
+*.duckdb
 *.duckdb.wal
 .netlify
 .vercel
+
+# Deploy staging/worktrees (kopie repo, nie powinny być śledzone)
+agentic-agents-staging/
+agentic-agents-worktrees/
+.deploy/
+
+# Pino detection (generowany, duży plik)
+pino-detection.js
