@@ -1,12 +1,13 @@
 # Skill Registry — External Skills Import
 
-> Status: ✅ Complete | Imported: 2026-05-09 | Updated: 2026-05-09
+> Status: ✅ Complete | Imported: 2026-05-09 | Updated: 2026-05-09 (batch 3)
 
 ## Overview
 
-Imported 10 high-quality skills from two major repositories into our SkillRegistry:
+Imported 15 high-quality skills from three major repositories into our SkillRegistry:
 - [anthropics/skills](https://github.com/anthropics/skills) (131k ⭐) — 4 skills
 - [openai/skills](https://github.com/openai/skills) (18.7k ⭐) — 6 skills
+- [claude-office-skills/skills](https://github.com/claude-office-skills/skills) (106 ⭐) — 5 skills
 
 All skills follow the [Agent Skills Spec](https://agentskills.io/specification)
 and are fully compatible with our YAML-frontmatter-based indexing system.
@@ -77,6 +78,38 @@ summarize failures, draft fix plans.
 - Bundle: `cli-creator-references/` (agent-cli-patterns.md)
 - Use case: Building durable command-line tools
 
+## Imported from Claude Office Skills (MIT License)
+
+### 11. `docx-manipulation` → `coding/`
+**Word document manipulation** — create, edit .docx files using `python-docx` (MIT).
+Report templates, data tables, mail merge, page setup, styles.
+- No bundles (self-contained)
+- Use case: Document generation, contract templates, report automation
+
+### 12. `office-to-md` → `coding/`
+**Universal Office→Markdown converter** — uses Microsoft's `markitdown` (MIT).
+Converts .docx, .xlsx, .pptx, .pdf to clean Markdown in one call.
+- No bundles (self-contained)
+- Use case: Document ingestion for AI workflows, archive creation, RAG corpus building
+
+### 13. `pdf-extraction` → `coding/`
+**PDF data mining** — extract tables, invoices, multi-column text using `pdfplumber` (MIT).
+Character-level positioning, visual debugging, region cropping.
+- No bundles (self-contained)
+- Use case: Financial report parsing, invoice extraction, data mining
+
+### 14. `diagram-creator` → `coding/`
+**Text-based diagram reference** — 9 Mermaid + PlantUML diagram types: flowchart,
+sequence, architecture, ER, class, state, Gantt, mind map, git graph.
+- No bundles (self-contained)
+- Use case: Architecture documentation, technical diagrams, system visualization
+
+### 15. `doc-parser` → `coding/`
+**Advanced document parser** — IBM's `docling` library for AI-powered layout analysis,
+OCR, figure/table extraction, multi-column handling, batch processing.
+- No bundles (self-contained)
+- Use case: Academic paper parsing, complex PDF analysis, document intelligence
+
 ## Infrastructure Changes
 
 ### SkillRegistry Guard Clause
@@ -94,12 +127,12 @@ These were updated to match our flat naming convention:
 ### `.gitignore`
 Added `_external/` (cloned Anthropic repo used as source material).
 
-## Skill Inventory (25 total)
+## Skill Inventory (30 total)
 
 | Category | Count | Skills |
 |----------|:-----:|--------|
 | `terminal` | 7 | git-conflict-resolver, swe-repo-explorer, agentic-terminal-problem-solving, code-modification-agent, terminal-code-dev, nodejs-dependency-fixer, **yeet** |
-| `coding` | 11 | fix-typescript-error, safe-file-edit, run-verification, webapp-testing, mcp-builder, frontend-design, **pdf**, **security-best-practices**, **gh-fix-ci**, **screenshot**, **cli-creator** |
+| `coding` | 16 | fix-typescript-error, safe-file-edit, run-verification, webapp-testing, mcp-builder, frontend-design, **pdf**, **security-best-practices**, **gh-fix-ci**, **screenshot**, **cli-creator**, **docx-manipulation**, **office-to-md**, **pdf-extraction**, **diagram-creator**, **doc-parser** |
 | `n8n` | 6 | n8n-common-patterns, n8n-node-catalog, n8n-workflow-rules, n8n-security-review, n8n-expression-syntax, n8n-security-checklist |
 | `meta` | 1 | skill-creator |
 
@@ -124,5 +157,18 @@ Our format is a **superset** of the Agent Skills standard:
 ## Verification
 
 - TypeScript compilation: `npx tsc --noEmit` → 0 errors
-- Skill files with frontmatter: 19
+- Skill files with frontmatter: 24
 - Reference/support files (skipped by guard): ~10
+
+## Source Licensing Summary
+
+| Source | License | Redistribution | Derivative Works |
+|--------|---------|:-:|:-:|
+| Anthropic (skills) | Proprietary¹ | ❌ | ❌ |
+| OpenAI (skills) | Apache 2.0 | ✅ | ✅ |
+| claude-office-skills | MIT | ✅ | ✅ |
+
+¹ We imported only the 4 skills explicitly marked "community" from Anthropic.
+All other Anthropic office skills (xlsx, docx, pptx, pdf) were rejected
+due to restrictive license terms.
+
