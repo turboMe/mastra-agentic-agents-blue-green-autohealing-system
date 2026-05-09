@@ -45,6 +45,7 @@
     "@mastra/memory": "^1.17.4",
     "@mastra/mongodb": "^1.7.4",
     "@mastra/observability": "^1.11.0",
+    "@octokit/rest": "^22.0.1",
     "date-fns": "^4.1.0",
     "google-auth-library": "^10.6.2",
     "googleapis": "^171.4.0",

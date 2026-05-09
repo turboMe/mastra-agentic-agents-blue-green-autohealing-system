@@ -180,6 +180,18 @@ export const mastra: Mastra = new Mastra({
           }
         },
       }),
+      registerApiRoute('/deploy/github-status', {
+        method: 'GET',
+        handler: async (c: any) => {
+          try {
+            const { getGitHubStatus } = await import('./services/github.js');
+            const status = await getGitHubStatus();
+            return c.json(status);
+          } catch (err) {
+            return c.json({ error: (err as Error).message }, 500);
+          }
+        },
+      }),
     ],
   },
   workflows: {

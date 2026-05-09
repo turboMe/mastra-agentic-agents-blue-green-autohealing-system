@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { getDb } from '../lib/mongo.js';
 import { getErrorCollector } from '../services/error-collector.js';
+import { AGENTIC_AGENTS_REPO } from '../workspaces/code-workspace.js';
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -377,9 +378,164 @@ const decisionGate = createStep({
 
     const { taskId, verdict, comments, iteration } = inputData;
 
-    // ── APPROVE → Suspend (Human-in-the-loop) ──
+    // ── APPROVE → Push PR or Local Merge ──
     if (verdict === 'approve') {
-      // Jeśli nie mamy jeszcze odpowiedzi użytkownika, zawieszamy workflow
+      const prMode = process.env.GITHUB_PR_MODE === 'true';
+
+      // ═══════════════════════════════════════════════════════════
+      // PATH A: GitHub PR Mode (Etap 9)
+      // ═══════════════════════════════════════════════════════════
+      if (prMode) {
+        if (!resumeData) {
+          // 1. Push branch + Create PR
+          try {
+            const { pushBranch, createPR, waitForCI } = await import('../services/github.js');
+            const { buildPRBody, buildPRTitle, buildPRLabels } = await import('../services/pr-body-builder.js');
+
+            const db = await getDb();
+            const artifact = await db.collection('code_task_artifacts').findOne({ taskId });
+
+            if (!artifact?.branchName) {
+              throw new Error('No branch name found in artifact');
+            }
+
+            // Commit changes in worktree before push
+            const agent = mastra?.getAgent('codingAgent');
+            if (agent) {
+              await agent.generate(
+                `W worktree zadania ${taskId}: wykonaj git add . && git commit -m "agent(patch): ${taskId}" jeśli są niezacommitowane zmiany. Odpowiedz krótko.`,
+              );
+            }
+
+            // Push branch to remote
+            const pushResult = await pushBranch(artifact.branchName);
+            if (!pushResult.success) {
+              throw new Error(`Push failed: ${pushResult.message}`);
+            }
+
+            // Build PR content
+            const prBody = buildPRBody({
+              taskId,
+              diagnosticPlan: artifact.diagnosticPlan,
+              dispatchResult: artifact.dispatchResult,
+              reviewVerdict: verdict,
+              reviewComments: comments,
+              reviewIteration: iteration,
+            });
+            const prTitle = buildPRTitle(taskId, artifact.diagnosticPlan);
+            const prLabels = buildPRLabels({
+              taskId,
+              diagnosticPlan: artifact.diagnosticPlan,
+              dispatchResult: artifact.dispatchResult,
+            });
+
+            // Create PR on GitHub
+            const prResult = await createPR({
+              branch: artifact.branchName,
+              title: prTitle,
+              body: prBody,
+              labels: prLabels,
+            });
+
+            if (!prResult.success) {
+              throw new Error(`PR creation failed: ${prResult.message}`);
+            }
+
+            // Store PR info in artifact
+            await db.collection('code_task_artifacts').updateOne(
+              { taskId },
+              {
+                $set: {
+                  prNumber: prResult.prNumber,
+                  prUrl: prResult.prUrl,
+                  updatedAt: new Date().toISOString(),
+                },
+              },
+            );
+
+            // Wait for CI (non-blocking poll, max 5 min)
+            const ciStatus = await waitForCI(prResult.prNumber, { timeoutMs: 300_000 });
+
+            return await suspend({
+              taskId,
+              verdict,
+              comments,
+              message: `✅ PR #${prResult.prNumber} created: ${prResult.prUrl}\n` +
+                `CI Status: ${ciStatus.state} (${ciStatus.checks.length} checks)\n` +
+                `Oczekuję na zatwierdzenie merge (confirmMerge: true).`,
+            });
+          } catch (prErr) {
+            console.error('[decision-gate] PR mode failed, falling back to local merge:', (prErr as Error).message);
+            // Fall through to legacy below
+          }
+        }
+
+        // Resume: merge PR via API
+        if (resumeData?.confirmMerge) {
+          try {
+            const { mergePR, deleteRemoteBranch } = await import('../services/github.js');
+
+            const db = await getDb();
+            const artifact = await db.collection('code_task_artifacts').findOne({ taskId });
+
+            if (artifact?.prNumber) {
+              // Squash merge PR
+              const mergeResult = await mergePR(artifact.prNumber, 'squash');
+
+              if (mergeResult.success) {
+                // Cleanup remote branch
+                if (artifact.branchName) {
+                  await deleteRemoteBranch(artifact.branchName);
+                }
+
+                // Pull merged changes to local
+                try {
+                  const { execSync } = await import('child_process');
+                  execSync('git pull origin master', {
+                    cwd: AGENTIC_AGENTS_REPO,
+                    encoding: 'utf-8',
+                    timeout: 30_000,
+                  });
+                } catch { /* non-fatal */ }
+
+                // Cleanup local worktree
+                const cleanupAgent = mastra?.getAgent('codingAgent');
+                if (cleanupAgent) {
+                  await cleanupAgent.generate(
+                    `Użyj coding.remove_worktree z taskId="${taskId}" aby posprzątać zasoby worktree.`,
+                  );
+                }
+
+                return {
+                  taskId,
+                  action: 'approved_and_merged' as const,
+                  message: `PR #${artifact.prNumber} squash-merged do master. Branch ${artifact.branchName} usunięty.`,
+                };
+              } else {
+                return {
+                  taskId,
+                  action: 'blocked' as const,
+                  message: `PR merge failed: ${mergeResult.message}`,
+                };
+              }
+            }
+          } catch (mergeErr) {
+            console.error('[decision-gate] PR merge failed:', (mergeErr as Error).message);
+          }
+        }
+
+        if (resumeData && !resumeData.confirmMerge) {
+          return {
+            taskId,
+            action: 'blocked' as const,
+            message: `Użytkownik odrzucił merge dla ${taskId}.`,
+          };
+        }
+      }
+
+      // ═══════════════════════════════════════════════════════════
+      // PATH B: Legacy Local Merge
+      // ═══════════════════════════════════════════════════════════
       if (!resumeData) {
         return await suspend({
           taskId,
@@ -389,7 +545,6 @@ const decisionGate = createStep({
         });
       }
 
-      // Użytkownik zatwierdzil → wywołujemy apply_patch
       if (resumeData.confirmMerge) {
         const agent = mastra?.getAgent('codingAgent');
         if (!agent) throw new Error('codingAgent not found for merge');
@@ -402,7 +557,6 @@ const decisionGate = createStep({
           message: `Zmiany zadania ${taskId} zostały scalone do repozytorium live i worktree usunięty.`,
         };
       } else {
-        // Użytkownik odrzucił merge — traktujemy jak block
         return {
           taskId,
           action: 'blocked' as const,

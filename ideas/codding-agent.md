@@ -37,7 +37,7 @@ Aktualny postep:
 - [x] Etap 6: Blue-Green Deployment — dwie instancje Mastry (Live/Staging), health-check, auto-switch z rollback.
 - [x] Etap 7: Self-healing z logów/testów, automatyczny trigger workflow bez auto-deploy.
 - [x] Etap 8: Subagenci codingowi, routing modeli i tryb offline fallback.
-- [ ] Etap 9: GitHub/PR/CI integracja.
+- [x] Etap 9: GitHub/PR/CI integracja.
 
 Pierwszy naturalny krok:
 
@@ -171,6 +171,11 @@ Aby agent był jeszcze bardziej autonomiczny i stabilny w trudnych refaktorach, 
 15. [x] **Parallel Dispatch Engine (Etap 8.3):** `services/parallel-dispatch.ts` — sekwencyjny dispatch grup, równoległy wewnątrz grupy przez `Promise.allSettled`. Pre-flight VRAM check per grupę. Circuit breaker na critical subtask failure (przerywa kolejne grupy). Result aggregator z conflict detection (ten sam plik edytowany przez >1 subtask). Pauza 2s między grupami na VRAM unload. Endpoint diagnostyczny `formatDispatchResult()`.
 16. [x] **Offline Fallback (Etap 8.4):** Wbudowany w `executeSubtask()` — heurystyczna detekcja błędów infrastrukturalnych (timeout, ECONNREFUSED, 503, OOM, rate limit). Cloud error → re-route do najtańszego local (jeśli VRAM). Local error → re-route do najtańszego cloud. Max 1 fallback attempt. Odróżnia błędy infrastrukturalne (fallback) od logicznych (retry/escalation w 8.3a).
 17. [x] **Integration: execute-patch refactor (Etap 8.5):** `repo-maintenance.ts` execute-patch refactored z PATH A (parallel dispatch) i PATH B (legacy fallback). PATH A: czyta `routingSummary` z artifact → `dispatchSubtasks()` → agregacja wyników → zapis `dispatchResult` w Mongo → auto-diff. PATH B: zachowany stary single-agent mode gdy brak routingu. Pełna backward-compatibility.
+18. [x] **GitHub Service (Etap 9.1):** `services/github.ts` — centralny klient GitHub API via `@octokit/rest`. Funkcje: `pushBranch()` (git push via CLI), `createPR()` (Octokit REST), `getPRStatus()` (check runs + combined status), `waitForCI()` (polling co 30s, max 5 min), `mergePR()` (squash merge via API), `deleteRemoteBranch()`, `getGitHubStatus()` (diagnostyka). Config: `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`, `GITHUB_PR_MODE`, `GITHUB_AUTO_MERGE`.
+19. [x] **GitHub Actions CI (Etap 9.2):** `.github/workflows/ci.yml` — pipeline na `pull_request` do `master`. Steps: checkout → Node 22 setup (npm cache) → `npm ci` → `npx tsc --noEmit` → `npm run build`. Timeout 10 min.
+20. [x] **PR Body Builder (Etap 9.3):** `services/pr-body-builder.ts` — generuje ustrukturyzowane opisy PR: root cause, tabela zmian (plik/subtask/model/status), dispatch summary (succeeded/failed/needsHuman), review verdict, quality checklist. Generuje tytuł PR (auto-heal prefix) i labels (`bot`, `auto-heal`, `local-model`/`cloud-model`, `high-risk`, `needs-human`).
+21. [x] **Decision Gate PR Mode (Etap 9.4):** `decision-gate` refactored: `GITHUB_PR_MODE=true` → commit w worktree → push branch → create PR z body/labels → waitForCI → suspend. Resume: merge PR via API (squash) → delete remote branch → git pull local → remove worktree. `GITHUB_PR_MODE=false` → legacy local merge. Endpoint `/deploy/github-status`.
+22. [x] **Branch Cleanup (Etap 9.6):** Jednorazowe wyczyszczenie 6 stałych worktrees i task-* branchy. Auto-cleanup po `mergePR` (deleteRemoteBranch + remove_worktree). `.gitignore` zahardowany (sekrety, credentials, klucze prywatne, bazy danych).
 
 ---
 
