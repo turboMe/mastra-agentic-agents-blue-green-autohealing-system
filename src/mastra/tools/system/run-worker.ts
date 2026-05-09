@@ -21,14 +21,11 @@ import { createTool } from '@mastra/core/tools';
 import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
 import { getSkillRegistry } from '../../services/skill-registry.js';
+import { workerPresets, resolveModelId } from '../../config/model-manifest.js';
 
-const PRESET_TO_MODEL: Record<string, string> = {
-  fast: 'ollama/local/gemma4:e4b',
-  default: 'ollama/local/gemma4:26b',
-  reasoning: 'ollama/local/qwen3-coder:30b',
-  powerful: 'ollama/huihui_ai/qwen3.5-abliterated:35b',
-  cloud: 'google/gemini-2.5-flash',
-};
+const PRESET_TO_MODEL: Record<string, string> = Object.fromEntries(
+  Object.entries(workerPresets).map(([k, v]) => [k, resolveModelId(v)]),
+);
 
 export const runWorkerTool = createTool({
   id: 'system.run_worker',

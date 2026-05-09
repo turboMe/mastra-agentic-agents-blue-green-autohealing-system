@@ -8,7 +8,12 @@
  * capable model, respecting GPU memory limits and parallelism constraints.
  *
  * Context limits are conservative to prevent system freezes on RTX 5060 Ti (16 GB).
+ *
+ * NOTE: Model IDs are sourced from config/model-manifest.ts (Single Source of Truth).
+ * Only capability metadata (strengths, weaknesses, VRAM, etc.) is defined here.
  */
+
+import { models } from './model-manifest.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -63,7 +68,7 @@ export function complexityMeetsRequirement(
 const localModels: ModelCapability[] = [
   // ── Tier: local-micro — router, JSON, classifier ──
   {
-    modelId: 'ollama/local/qwen3:1.7b',
+    modelId: models['qwen3-1.7b'],
     name: 'Qwen 3 1.7B',
     tier: 'local-micro',
     maxComplexity: 'trivial',
@@ -79,7 +84,7 @@ const localModels: ModelCapability[] = [
 
   // ── Tier: local-light — simple edits, tool calling ──
   {
-    modelId: 'ollama/local/gemma3:4b',
+    modelId: models['gemma3-4b'],
     name: 'Gemma 3 4B',
     tier: 'local-light',
     maxComplexity: 'simple',
@@ -93,7 +98,7 @@ const localModels: ModelCapability[] = [
     available: true,
   },
   {
-    modelId: 'ollama/local/gemma4:e4b',
+    modelId: models['gemma4-e4b'],
     name: 'Gemma 4 E4B (MoE 26B/4B)',
     tier: 'local-light',
     maxComplexity: 'moderate',
@@ -107,7 +112,7 @@ const localModels: ModelCapability[] = [
     available: true,
   },
   {
-    modelId: 'ollama/local/huihui_ai/qwen3.5-abliterated:9b',
+    modelId: models['qwen3.5-9b'],
     name: 'Qwen 3.5 9B (abliterated)',
     tier: 'local-light',
     maxComplexity: 'simple',
@@ -123,7 +128,7 @@ const localModels: ModelCapability[] = [
 
   // ── Tier: local-heavy — solo mode, limited context ──
   {
-    modelId: 'ollama/local/qwen3-coder:30b',
+    modelId: models['qwen3-coder-30b'],
     name: 'Qwen 3 Coder 30B (MoE 30B/3B)',
     tier: 'local-heavy',
     maxComplexity: 'moderate',
@@ -137,7 +142,7 @@ const localModels: ModelCapability[] = [
     available: true,
   },
   {
-    modelId: 'ollama/local/gemma4:26b',
+    modelId: models['gemma4-26b'],
     name: 'Gemma 4 26B (MoE 26B/4B)',
     tier: 'local-heavy',
     maxComplexity: 'moderate',
@@ -152,7 +157,7 @@ const localModels: ModelCapability[] = [
   },
   // ── Tier: local-reasoning — diagnosis, planning, code review ──
   {
-    modelId: 'ollama/local/phi4-reasoning:14b',
+    modelId: models['phi4-reasoning-14b'],
     name: 'Phi-4 Reasoning 14B',
     tier: 'local-heavy',
     maxComplexity: 'complex',
@@ -166,7 +171,7 @@ const localModels: ModelCapability[] = [
     available: true,
   },
   {
-    modelId: 'ollama/local/magistral:24b',
+    modelId: models['magistral-24b'],
     name: 'Magistral 24B (Mistral)',
     tier: 'local-heavy',
     maxComplexity: 'complex',
@@ -186,7 +191,7 @@ const localModels: ModelCapability[] = [
 const cloudModels: ModelCapability[] = [
   // ── Tier: cloud-fast — szybkie, tanie ──
   {
-    modelId: 'openai/gpt-5.3-mini',
+    modelId: models['gpt-5.3-mini'],
     name: 'GPT-5.3 Mini',
     tier: 'cloud-fast',
     maxComplexity: 'moderate',
@@ -200,7 +205,7 @@ const cloudModels: ModelCapability[] = [
     available: true,
   },
   {
-    modelId: 'google/gemini-2.5-flash',
+    modelId: models['gemini-2.5-flash'],
     name: 'Gemini 2.5 Flash',
     tier: 'cloud-fast',
     maxComplexity: 'moderate',
@@ -214,7 +219,7 @@ const cloudModels: ModelCapability[] = [
     available: true,
   },
   {
-    modelId: 'anthropic/claude-haiku-4-6',
+    modelId: models['claude-haiku-4.6'],
     name: 'Claude Haiku 4.6',
     tier: 'cloud-fast',
     maxComplexity: 'simple',
@@ -230,7 +235,7 @@ const cloudModels: ModelCapability[] = [
 
   // ── Tier: cloud-pro — pełna moc ──
   {
-    modelId: 'google/gemini-2.5-pro',
+    modelId: models['gemini-2.5-pro'],
     name: 'Gemini 2.5 Pro',
     tier: 'cloud-pro',
     maxComplexity: 'complex',
@@ -244,7 +249,7 @@ const cloudModels: ModelCapability[] = [
     available: true,
   },
   {
-    modelId: 'openai/gpt-5.5',
+    modelId: models['gpt-5.5'],
     name: 'GPT-5.5',
     tier: 'cloud-pro',
     maxComplexity: 'complex',
@@ -258,7 +263,7 @@ const cloudModels: ModelCapability[] = [
     available: true,
   },
   {
-    modelId: 'anthropic/claude-sonnet-4-6',
+    modelId: models['claude-sonnet-4.6'],
     name: 'Claude Sonnet 4.6',
     tier: 'cloud-pro',
     maxComplexity: 'complex',
@@ -277,7 +282,7 @@ const cloudModels: ModelCapability[] = [
 
 const cloudFreeModels: ModelCapability[] = [
   {
-    modelId: 'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
+    modelId: models['nemotron-super-free'],
     name: 'Nemotron Super 120B (free)',
     tier: 'cloud-free',
     maxComplexity: 'moderate',
@@ -291,7 +296,7 @@ const cloudFreeModels: ModelCapability[] = [
     available: !!process.env.OPENROUTER_API_KEY,
   },
   {
-    modelId: 'openrouter/nvidia/nemotron-3-nano-30b-a3b:free',
+    modelId: models['nemotron-nano-free'],
     name: 'Nemotron Nano 30B (free)',
     tier: 'cloud-free',
     maxComplexity: 'simple',
@@ -305,7 +310,7 @@ const cloudFreeModels: ModelCapability[] = [
     available: !!process.env.OPENROUTER_API_KEY,
   },
   {
-    modelId: 'openrouter/poolside/laguna-m.1:free',
+    modelId: models['laguna-free'],
     name: 'Poolside Laguna M.1 (free)',
     tier: 'cloud-free',
     maxComplexity: 'moderate',
@@ -319,7 +324,7 @@ const cloudFreeModels: ModelCapability[] = [
     available: !!process.env.OPENROUTER_API_KEY,
   },
   {
-    modelId: 'openrouter/inclusionai/ring-2.6-1t:free',
+    modelId: models['ring-free'],
     name: 'InclusionAI Ring 2.6 1T (free)',
     tier: 'cloud-free',
     maxComplexity: 'moderate',
