@@ -49,14 +49,29 @@ export function getGoogleAuthUrl(): string {
   return oauth2Client.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
-    scope: [
-      'https://www.googleapis.com/auth/calendar',
-      'https://www.googleapis.com/auth/calendar.events',
-      'https://www.googleapis.com/auth/gmail.modify',
-      'https://www.googleapis.com/auth/gmail.compose'
-    ]
+    scope: [...GOOGLE_OAUTH_SCOPES]
   })
 }
+
+/**
+ * Full set of OAuth scopes used across Google tools.
+ * Adding a new service here requires re-running the OAuth flow
+ * to get a refresh token with the new scopes.
+ */
+export const GOOGLE_OAUTH_SCOPES = [
+  // Calendar (existing)
+  'https://www.googleapis.com/auth/calendar',
+  'https://www.googleapis.com/auth/calendar.events',
+  // Gmail (existing)
+  'https://www.googleapis.com/auth/gmail.modify',
+  'https://www.googleapis.com/auth/gmail.compose',
+  // Sheets (new — Faza 6.1)
+  'https://www.googleapis.com/auth/spreadsheets',
+  // Slides (new — Faza 6.1)
+  'https://www.googleapis.com/auth/presentations',
+  // Drive — needed to create files (sheets/slides) and list/move them
+  'https://www.googleapis.com/auth/drive.file',
+] as const
 
 /**
  * Exchange authorization code for tokens.

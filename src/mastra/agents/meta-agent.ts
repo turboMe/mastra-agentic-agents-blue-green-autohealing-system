@@ -36,6 +36,17 @@ import {
   calendarFindEventTool,
   calendarUpdateEventTool,
   calendarDeleteEventTool,
+  sheetsCreateSpreadsheetTool,
+  sheetsReadRangeTool,
+  sheetsWriteRangeTool,
+  sheetsAppendRowsTool,
+  sheetsGetMetadataTool,
+  slidesCreatePresentationTool,
+  slidesGetMetadataTool,
+  slidesAddSlideTool,
+  slidesReplaceTextTool,
+  slidesAddTextBoxTool,
+  slidesDeleteSlideTool,
 } from '../tools/google/google-tools.js';
 import {
   chefStartProjectTool,
@@ -188,6 +199,19 @@ export const metaAgent: Agent = new Agent({
         calendarFindEventTool,
         calendarUpdateEventTool,
         calendarDeleteEventTool,
+        // Google Sheets (Faza 6.1)
+        sheetsCreateSpreadsheetTool,
+        sheetsReadRangeTool,
+        sheetsWriteRangeTool,
+        sheetsAppendRowsTool,
+        sheetsGetMetadataTool,
+        // Google Slides (Faza 6.1)
+        slidesCreatePresentationTool,
+        slidesGetMetadataTool,
+        slidesAddSlideTool,
+        slidesReplaceTextTool,
+        slidesAddTextBoxTool,
+        slidesDeleteSlideTool,
         // Chef / menu domain
         chefStartProjectTool,
         chefUpdateProfileTool,

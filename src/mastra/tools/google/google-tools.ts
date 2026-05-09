@@ -2,6 +2,8 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { GmailService } from './gmail.js';
 import { CalendarService } from './calendar.js';
+import { SheetsService } from './sheets.js';
+import { SlidesService } from './slides.js';
 
 // --- GMAIL TOOLS ---
 
@@ -243,6 +245,323 @@ export const calendarDeleteEventTool = createTool({
       const calendar = await CalendarService.create();
       await calendar.deleteEvent(context.eventId);
       return { success: true, eventId: context.eventId };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+});
+
+// --- GOOGLE SHEETS TOOLS (Faza 6.1) ---
+
+export const sheetsCreateSpreadsheetTool = createTool({
+  id: 'sheets.create_spreadsheet',
+  description: 'Tworzy nowy arkusz Google Sheets. Zwraca spreadsheetId + URL. Używaj do raportów, eksportu danych CRM, list dystrybucyjnych.',
+  inputSchema: z.object({
+    title: z.string().describe('Tytuł nowego arkusza'),
+    sheetTitles: z.array(z.string()).optional().describe('Nazwy zakładek (domyślnie ["Sheet1"])'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    spreadsheetId: z.string().optional(),
+    url: z.string().optional(),
+    sheets: z.array(z.object({ sheetId: z.number(), title: z.string() })).optional(),
+    error: z.string().optional(),
+  }),
+  execute: async (context) => {
+    try {
+      const sheets = await SheetsService.create();
+      const result = await sheets.createSpreadsheet(context.title, context.sheetTitles);
+      return { success: true, ...result };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+});
+
+export const sheetsReadRangeTool = createTool({
+  id: 'sheets.read_range',
+  description: 'Odczytuje zakres komórek z arkusza Google Sheets. Range w formacie A1: "Sheet1!A1:C10" lub "A1:C10" dla pierwszej zakładki.',
+  inputSchema: z.object({
+    spreadsheetId: z.string().describe('ID arkusza (z URL: /spreadsheets/d/{ID}/edit)'),
+    range: z.string().describe('Zakres A1, np. "Arkusz1!A1:D100"'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    range: z.string().optional(),
+    values: z.array(z.array(z.union([z.string(), z.number(), z.boolean(), z.null()]))).optional(),
+    rowCount: z.number().optional(),
+    error: z.string().optional(),
+  }),
+  execute: async (context) => {
+    try {
+      const sheets = await SheetsService.create();
+      const result = await sheets.readRange(context.spreadsheetId, context.range);
+      return { success: true, ...result };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+});
+
+export const sheetsWriteRangeTool = createTool({
+  id: 'sheets.write_range',
+  description: 'NADPISUJE zakres w arkuszu Google Sheets podanymi wartościami. Wymaga confirm: true. Aby dodać dane bez nadpisywania użyj sheets.append_rows.',
+  inputSchema: z.object({
+    spreadsheetId: z.string(),
+    range: z.string().describe('Zakres A1 do nadpisania, np. "Arkusz1!A1:C5"'),
+    values: z.array(z.array(z.union([z.string(), z.number(), z.boolean(), z.null()]))).describe('Tablica wierszy (każdy wiersz = tablica wartości)'),
+    confirm: z.boolean().describe('Musi być true — nadpisanie wymaga zgody użytkownika'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    blocked: z.boolean().optional(),
+    updatedRange: z.string().optional(),
+    updatedRows: z.number().optional(),
+    updatedCells: z.number().optional(),
+    error: z.string().optional(),
+  }),
+  execute: async (context) => {
+    if (!context.confirm) {
+      return {
+        success: false,
+        blocked: true,
+        error: 'BLOCKED: confirm musi być true. Poinformuj użytkownika co i gdzie zostanie nadpisane, uzyskaj zgodę i wywołaj ponownie z confirm: true.',
+      };
+    }
+    try {
+      const sheets = await SheetsService.create();
+      const result = await sheets.writeRange(context.spreadsheetId, context.range, context.values);
+      return { success: true, ...result };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+});
+
+export const sheetsAppendRowsTool = createTool({
+  id: 'sheets.append_rows',
+  description: 'Dodaje wiersze na końcu istniejącej tabeli w arkuszu Google Sheets. Bezpieczne — nie nadpisuje istniejących danych.',
+  inputSchema: z.object({
+    spreadsheetId: z.string(),
+    range: z.string().describe('Zakres źródłowy tabeli, np. "Arkusz1!A1" — Sheets sam znajdzie pierwszy pusty wiersz'),
+    values: z.array(z.array(z.union([z.string(), z.number(), z.boolean(), z.null()]))),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    updatedRange: z.string().optional(),
+    appendedRows: z.number().optional(),
+    error: z.string().optional(),
+  }),
+  execute: async (context) => {
+    try {
+      const sheets = await SheetsService.create();
+      const result = await sheets.appendRows(context.spreadsheetId, context.range, context.values);
+      return { success: true, ...result };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+});
+
+export const sheetsGetMetadataTool = createTool({
+  id: 'sheets.get_metadata',
+  description: 'Pobiera metadane arkusza Google Sheets: tytuł, listę zakładek, wymiary. Użyj przed odczytem żeby wiedzieć jakie zakładki są dostępne.',
+  inputSchema: z.object({
+    spreadsheetId: z.string(),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    spreadsheetId: z.string().optional(),
+    title: z.string().optional(),
+    url: z.string().optional(),
+    sheets: z.array(z.object({
+      sheetId: z.number(),
+      title: z.string(),
+      rowCount: z.number(),
+      columnCount: z.number(),
+    })).optional(),
+    error: z.string().optional(),
+  }),
+  execute: async (context) => {
+    try {
+      const sheets = await SheetsService.create();
+      const result = await sheets.getMetadata(context.spreadsheetId);
+      return { success: true, ...result };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+});
+
+// --- GOOGLE SLIDES TOOLS (Faza 6.1) ---
+
+export const slidesCreatePresentationTool = createTool({
+  id: 'slides.create_presentation',
+  description: 'Tworzy nową prezentację Google Slides (pustą, z 1 slajdem startowym). Używaj do raportów, deck-ów dla klientów, prezentacji wewnętrznych.',
+  inputSchema: z.object({
+    title: z.string().describe('Tytuł prezentacji'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    presentationId: z.string().optional(),
+    url: z.string().optional(),
+    slideIds: z.array(z.string()).optional(),
+    error: z.string().optional(),
+  }),
+  execute: async (context) => {
+    try {
+      const slides = await SlidesService.create();
+      const result = await slides.createPresentation(context.title);
+      return { success: true, ...result };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+});
+
+export const slidesGetMetadataTool = createTool({
+  id: 'slides.get_metadata',
+  description: 'Pobiera metadane prezentacji Google Slides: tytuł, listę slajdów z ID i indeksami.',
+  inputSchema: z.object({
+    presentationId: z.string(),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    presentationId: z.string().optional(),
+    title: z.string().optional(),
+    url: z.string().optional(),
+    slideCount: z.number().optional(),
+    slides: z.array(z.object({
+      slideId: z.string(),
+      index: z.number(),
+      layoutType: z.string().optional(),
+    })).optional(),
+    error: z.string().optional(),
+  }),
+  execute: async (context) => {
+    try {
+      const slides = await SlidesService.create();
+      const result = await slides.getMetadata(context.presentationId);
+      return { success: true, ...result };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+});
+
+export const slidesAddSlideTool = createTool({
+  id: 'slides.add_slide',
+  description: 'Dodaje nowy slajd do prezentacji Google Slides. Layouts: TITLE, TITLE_AND_BODY (default), TITLE_AND_TWO_COLUMNS, BLANK, SECTION_HEADER.',
+  inputSchema: z.object({
+    presentationId: z.string(),
+    layout: z.enum(['TITLE', 'TITLE_AND_BODY', 'TITLE_AND_TWO_COLUMNS', 'BLANK', 'SECTION_HEADER']).optional().default('TITLE_AND_BODY'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    slideId: z.string().optional(),
+    error: z.string().optional(),
+  }),
+  execute: async (context) => {
+    try {
+      const slides = await SlidesService.create();
+      const result = await slides.addSlide(context.presentationId, { layout: context.layout });
+      return { success: true, ...result };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+});
+
+export const slidesReplaceTextTool = createTool({
+  id: 'slides.replace_text',
+  description: 'Zamienia placeholdery na wartości w całej prezentacji. Konwencja: użyj {{KLUCZ}} w slajdach (lub w skopiowanym templatce), potem przekaż mapę zamian. Idealne do generowania slajdów z danych.',
+  inputSchema: z.object({
+    presentationId: z.string(),
+    replacements: z.record(z.string(), z.string()).describe('Mapa "find → replace", np. {"{{NAZWA_KLIENTA}}": "Acme Corp"}'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    replacementsCount: z.number().optional(),
+    error: z.string().optional(),
+  }),
+  execute: async (context) => {
+    try {
+      const slides = await SlidesService.create();
+      const result = await slides.replaceAllText(context.presentationId, context.replacements);
+      return { success: true, ...result };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+});
+
+export const slidesAddTextBoxTool = createTool({
+  id: 'slides.add_text_box',
+  description: 'Dodaje pole tekstowe do konkretnego slajdu. Pozycja w EMU (1 cal = 914400). Używaj dla custom contentu który nie pasuje do placeholderów layoutu.',
+  inputSchema: z.object({
+    presentationId: z.string(),
+    slideId: z.string().describe('ID slajdu (z slides.get_metadata)'),
+    text: z.string(),
+    fontSize: z.number().optional().describe('Rozmiar w punktach (np. 14, 18, 24)'),
+    bold: z.boolean().optional().default(false),
+    x: z.number().optional().describe('Pozycja X w EMU (default 100000)'),
+    y: z.number().optional().describe('Pozycja Y w EMU (default 100000)'),
+    width: z.number().optional().describe('Szerokość w EMU (default ~6.5 cala)'),
+    height: z.number().optional().describe('Wysokość w EMU (default ~1 cal)'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    textBoxId: z.string().optional(),
+    error: z.string().optional(),
+  }),
+  execute: async (context) => {
+    try {
+      const slides = await SlidesService.create();
+      const result = await slides.addTextBox(
+        context.presentationId,
+        context.slideId,
+        context.text,
+        {
+          fontSize: context.fontSize,
+          bold: context.bold,
+          x: context.x,
+          y: context.y,
+          width: context.width,
+          height: context.height,
+        },
+      );
+      return { success: true, ...result };
+    } catch (err: any) {
+      return { success: false, error: err.message };
+    }
+  },
+});
+
+export const slidesDeleteSlideTool = createTool({
+  id: 'slides.delete_slide',
+  description: 'Usuwa slajd z prezentacji. Wymaga confirm: true. Operacja nieodwracalna.',
+  inputSchema: z.object({
+    presentationId: z.string(),
+    slideId: z.string(),
+    confirm: z.boolean().describe('Musi być true'),
+  }),
+  outputSchema: z.object({
+    success: z.boolean(),
+    blocked: z.boolean().optional(),
+    error: z.string().optional(),
+  }),
+  execute: async (context) => {
+    if (!context.confirm) {
+      return {
+        success: false,
+        blocked: true,
+        error: 'BLOCKED: confirm musi być true. Slajd zostanie usunięty bez możliwości cofnięcia.',
+      };
+    }
+    try {
+      const slides = await SlidesService.create();
+      await slides.deleteSlide(context.presentationId, context.slideId);
+      return { success: true };
     } catch (err: any) {
       return { success: false, error: err.message };
     }
