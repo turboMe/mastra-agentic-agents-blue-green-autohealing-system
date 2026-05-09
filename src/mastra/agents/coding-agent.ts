@@ -1,6 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 import { Memory } from '@mastra/memory';
 import { workflowModels } from '../config/workflow-models.js';
+import { infrastructure, resolveModelId } from '../config/model-manifest.js';
 import { loadPrompt } from '../lib/prompt-loader.js';
 import {
   createCodeTaskArtifactTool,
@@ -77,7 +78,7 @@ export const codingAgent: Agent = new Agent({
       lastMessages: 30,
       // Phase 1.1b — OM keeps context across 15+ subtask orchestrations
       observationalMemory: {
-        model: 'google/gemini-2.5-flash',
+        model: resolveModelId(infrastructure.observationalMemory),
         temporalMarkers: true,
         observation: {
           threadTitle: true,

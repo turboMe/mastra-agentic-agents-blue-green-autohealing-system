@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import { agentModels, infrastructure, resolveModelId } from '../config/model-manifest.js';
 import { ToolSearchProcessor } from '@mastra/core/processors';
 import { Memory } from '@mastra/memory';
 import { createLeadTool } from '../tools/crm/create-lead.js';
@@ -82,7 +83,7 @@ export const metaAgent: Agent = new Agent({
   id: 'meta-agent',
   name: 'Meta Agent',
   instructions: await buildInstructions(),
-  model: 'google/gemini-2.5-flash',
+  model: resolveModelId(agentModels.metaAgent),
 
   memory: new Memory({
     options: {
@@ -90,7 +91,7 @@ export const metaAgent: Agent = new Agent({
       lastMessages: 30,
       // Phase 1.1 — Observational Memory: compresses long conversations into structured observations
       observationalMemory: {
-        model: 'google/gemini-2.5-flash',
+        model: resolveModelId(infrastructure.observationalMemory),
         temporalMarkers: true,
         observation: {
           threadTitle: true, // OM auto-generates descriptive thread titles

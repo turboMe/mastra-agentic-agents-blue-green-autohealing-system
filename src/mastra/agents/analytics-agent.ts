@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import { agentModels, resolveModelId } from '../config/model-manifest.js';
 import { Memory } from '@mastra/memory';
 import { pushSignalTool, addContextTool, listContextTool } from '../tools/memory/add-context.js';
 import {
@@ -12,7 +13,7 @@ export const analyticsAgent = new Agent({
   id: 'analytics-agent',
   name: 'Analytics Agent',
   instructions: await loadPrompt('analytics/base'),
-  model: 'ollama/local/qwen3-coder:30b',
+  model: resolveModelId(agentModels.analyticsAgent),
 
   memory: new Memory({
     options: {

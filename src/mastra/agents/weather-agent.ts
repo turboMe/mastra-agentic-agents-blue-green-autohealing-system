@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import { agentModels, resolveModelId } from '../config/model-manifest.js';
 import { Memory } from '@mastra/memory';
 import { weatherTool } from '../tools/weather-tool';
 import { scorers } from '../scorers/weather-scorer';
@@ -18,7 +19,7 @@ Your primary function is to help users get weather details for specific location
 - If the user asks for activities, respond in the format they request.
 
 Use the weatherTool to fetch current weather data.`,
-  model: 'google/gemini-2.5-pro',
+  model: resolveModelId(agentModels.weatherAgent),
   tools: { weatherTool },
   scorers: {
     toolCallAppropriateness: {

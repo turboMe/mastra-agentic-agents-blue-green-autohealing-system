@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import { agentModels, resolveModelId } from '../config/model-manifest.js';
 import { Memory } from '@mastra/memory';
 import {
   n8nTriggerWebhookTool,
@@ -29,7 +30,7 @@ export const automationArchitect = new Agent({
   // tool errors, so it's a poor fallback for this agent.
   // maxRetries handles the occasional AGENT_STREAM_ERROR (finishReason="error"
   // with no payload) that Gemini Pro produces in long tool-call chains.
-  model: 'google/gemini-2.5-pro',
+  model: resolveModelId(agentModels.automationArchitect),
   maxRetries: 3,
   memory: new Memory({
     options: {

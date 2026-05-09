@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import { agentModels, resolveModelId } from '../config/model-manifest.js';
 import { Memory } from '@mastra/memory';
 import { updateStatusTool } from '../tools/crm/update-status.js';
 import { addInteractionTool } from '../tools/crm/add-interaction.js';
@@ -17,7 +18,7 @@ export const salesAgent = new Agent({
   id: 'sales-agent',
   name: 'Sales Agent',
   instructions: await loadPrompt('sales/base'),
-  model: 'ollama/local/gemma4:26b',
+  model: resolveModelId(agentModels.salesAgent),
   memory: new Memory({
     options: {
       lastMessages: 15,
