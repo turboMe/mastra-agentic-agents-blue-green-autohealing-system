@@ -9,6 +9,7 @@
  */
 import { randomUUID } from 'crypto';
 import { getDb } from './mongo.js';
+import { redactSecrets } from './secrets-redactor.js';
 
 // ── Event Types ──────────────────────────────────────────────────────────────
 
@@ -49,6 +50,13 @@ function truncate(text: string | undefined, maxLen = 500): string | undefined {
   return text.length > maxLen ? text.slice(0, maxLen) + '…' : text;
 }
 
+/** Truncate AND redact secrets from text fields. */
+function sanitize(text: string | undefined, maxLen = 500): string | undefined {
+  const truncated = truncate(text, maxLen);
+  if (!truncated) return undefined;
+  return redactSecrets(truncated).text;
+}
+
 const DEFAULT_TTL_DAYS = 30;
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -64,8 +72,9 @@ export async function logAgentEvent(
     const db = await getDb();
     await db.collection('agent_events').insertOne({
       ...event,
-      input: truncate(event.input),
-      output: truncate(event.output),
+      input: sanitize(event.input),
+      output: sanitize(event.output),
+      errorMessage: event.errorMessage ? redactSecrets(event.errorMessage).text : undefined,
       eventId: randomUUID(),
       timestamp: new Date(),
       expiresAt: new Date(Date.now() + DEFAULT_TTL_DAYS * 24 * 3600 * 1000),

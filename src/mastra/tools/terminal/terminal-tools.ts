@@ -5,6 +5,7 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
+import { checkCommand, logSafetyEvent } from '../../lib/terminal-safety-guard.js';
 
 const execAsync = promisify(exec);
 
@@ -81,12 +82,32 @@ export const writeFileTool = createTool({
 
 export const shellExecuteTool = createTool({
   id: 'shell.execute',
-  description: 'Wykonuje komendę powłoki (bash) wewnatrz katalogu piaskownicy. Przydatne do analizy, kompilacji, uruchamiania skryptów itp.',
+  description: 'Wykonuje komendę powłoki (bash) wewnatrz katalogu piaskownicy. Przydatne do analizy, kompilacji, uruchamiania skryptów itp. Komenda jest weryfikowana przez Terminal Safety Guard przed wykonaniem.',
   inputSchema: z.object({
     command: z.string().describe('Komenda bash do wykonania.'),
   }),
   execute: async (context) => {
     try {
+      // ── Safety Guard Check ──
+      const verdict = checkCommand(context.command);
+      
+      if (verdict.action === 'BLOCK') {
+        await logSafetyEvent(verdict, 'shell-executor');
+        return {
+          success: false,
+          error: verdict.reason,
+          safetyAction: 'BLOCKED',
+          ruleId: verdict.ruleId,
+        };
+      }
+
+      if (verdict.action === 'CONFIRM') {
+        await logSafetyEvent(verdict, 'shell-executor');
+        // Log warning but allow execution (future: require explicit approval)
+        console.warn(`[TerminalSafety] ${verdict.reason} — command: ${context.command.slice(0, 100)}`);
+      }
+
+      // ── Execute ──
       const sandboxDir = await getSandboxDir();
       await fs.mkdir(sandboxDir, { recursive: true });
       
@@ -99,7 +120,8 @@ export const shellExecuteTool = createTool({
       return {
         success: true,
         stdout: stdout.trim().slice(0, 4000), // Obcinamy, żeby nie przekroczyć limitów LLM
-        stderr: stderr.trim().slice(0, 4000)
+        stderr: stderr.trim().slice(0, 4000),
+        ...(verdict.action === 'CONFIRM' ? { safetyWarning: verdict.reason } : {}),
       };
     } catch (err: any) {
       return { 
@@ -109,3 +131,4 @@ export const shellExecuteTool = createTool({
     }
   },
 });
+
