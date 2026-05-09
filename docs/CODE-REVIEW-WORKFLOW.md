@@ -23,6 +23,9 @@ Workflow `repo-maintenance-workflow` realizuje pełny cykl Self-Healing:
                               │            │
                         [apply_patch]    [STOP]
                         [cleanup]
+                              │
+                    [deploy-and-verify]
+                    (build + health check)
 ```
 
 ## Kroki Workflow
@@ -43,6 +46,13 @@ Workflow `repo-maintenance-workflow` realizuje pełny cykl Self-Healing:
 - **`approve`** → `suspend()` → czeka na `{ confirmMerge: true }` → `apply_patch` + `remove_worktree`
 - **`needs_changes`** → pętla naprawcza (codingAgent poprawia, reviewer re-review, max 3 iteracje)
 - **`block`** → natychmiastowy stop
+
+### Step 4: `deploy-and-verify`
+- Uruchamia się tylko jeśli decision-gate zakończył się `approved_and_merged`.
+- Wywołuje `deploy-blue-green.sh --dry-run`.
+- Synchronizuje kod do stagingu (bez `.git`), buduje aplikację.
+- Uruchamia staging serwer, weryfikuje health-check, a następnie gasi instancję.
+- Wyprowadza status `deployed_and_verified` (gotowy do produkcyjnego swapu) lub `deploy_failed`.
 
 ## Narzędzia Reviewera (Worktree)
 

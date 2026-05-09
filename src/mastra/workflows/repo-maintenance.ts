@@ -312,13 +312,23 @@ const deployAndVerify = createStep({
 
     try {
       const { execSync } = await import('child_process');
-      const { resolve } = await import('path');
-      const scriptPath = resolve(process.cwd(), 'scripts/deploy-blue-green.sh');
+      const { resolve, dirname } = await import('path');
+      const { existsSync } = await import('fs');
+
+      // Mastra uruchamia kod z .mastra/output/ lub src/mastra/public/ —
+      // musimy znaleźć root projektu szukając deploy.config.json w górę drzewa.
+      let projectRoot = process.cwd();
+      while (projectRoot !== '/') {
+        if (existsSync(resolve(projectRoot, 'deploy.config.json'))) break;
+        projectRoot = dirname(projectRoot);
+      }
+
+      const scriptPath = resolve(projectRoot, 'scripts/deploy-blue-green.sh');
 
       const output = execSync(`bash "${scriptPath}" --dry-run`, {
         encoding: 'utf-8',
         timeout: 180_000,  // 3 minuty max
-        cwd: process.cwd(),
+        cwd: projectRoot,
       });
 
       // Sprawdź czy output zawiera potwierdzenie sukcesu
