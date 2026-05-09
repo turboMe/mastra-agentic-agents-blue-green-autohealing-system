@@ -1,35 +1,38 @@
 # 7.6 Agent Evaluation Dashboard — Plan Implementacji
 
-> **Status:** ✅ **Sprint 1 + 2 ZROBIONE** (data + API + tool + UI dashboard)
+> **Status:** ✅ **Sprint 1 + 2 + 3 ZROBIONE** (data + API + tool + UI dashboard + auto-telemetria)
 > **Data planu:** 2026-05-09 | **Ukończono:** 2026-05-09
-> **Estymacja oryginalna:** 4-6 dni MVP. **Faktyczne:** ~5-6h łącznie
+> **Estymacja oryginalna:** 4-6 dni MVP. **Faktyczne:** ~6-8h łącznie
 >   - Sprint 1: ~3-4h (znacznie szybciej dzięki odkryciu że Mastra już zapisuje scorery natywnie)
 >   - Sprint 2: ~1-2h (zero-build podejście: vanilla JS + Chart.js CDN zamiast Vite/React)
+>   - Sprint 3: ~1-2h (Mastra ma natywny `BaseExporter` — wystarczyło napisać 200-line subklasę)
 > **Dokumentacja:** [`docs/AGENT-EVALUATION-DASHBOARD.md`](../docs/AGENT-EVALUATION-DASHBOARD.md)
 > **Dashboard URL:** http://localhost:4111/dashboard-ui
 
 ---
 
-## TL;DR — Stan po Sprincie 1 + 2
+## TL;DR — Stan po Sprincie 1 + 2 + 3
 
-**Sprint 1 + 2 ✅ ZROBIONE.** Cała data layer + API + agent tool + UI dashboard gotowe.
+**Sprint 1 + 2 + 3 ✅ ZROBIONE.** Cała data layer + API + agent tool + UI dashboard + **automatyczna telemetria z agentów**.
 
 **Kluczowe odkrycia podczas implementacji:**
 1. Mastra **automatycznie** zapisuje wyniki scorerów do kolekcji `mastra_scorers` (przez `MongoDBStore` scores domain). Etap 1 oryginalnego planu (1.5d "persystencja scorerów") okazał się **zbędny** — wystarczyło tylko czytać z istniejącej kolekcji.
 2. Dla MVP UI nie potrzeba Vite/React/Tailwind — **vanilla JS + Chart.js via CDN** w jednym pliku HTML jest wystarczająco bogate i szybsze do utrzymania (zero deps, zero build step, hot-reload przez fs.readFile).
+3. Mastra ma natywny **`BaseExporter` z `@mastra/observability`** — exporter dostaje SPAN_STARTED/SPAN_ENDED dla wszystkich span types. Wystarczyło 200-line subklasa zamiast wrapowania `agent.generate()`. Telemetria działa z każdym agentem **bez zmiany ich kodu**.
 
 Co działa:
-- ✅ `agent_events` collection — własna telemetry (logAgentEvent)
+- ✅ `agent_events` collection — telemetria zasilana **automatycznie** przez `MongoTelemetryExporter`
 - ✅ `mastra_scorers` collection — Mastra-managed scorer results (saveScore auto)
 - ✅ `lib/model-pricing.ts` — 12 modeli z hardcoded pricing + env override
 - ✅ `services/dashboard-stats.ts` — 8 funkcji agregujących
+- ✅ `services/mongo-telemetry-exporter.ts` — auto-exporter dla AGENT_RUN/MODEL_GEN/TOOL_CALL spans
 - ✅ 8 API routes pod `/dashboard/*` (Mastra rezerwuje `/api/*`)
 - ✅ Tool `system.agent_performance_report` w meta + analytics agentach
 - ✅ Skill `_skills/meta/agent-performance-analysis.md`
 - ✅ Dokumentacja `docs/AGENT-EVALUATION-DASHBOARD.md`
 - ✅ MongoDB 7.0 `$percentile` działa dla latency P50/P95/P99
 - ✅ **UI Dashboard pod `/dashboard-ui`** — vanilla JS + Chart.js, dark theme, 6 wykresów + 3 tabele + 5 metryki, filtrowanie + auto-refresh
-- ✅ **Smoke test passed** — HTML serwowany (200 OK, 26KB), API endpoint działa
+- ✅ **End-to-end smoke test passed** — wywołanie weather-agent → dashboard pokazuje realne dane (totalTasks: 1, cost: $0.008, model: gemini-2.5-pro)
 
 **Co NIE działa od razu:** Mastra Studio (UI na localhost:4111) jest read-only. Dlatego nasz dashboard jest osobnym route'em pod `/dashboard-ui` na tym samym porcie.
 

@@ -1,8 +1,8 @@
 # Agent Evaluation Dashboard
 
-> **Status:** ✅ Sprint 1 + 2 zakończone — dane + API + tool + UI.
+> **Status:** ✅ Sprint 1 + 2 + 3 zakończone — dane + API + tool + UI + **automatyczna telemetria**.
 > **Otwórz dashboard:** http://localhost:4111/dashboard-ui (po `npm run dev`)
-> **Lokalizacja kodu:** `src/mastra/lib/model-pricing.ts`, `src/mastra/services/dashboard-stats.ts`, `src/mastra/tools/system/agent-performance-report.ts`, `dashboard/index.html`, `src/mastra/index.ts`
+> **Lokalizacja kodu:** `src/mastra/lib/model-pricing.ts`, `src/mastra/services/dashboard-stats.ts`, `src/mastra/services/mongo-telemetry-exporter.ts`, `src/mastra/tools/system/agent-performance-report.ts`, `dashboard/index.html`, `src/mastra/index.ts`
 > **Audyt:** kat. 19 (Self-Improvement)
 
 ---
@@ -215,16 +215,31 @@ Zarejestrowane w:
 
 ## Skąd biorą się dane
 
-### `agent_events` (własna telemetry)
+### `agent_events` (auto-telemetria via Mastra Observability)
 
-Funkcja `logAgentEvent()` w `lib/agent-event-log.ts`. Żeby dashboard widział tasks, agenci muszą emitować eventy:
+**Wszystkie agent runs są zapisywane AUTOMATYCZNIE** przez `MongoTelemetryExporter`
+(zarejestrowany w `Observability` config w `index.ts`). Bez ręcznego instrumentowania.
 
-- `task_started` — gdy agent rozpoczyna wykonanie
-- `task_completed` — gdy zakończył sukcesem (z `durationMs`, `tokenUsage`, `model`)
-- `task_failed` — gdy błąd
-- `tool_called` / `tool_error` — per tool call
-- `skill_used` — gdy agent użył skilla (z `metadata.skillId` lub `toolId`)
-- `delegation`, `retry_*`, `autoheal_*`, `approval_*` — pozostałe sygnały
+Mechanizm:
+- Mastra dla każdego `agent.generate()` / `agent.stream()` tworzy `AGENT_RUN` span (root)
+- Child spans: `MODEL_GENERATION` (per LLM call), `TOOL_CALL` (per tool invocation)
+- `MongoTelemetryExporter` implementuje `BaseExporter` z `@mastra/observability`
+- Akumuluje token usage + model per `traceId` z `MODEL_GENERATION` spans
+- Gdy `AGENT_RUN` SPAN_ENDED → loguje `task_completed` / `task_failed` z pełnymi danymi
+- `TOOL_CALL` SPAN_ENDED → loguje `tool_called` / `tool_error`
+- Fire-and-forget: błąd telemetry nigdy nie blokuje agenta
+
+Eventy automatycznie wpadają do MongoDB:
+- `task_completed` — agent zakończył sukcesem (z `durationMs`, `tokenUsage`, `model`)
+- `task_failed` — błąd w agent run (z `errorMessage`)
+- `tool_called` / `tool_error` — per tool invocation (z `toolId`, `durationMs`)
+
+Eventy które nadal wymagają ręcznego `logAgentEvent()`:
+- `skill_used` — gdy agent użył skilla (TODO: można dodać do MongoTelemetryExporter)
+- `delegation`, `retry_*`, `autoheal_*`, `approval_*` — emit przez własne hooki (np. `delegate-task.ts`)
+
+**Bonus:** LLM-based scorers (np. `translation-quality-scorer`) tworzą wewnętrzne AGENT_RUN spany,
+więc widzimy też ich koszt i latency w dashboardzie (jako pseudo-agent `judge`).
 
 ### `mastra_scorers` (zarządzane przez Mastra)
 
@@ -278,12 +293,12 @@ Schema (skrót):
 
 | Funkcjonalność | Status | Notatka |
 |---------------|--------|---------|
-| Skill→event linkage przez `metadata.skillId` | ⚠️ Częściowe | Niektóre skills emitują, niektóre nie. Audit potrzebny |
-| Cache wyników agregacji (TTL 60s) | ⏳ Sprint 3 | Przy heavy load aktualnie każdy request agreguje od zera |
+| Skill→event linkage (`skill_used` events) | ⏳ Backlog | MongoTelemetryExporter loguje tylko AGENT_RUN/TOOL_CALL/MODEL_GEN. Skill registry by emitować przez własny hook |
+| Cache wyników agregacji (TTL 60s) | ⏳ Backlog | Przy heavy load aktualnie każdy request agreguje od zera |
 | Alerty (np. "success rate spadł poniżej 80%") | ⏳ Backlog | Można wbudować przez Telegram tool z workflow cron |
 | Daily rollup → `agent_events_daily` | ⏳ Backlog | Gdy `agent_events` urośnie >1M rekordów |
-| Per-task cost na poziomie pojedynczego eventu | ⏳ Możliwe | Wymaga refactoru `logAgentEvent` żeby zapisywał `costUsd` przy zapisie |
-| Drill-down: klik w wiersz tabeli → szczegóły taska | ⏳ Backlog | Wymaga nowego endpointu `/dashboard/task/:id` |
+| Drill-down: klik w wiersz tabeli → szczegóły taska | ⏳ Backlog | Wymaga nowego endpointu `/dashboard/task/:id` z trace tree |
+| Per-event cost (zapis kosztu w `agent_events`) | ⏳ Możliwe | Aktualnie cost liczony on-the-fly przy agregacji (ok dla MVP) |
 
 ---
 
@@ -339,7 +354,23 @@ db.query({ collection: "agent_events", operation: "count",
   filter: { type: { $in: ["task_completed", "task_failed"] } } })
 ```
 
-Jeśli 0 — agenci nie emitują tasków. Trzeba zintegrować `logAgentEvent()` w workflow execute lub agent generate hooks.
+Jeśli 0 — `MongoTelemetryExporter` nie jest zarejestrowany. Zweryfikuj w `index.ts`:
+```typescript
+observability: new Observability({
+  configs: { default: {
+    exporters: [
+      new DefaultExporter(),
+      new CloudExporter(),
+      new MongoTelemetryExporter(),  // ← musi być TUTAJ
+    ],
+  }},
+})
+```
+
+Jeśli zarejestrowany ale wciąż 0 — sprawdź czy żaden agent w ogóle nie był wywołany w okresie:
+```bash
+db.query({ collection: "agent_events", operation: "count" })  # bez filtru
+```
 
 ### `/dashboard/scores` zwraca pustą tablicę
 

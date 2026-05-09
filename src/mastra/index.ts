@@ -7,6 +7,7 @@ import { MongoDBStore } from '@mastra/mongodb';
 import { DuckDBStore } from '@mastra/duckdb';
 import { MastraCompositeStore } from '@mastra/core/storage';
 import { Observability, DefaultExporter, CloudExporter, SensitiveDataFilter } from '@mastra/observability';
+import { MongoTelemetryExporter } from './services/mongo-telemetry-exporter.js';
 import { Workspace, LocalFilesystem, LocalSandbox, WORKSPACE_TOOLS } from '@mastra/core/workspace';
 
 // Self-healing (Etap 7)
@@ -410,6 +411,8 @@ export const mastra: Mastra = new Mastra({
         exporters: [
           new DefaultExporter(),
           new CloudExporter(),
+          // Telemetry → MongoDB agent_events collection (Faza 7.6 — feeds dashboard)
+          new MongoTelemetryExporter(),
         ],
         spanOutputProcessors: [
           new SensitiveDataFilter(),
