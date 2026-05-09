@@ -95,5 +95,4 @@ The project is structured around the standard Mastra directory layout:
 * `src/mastra/config/`: Configuration for dynamic model routing (`workflow-models.ts`).
 * `scripts/`: Operational scripts for database initialization, cron-runners, and health checks.
 
-## License
-ISC
+
