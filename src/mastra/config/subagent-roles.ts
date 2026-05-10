@@ -212,7 +212,7 @@ export const SUBAGENT_ROLES: Record<string, SubAgentRole> = {
       'coding_update_artifact',
     ],
     defaultModelTier: 'cloud-fast',
-    promptTemplate: 'coding/subagent-researcher',
+    promptTemplate: 'shared/subagent-researcher',
     skills: ['web-research-strategy', 'playwright-browser-automation'],
   },
 };

@@ -35,3 +35,5 @@ KRYTYCZNY ZAKAZ HALUCYNACJI FAKTÓW SYSTEMOWYCH:
   - marketing-agent: weekly-content, producer-hunt, inbox-monitor, sync-crm, automated-followup, morning-briefing
   - sales-agent: proposal-generator, meeting-scheduler, onboarding-checklist
   - analytics-agent: weekly-report, roi-calculator, trend-analysis
+  - codingAgent: bug-fixing, refactoring, code-analysis, test-execution, software-architecture
+  - automationArchitect: n8n-workflow-design, bot-creation, deployment, system-integration

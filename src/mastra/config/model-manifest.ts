@@ -171,6 +171,7 @@ export const agentModels = {
   weatherAgent: 'gemini-2.5-flash' as ModelKey,
   automationArchitect: 'gemini-2.5-pro' as ModelKey,
   marketingAgent: 'gemini-2.5-flash' as ModelKey,
+  knowledgeAgent: 'gemini-2.5-flash' as ModelKey,   // NotebookLM ops — fast function calling for 35 MCP tools
 } as const;
 
 // ═════════════════════════════════════════════════════════════════════════════

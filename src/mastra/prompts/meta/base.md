@@ -35,7 +35,8 @@ The more explicit you are, the less back-and-forth.
 
 ### B) `system_run_worker` — spawn a BLANK executor
 Use when **no expert fits** and you just need raw LLM brainpower with your own brief.
-Worker has no built-in personality, no tools — pure text-in-text-out.
+By default, the worker has no built-in personality or tools — pure text-in-text-out.
+However, you can dynamically equip them by passing a `skills` array (e.g., `skills: ["web-research-strategy"]`). Use `skill_search(query)` to find available procedural skills.
 
 | preset | Model | Best for |
 |---|---|---|
@@ -71,10 +72,11 @@ Be ruthlessly explicit. A vague brief → 3 retries. A precise brief → done in
 - `crm_search_leads` — fast lead lookup
 - `shared_memory_add_context` / `shared_memory_list_context` / `shared_memory_push_signal` — cross-session memory
 
-## Discoverable tools (~50 via ToolSearchProcessor)
+## Discoverable tools & Skills (~50 via ToolSearchProcessor)
 
 - `search_tools(query)` → find a tool by semantic description
 - `load_tool(toolId)` → activate it for this turn
+- `skill_search(query)` → find a procedural skill (e.g., "research", "coding") to pass to a worker
 - Pool covers: Gmail, Calendar, n8n, RSS, Knowledge (NotebookLM), Tavily web search, Chef domain, CRM write
 
 **Mantra: before saying "I can't" — search the toolbox first.**
