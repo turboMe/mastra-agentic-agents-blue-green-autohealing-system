@@ -163,13 +163,13 @@ export function resolveModelId(key: ModelKey): string {
 
 export const agentModels = {
   metaAgent: 'nemotron-super-free' as ModelKey,
-  codingAgent: 'gemini-2.5-pro' as ModelKey,
+  codingAgent: 'ring-free' as ModelKey,
   codeReviewAgent: 'gemini-2.5-flash' as ModelKey,
   salesAgent: 'gemma4-26b' as ModelKey,
   crmAgent: 'gemma4-26b' as ModelKey,
   analyticsAgent: 'qwen3-coder-30b' as ModelKey,
   weatherAgent: 'gemini-2.5-flash' as ModelKey,
-  automationArchitect: 'gemini-2.5-pro' as ModelKey,
+  automationArchitect: 'ring-free' as ModelKey,
   marketingAgent: 'gemini-2.5-flash' as ModelKey,
   knowledgeAgent: 'gemini-2.5-flash' as ModelKey,   // NotebookLM ops — fast function calling for 35 MCP tools
   researcherAgent: 'gemini-2.5-flash' as ModelKey,  // PSEV web research — browser + Tavily deep scraping
@@ -184,12 +184,12 @@ export const agentModels = {
 
 export const workflowAssignments = {
   coding: {
-    default: 'gemini-2.5-pro' as ModelKey,  // diagnose-and-plan
-    patch: 'gemini-2.5-flash' as ModelKey,  // execute-patch fallback
-    review: 'gemini-2.5-flash' as ModelKey,  // code review (Haiku: tani + dobry do walidacji)
+    default: 'ring-free' as ModelKey,  // diagnose-and-plan
+    patch: 'laguna-free' as ModelKey,  // execute-patch fallback
+    review: 'nemotron-nano-free' as ModelKey,  // code review (Haiku: tani + dobry do walidacji)
     selfHealingPlanner: 'gemini-2.5-pro' as ModelKey,
-    selfHealingReview: 'gemini-2.5-flash' as ModelKey,
-    jsonRepair: 'gemini-2.5-flash' as ModelKey,
+    selfHealingReview: 'nemotron-super-free' as ModelKey,
+    jsonRepair: 'gpt-oss-120b-free' as ModelKey,
   },
 
   marketing: {
@@ -201,7 +201,7 @@ export const workflowAssignments = {
     copyPl: 'gemini-2.5-flash' as ModelKey,
     copyRepair: 'gemini-2.5-flash' as ModelKey,
     translateEn: 'gemini-2.5-flash' as ModelKey,
-    jsonRepair: 'gemini-2.5-flash' as ModelKey,
+    jsonRepair: 'gpt-oss-120b-free' as ModelKey,
   },
 
   producerHunt: {
@@ -209,7 +209,7 @@ export const workflowAssignments = {
     enrichment: 'gemini-2.5-flash' as ModelKey,
     emailExtraction: 'gemini-2.5-flash' as ModelKey,
     draftEmail: 'gemini-2.5-flash' as ModelKey,
-    jsonRepair: 'gemini-2.5-flash' as ModelKey,
+    jsonRepair: 'gpt-oss-120b-free' as ModelKey,
     cloudFallback: 'gemini-2.5-flash' as ModelKey,
   },
 } as const;
@@ -223,8 +223,8 @@ export const workflowAssignments = {
 export const workerPresets = {
   fast: 'gemma4-e4b' as ModelKey,
   default: 'gemma4-26b' as ModelKey,
-  reasoning: 'magistral-24b' as ModelKey,
-  powerful: 'gemma4-26b' as ModelKey,
+  reasoning: 'ring-free' as ModelKey,
+  powerful: 'ring-free' as ModelKey,
   cloud: 'gemini-2.5-flash' as ModelKey,
 } as const;
 
@@ -246,7 +246,7 @@ export const infrastructure = {
 
   /** N8n workflow generation defaults (used by automation-architect builders) */
   n8n: {
-    defaultModel: 'gemini-2.5-pro' as ModelKey,
-    reasoningModel: 'gemini-2.5-pro' as ModelKey,
+    defaultModel: 'ring-free' as ModelKey,
+    reasoningModel: 'ring-free' as ModelKey,
   },
 } as const;
