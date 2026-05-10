@@ -38,6 +38,7 @@ import { proposalGeneratorWorkflow } from './workflows/sales/proposal-generator'
 import { meetingSchedulerWorkflow } from './workflows/sales/meeting-scheduler';
 import { onboardingChecklistWorkflow } from './workflows/sales/onboarding-checklist';
 import { repoMaintenanceWorkflow } from './workflows/repo-maintenance';
+import { automationClientHuntStrategyWorkflow } from './workflows/automation-client-hunt-strategy';
 
 // Agents
 import { weatherAgent } from './agents/weather-agent';
@@ -446,6 +447,7 @@ export const mastra: Mastra = new Mastra({
     meetingSchedulerWorkflow,
     onboardingChecklistWorkflow,
     repoMaintenanceWorkflow,
+    automationClientHuntStrategyWorkflow,
   },
   agents: {
     weatherAgent,

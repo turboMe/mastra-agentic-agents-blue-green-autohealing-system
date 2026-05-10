@@ -163,14 +163,14 @@ export function resolveModelId(key: ModelKey): string {
 
 export const agentModels = {
   metaAgent: 'nemotron-super-free' as ModelKey,
-  codingAgent: 'nemotron-super-free' as ModelKey,
+  codingAgent: 'gemini-2.5-pro' as ModelKey,
   codeReviewAgent: 'gemini-2.5-flash' as ModelKey,
   salesAgent: 'gemma4-26b' as ModelKey,
   crmAgent: 'gemma4-26b' as ModelKey,
   analyticsAgent: 'qwen3-coder-30b' as ModelKey,
   weatherAgent: 'gemini-2.5-flash' as ModelKey,
   automationArchitect: 'gemini-2.5-pro' as ModelKey,
-  marketingAgent: 'gpt-5.3-mini' as ModelKey,
+  marketingAgent: 'gemini-2.5-flash' as ModelKey,
 } as const;
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -182,11 +182,11 @@ export const agentModels = {
 
 export const workflowAssignments = {
   coding: {
-    default: 'claude-opus-4.6' as ModelKey,  // diagnose-and-plan
+    default: 'gemini-2.5-pro' as ModelKey,  // diagnose-and-plan
     patch: 'gemini-2.5-flash' as ModelKey,  // execute-patch fallback
     review: 'gemini-2.5-flash' as ModelKey,  // code review (Haiku: tani + dobry do walidacji)
-    selfHealingPlanner: 'claude-opus-4.6' as ModelKey,
-    selfHealingReview: 'claude-opus-4.6' as ModelKey,
+    selfHealingPlanner: 'gemini-2.5-pro' as ModelKey,
+    selfHealingReview: 'gemini-2.5-flash' as ModelKey,
     jsonRepair: 'gemini-2.5-flash' as ModelKey,
   },
 
@@ -244,7 +244,7 @@ export const infrastructure = {
 
   /** N8n workflow generation defaults (used by automation-architect builders) */
   n8n: {
-    defaultModel: 'claude-sonnet-4.6' as ModelKey,
-    reasoningModel: 'claude-opus-4.6' as ModelKey,
+    defaultModel: 'gemini-2.5-pro' as ModelKey,
+    reasoningModel: 'gemini-2.5-pro' as ModelKey,
   },
 } as const;
