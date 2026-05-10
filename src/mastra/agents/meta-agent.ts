@@ -113,7 +113,7 @@ export const metaAgent: Agent = new Agent({
       // Phase 1.1 — Observational Memory: compresses long conversations into structured observations
       observationalMemory: {
         model: resolveModelId(infrastructure.observationalMemory),
-        scope: 'resource',  // tolerate requests bez threadId (Mastra 1.32+ rzuca twardo dla scope:'thread')
+        scope: 'thread',  // Zmiana z 'resource' na 'thread' aby izolować kontekst między czatami
         temporalMarkers: true,
         observation: {
           threadTitle: true, // OM auto-generates descriptive thread titles
