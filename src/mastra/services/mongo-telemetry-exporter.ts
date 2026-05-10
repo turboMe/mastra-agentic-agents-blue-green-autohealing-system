@@ -103,6 +103,8 @@ export class MongoTelemetryExporter extends BaseExporter {
             status: isError ? 'error' : 'success',
             durationMs,
             errorMessage: this.errorMessageOf(span),
+            input: this.stringifyPayload(span.input),
+            output: this.stringifyPayload(span.output),
             ...(acc?.lastModel ? { model: acc.lastModel } : {}),
           });
           break;
@@ -121,6 +123,8 @@ export class MongoTelemetryExporter extends BaseExporter {
             status: isError ? 'error' : 'success',
             durationMs,
             errorMessage: this.errorMessageOf(span),
+            input: this.stringifyPayload(span.input),
+            output: this.stringifyPayload(span.output),
             ...(acc?.lastModel ? { model: acc.lastModel } : {}),
             ...(acc && (acc.promptTokens > 0 || acc.completionTokens > 0)
               ? { tokenUsage: { prompt: acc.promptTokens, completion: acc.completionTokens } }
@@ -193,6 +197,21 @@ export class MongoTelemetryExporter extends BaseExporter {
   private errorMessageOf(span: { errorInfo?: { message?: string } | unknown }): string | undefined {
     const ei = span.errorInfo as { message?: string } | undefined;
     return ei?.message;
+  }
+
+  /**
+   * Serialize span input/output for logging.
+   * Returns string (JSON or raw) or undefined. agent-event-log truncates to 500 chars
+   * and runs secrets-redactor — we just need a string here.
+   */
+  private stringifyPayload(value: unknown): string | undefined {
+    if (value === undefined || value === null) return undefined;
+    if (typeof value === 'string') return value;
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
   }
 
   private cleanupStaleTraces(): void {

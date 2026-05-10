@@ -353,6 +353,57 @@ export const mastra: Mastra = new Mastra({
           }
         },
       }),
+      // ── Live Agent Activity (delegations + tool calls timeline) ──
+      // Powers the "Live Activity" tab. Returns recent agent_events for live polling.
+      registerApiRoute('/dashboard/agent-activity', {
+        method: 'GET',
+        handler: async (c: any) => {
+          try {
+            const { getDb } = await import('./lib/mongo.js');
+            const db = await getDb();
+            const url = new URL(c.req.url, 'http://localhost');
+            const sinceParam = url.searchParams.get('since');
+            const limitParam = parseInt(url.searchParams.get('limit') ?? '100', 10);
+            const limit = Math.min(Math.max(limitParam, 1), 500);
+
+            const since = sinceParam
+              ? new Date(sinceParam)
+              : new Date(Date.now() - 5 * 60 * 1000); // default: ostatnie 5 min
+
+            const events = await db.collection('agent_events')
+              .find({ timestamp: { $gte: since } })
+              .sort({ timestamp: -1 })
+              .limit(limit)
+              .project({
+                _id: 0,
+                eventId: 1,
+                timestamp: 1,
+                agentId: 1,
+                type: 1,
+                toolId: 1,
+                taskId: 1,
+                status: 1,
+                durationMs: 1,
+                input: 1,
+                output: 1,
+                errorMessage: 1,
+                model: 1,
+                tokenUsage: 1,
+                metadata: 1,
+              })
+              .toArray();
+
+            return c.json({
+              events,
+              count: events.length,
+              since: since.toISOString(),
+              now: new Date().toISOString(),
+            });
+          } catch (err) {
+            return c.json({ error: (err as Error).message }, 500);
+          }
+        },
+      }),
       // ── Dashboard UI (Faza 7.6 — Sprint 2) ──
       // Single-file HTML + Chart.js, no build step. Consumes /dashboard/* JSON endpoints.
       registerApiRoute('/dashboard-ui', {
@@ -455,7 +506,13 @@ export const mastra: Mastra = new Mastra({
     filesystem: new LocalFilesystem({ basePath: '/projekty/Jarvis-Projects' }),
     sandbox: new LocalSandbox({
       workingDirectory: '/projekty/Jarvis-Projects',
-      isolation: 'bwrap',
+      // bwrap nie dziala na tym hoscie (Permission denied przy uid map).
+      // Spojnie z coding-workspace: env-driven, default 'none'.
+      isolation:
+        process.env.META_SANDBOX_ISOLATION === 'bwrap' ||
+        process.env.META_SANDBOX_ISOLATION === 'seatbelt'
+          ? process.env.META_SANDBOX_ISOLATION
+          : 'none',
       nativeSandbox: {
         allowNetwork: true,
       },

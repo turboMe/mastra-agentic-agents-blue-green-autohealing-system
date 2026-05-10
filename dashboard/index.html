@@ -139,6 +139,133 @@
     }
     table td.num { text-align: right; font-variant-numeric: tabular-nums; }
     table tr:hover td { background: var(--bg-card-hover); }
+
+    /* ── Live Activity ─────────────────────────────────────── */
+    .live-dot {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--green);
+      vertical-align: middle;
+      margin-left: 8px;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+    .live-dot.paused { background: var(--text-dim); animation: none; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .live-controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 8px 0 12px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 12px;
+      font-size: 13px;
+      color: var(--text-muted);
+      flex-wrap: wrap;
+    }
+    .live-controls select {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 3px 8px;
+    }
+    .live-meta { margin-left: auto; font-variant-numeric: tabular-nums; }
+    .live-btn {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 12px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .live-btn:hover { background: var(--bg-card-hover); }
+    .live-trace {
+      border-left: 3px solid var(--border);
+      margin: 8px 0;
+      padding: 8px 12px;
+      background: var(--bg);
+      border-radius: 0 4px 4px 0;
+    }
+    .live-trace.has-error { border-left-color: var(--red); }
+    .live-trace.has-delegation { border-left-color: var(--purple); }
+    .live-trace-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+    .live-event {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 0;
+      font-size: 13px;
+      border-top: 1px dashed var(--border);
+      cursor: pointer;
+    }
+    .live-event:first-child { border-top: none; }
+    .live-event:hover { background: var(--bg-card-hover); }
+    .live-event-time {
+      color: var(--text-dim);
+      font-variant-numeric: tabular-nums;
+      font-size: 11px;
+      min-width: 70px;
+    }
+    .live-agent-badge {
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--bg-card-hover);
+      color: var(--text);
+    }
+    .live-agent-badge.meta { background: rgba(168, 85, 247, 0.2); color: var(--purple); }
+    .live-agent-badge.coding { background: rgba(59, 130, 246, 0.2); color: var(--accent); }
+    .live-agent-badge.review { background: rgba(34, 197, 94, 0.2); color: var(--green); }
+    .live-event-tool {
+      font-family: 'SF Mono', Consolas, monospace;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .live-event-status {
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .live-event-status.success { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+    .live-event-status.error { background: rgba(239, 68, 68, 0.15); color: var(--red); }
+    .live-event-duration { color: var(--text-dim); font-size: 11px; margin-left: auto; }
+    .live-event-arrow { color: var(--purple); font-weight: bold; }
+    .live-event-details {
+      display: none;
+      margin: 8px 0 4px 78px;
+      padding: 8px;
+      background: var(--bg-card-hover);
+      border-radius: 4px;
+      font-family: 'SF Mono', Consolas, monospace;
+      font-size: 11px;
+      color: var(--text-muted);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 240px;
+      overflow-y: auto;
+    }
+    .live-event.expanded .live-event-details { display: block; }
+    .live-event-details .label {
+      color: var(--accent);
+      font-weight: 600;
+      display: block;
+      margin-top: 4px;
+    }
+    .live-event-details .label:first-child { margin-top: 0; }
+    .live-event-details .err { color: var(--red); }
     .pill {
       display: inline-block;
       padding: 0.15rem 0.5rem;
@@ -276,6 +403,30 @@
           <div class="chart-title">Top Skills (by uses)</div>
           <div class="chart-wrapper"><canvas id="skillsChart"></canvas></div>
         </div>
+      </div>
+    </section>
+
+    <!-- ── Live Agent Activity (delegations + tool calls) ────── -->
+    <section>
+      <h2>
+        Live Agent Activity
+        <span class="live-dot" id="liveDot" title="Auto-refresh status"></span>
+      </h2>
+      <div class="card live-activity">
+        <div class="live-controls">
+          <label><input type="checkbox" id="liveAutoRefresh" checked /> Auto-refresh co 2s</label>
+          <label>Pokaż ostatnie:
+            <select id="liveWindow">
+              <option value="60">1 min</option>
+              <option value="300" selected>5 min</option>
+              <option value="900">15 min</option>
+              <option value="3600">1h</option>
+            </select>
+          </label>
+          <span class="live-meta" id="liveMeta">—</span>
+          <button id="liveClearBtn" class="live-btn">Wyczyść</button>
+        </div>
+        <div id="liveActivityList"><div class="empty">Brak aktywności w wybranym oknie</div></div>
       </div>
     </section>
 
@@ -671,6 +822,166 @@
     }
 
     // ────────────────────────────────────────────────────────
+    // Live Activity (delegacje + tool calls live timeline)
+    // ────────────────────────────────────────────────────────
+    const liveState = {
+      timer: null,
+      windowSec: 300,
+      autoRefresh: true,
+      events: new Map(),       // eventId → event (do dedup)
+      lastFetchTs: null,
+    };
+
+    const AGENT_BADGE_CLASS = (agentId) => {
+      const id = (agentId || '').toLowerCase();
+      if (id.includes('meta')) return 'meta';
+      if (id.includes('coding') || id.includes('code-review')) return id.includes('review') ? 'review' : 'coding';
+      return '';
+    };
+
+    const fmtLocalTime = (iso) => {
+      const d = new Date(iso);
+      return d.toLocaleTimeString('pl-PL', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+    };
+
+    const escapeHtml = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+    function renderLiveEvent(ev) {
+      const badgeClass = AGENT_BADGE_CLASS(ev.agentId);
+      const isError = ev.status === 'error' || ev.errorMessage;
+      const isDelegation = ev.type === 'delegation';
+      const arrow = isDelegation ? '<span class="live-event-arrow">→</span>' : '';
+
+      let label;
+      if (ev.type === 'delegation') label = 'delegation';
+      else if (ev.type === 'task_completed') label = 'task ✓';
+      else if (ev.type === 'task_failed') label = 'task ✗';
+      else if (ev.toolId) label = ev.toolId;
+      else label = ev.type;
+
+      const detailsParts = [];
+      if (ev.errorMessage) detailsParts.push(`<span class="label err">ERROR:</span>${escapeHtml(ev.errorMessage)}`);
+      if (ev.input) detailsParts.push(`<span class="label">IN:</span>${escapeHtml(ev.input)}`);
+      if (ev.output) detailsParts.push(`<span class="label">OUT:</span>${escapeHtml(ev.output)}`);
+      if (ev.model) detailsParts.push(`<span class="label">model:</span>${escapeHtml(ev.model)}`);
+      if (ev.tokenUsage) detailsParts.push(`<span class="label">tokens:</span>prompt=${ev.tokenUsage.prompt} completion=${ev.tokenUsage.completion}`);
+      const details = detailsParts.length
+        ? `<div class="live-event-details">${detailsParts.join('')}</div>`
+        : '';
+
+      return `
+        <div class="live-event ${isError ? 'has-error' : ''}" data-event-id="${ev.eventId}">
+          <span class="live-event-time">${fmtLocalTime(ev.timestamp)}</span>
+          <span class="live-agent-badge ${badgeClass}">${escapeHtml(ev.agentId || 'unknown')}</span>
+          ${arrow}
+          <span class="live-event-tool">${escapeHtml(label)}</span>
+          <span class="live-event-status ${isError ? 'error' : 'success'}">${ev.status || '-'}</span>
+          <span class="live-event-duration">${ev.durationMs ? ev.durationMs + 'ms' : ''}</span>
+        </div>
+        ${details}
+      `;
+    }
+
+    function renderLiveActivity() {
+      const list = document.getElementById('liveActivityList');
+      const allEvents = Array.from(liveState.events.values())
+        .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+      if (!allEvents.length) {
+        list.innerHTML = '<div class="empty">Brak aktywności w wybranym oknie</div>';
+        return;
+      }
+
+      // Group by taskId (trace id) preserving newest-first order
+      const groups = new Map();
+      for (const ev of allEvents) {
+        const key = ev.taskId || ev.eventId;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(ev);
+      }
+
+      const html = Array.from(groups.entries()).map(([taskId, events]) => {
+        const hasError = events.some(e => e.status === 'error' || e.errorMessage);
+        const hasDelegation = events.some(e => e.type === 'delegation');
+        const cls = hasError ? 'has-error' : (hasDelegation ? 'has-delegation' : '');
+        const headerAgent = events[events.length - 1].agentId || 'unknown'; // root agent
+        const eventCount = events.length;
+        return `
+          <div class="live-trace ${cls}">
+            <div class="live-trace-header">
+              <span class="live-agent-badge ${AGENT_BADGE_CLASS(headerAgent)}">${escapeHtml(headerAgent)}</span>
+              <span style="color: var(--text-dim)">trace ${escapeHtml(taskId.slice(0, 12))}</span>
+              <span style="color: var(--text-dim); margin-left: auto">${eventCount} event(s)</span>
+            </div>
+            ${events.map(renderLiveEvent).join('')}
+          </div>
+        `;
+      }).join('');
+
+      list.innerHTML = html;
+
+      // Click handler for event expand/collapse
+      list.querySelectorAll('.live-event').forEach(el => {
+        el.addEventListener('click', () => el.classList.toggle('expanded'));
+      });
+    }
+
+    async function loadLiveActivity() {
+      try {
+        const since = new Date(Date.now() - liveState.windowSec * 1000).toISOString();
+        const res = await fetchEndpoint('/agent-activity', { since, limit: '200' });
+
+        // Drop events outside window, then upsert fresh ones
+        const cutoff = Date.now() - liveState.windowSec * 1000;
+        for (const [id, ev] of liveState.events) {
+          if (new Date(ev.timestamp).getTime() < cutoff) liveState.events.delete(id);
+        }
+        for (const ev of res.events) {
+          liveState.events.set(ev.eventId, ev);
+        }
+        liveState.lastFetchTs = new Date();
+
+        document.getElementById('liveMeta').textContent =
+          `${liveState.events.size} eventów · odświeżono ${liveState.lastFetchTs.toLocaleTimeString('pl-PL', {hour12: false})}`;
+        renderLiveActivity();
+      } catch (err) {
+        document.getElementById('liveMeta').textContent = `Błąd: ${err.message}`;
+      }
+    }
+
+    function startLivePolling() {
+      if (liveState.timer) clearInterval(liveState.timer);
+      if (!liveState.autoRefresh) return;
+      loadLiveActivity();
+      liveState.timer = setInterval(loadLiveActivity, 2000);
+      document.getElementById('liveDot').classList.remove('paused');
+    }
+
+    function stopLivePolling() {
+      if (liveState.timer) clearInterval(liveState.timer);
+      liveState.timer = null;
+      document.getElementById('liveDot').classList.add('paused');
+    }
+
+    document.getElementById('liveAutoRefresh').addEventListener('change', (e) => {
+      liveState.autoRefresh = e.target.checked;
+      if (liveState.autoRefresh) startLivePolling();
+      else stopLivePolling();
+    });
+
+    document.getElementById('liveWindow').addEventListener('change', (e) => {
+      liveState.windowSec = parseInt(e.target.value, 10);
+      liveState.events.clear();
+      loadLiveActivity();
+    });
+
+    document.getElementById('liveClearBtn').addEventListener('click', () => {
+      liveState.events.clear();
+      renderLiveActivity();
+      document.getElementById('liveMeta').textContent = 'Wyczyszczone';
+    });
+
+    // ────────────────────────────────────────────────────────
     // Wire up
     // ────────────────────────────────────────────────────────
     document.getElementById('windowSelect').addEventListener('change', (e) => {
@@ -695,6 +1006,7 @@
 
     // Initial load
     loadAll();
+    startLivePolling();
   </script>
 </body>
 </html>
