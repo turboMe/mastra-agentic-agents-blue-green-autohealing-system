@@ -50,3 +50,7 @@ Thumbs.db
 .vscode/settings.json
 agent-logs.txt
 _external/
+
+# NotebookLM MCP — local Chrome profile + config (sensitive: cookies/session)
+chrome_profile_notebooklm/
+notebooklm-config.json

@@ -24,9 +24,17 @@ import { skillLoadTool } from '../tools/system/skill-load.js';
 
 const researcherInstructions = await loadPrompt('shared/subagent-researcher');
 
-const mcpToolsets = await mcpClient.listToolsets();
-const playwrightTools = mcpToolsets['playwright'] ?? {};
-const firecrawlTools = mcpToolsets['firecrawl'] ?? {};
+// Defensywnie: nie pozwól żeby padły MCP serwery (np. notebooklm/Chrome) zablokowały start agenta.
+// Researcher i tak ma użyteczny baseline (Tavily + skill tools); playwright/firecrawl to bonus.
+let playwrightTools: Record<string, any> = {};
+let firecrawlTools: Record<string, any> = {};
+try {
+  const mcpToolsets = await mcpClient.listToolsets();
+  playwrightTools = mcpToolsets['playwright'] ?? {};
+  firecrawlTools = mcpToolsets['firecrawl'] ?? {};
+} catch (err) {
+  console.warn('[researcher-agent] MCP listToolsets failed — startuję bez playwright/firecrawl:', (err as Error).message);
+}
 
 export const researcherAgent = new Agent({
   id: 'researcher-agent',

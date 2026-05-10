@@ -96,9 +96,14 @@ export function additionalSearchQueryForType(
 
 /**
  * Pytanie do NotebookLM dopasowane do typu firmy.
- * Każdy szablon kończy się sekcjami `PERSONALIZATION_HOOK:` i `DEEP_ANALYSIS:` —
- * regex w enrich-leads (`/PERSONALIZATION_HOOK:\s*(.*)/` i `/DEEP_ANALYSIS:\s*(.*)/s`)
- * wymaga tych dokładnych nagłówków.
+ * Każdy szablon kończy się sekcjami `PERSONALIZATION_HOOK:`, `DEEP_ANALYSIS:`
+ * oraz `EXTRACT_EMAIL:` — regex w enrich-leads
+ * (`/PERSONALIZATION_HOOK:\s*(.*)/`, `/DEEP_ANALYSIS:\s*(.*)/s`,
+ * `/EXTRACT_EMAIL:\s*(.*)/`) wymaga tych dokładnych nagłówków.
+ *
+ * EXTRACT_EMAIL: NotebookLM widzi pełne treści stron firmy (w tym /kontakt),
+ * więc to najlepszy moment na ekstrakcję email — zamiast tworzyć osobny
+ * notebook w extract-emails step. Wartość "null" jeśli brak.
  */
 export function researchQuestionFor(
   supplierType: SupplierType,
@@ -117,7 +122,8 @@ export function researchQuestionFor(
 
 Na tej podstawie:
 - PERSONALIZATION_HOOK: 1 zdanie, max 20 słów, konkretne odniesienie do ich produktu lub historii.
-- DEEP_ANALYSIS: 4-6 zdań o tym, co produkują, dla kogo i co GastroBridge może im zaproponować.`;
+- DEEP_ANALYSIS: 4-6 zdań o tym, co produkują, dla kogo i co GastroBridge może im zaproponować.
+- EXTRACT_EMAIL: jeden najlepszy adres e-mail z /kontakt / stopki / strony zamówień, lub "null" jeśli brak (priorytet: kontakt handlowy / sprzedaż > ogólny biuro@ > brak).`;
 
     case 'wholesaler':
       return `Co oferuje hurtownia "${company}"?
@@ -128,7 +134,8 @@ Na tej podstawie:
 
 Na tej podstawie:
 - PERSONALIZATION_HOOK: 1 zdanie, max 20 słów, odniesienie do ich oferty HoReCa lub konkretnej kategorii.
-- DEEP_ANALYSIS: 4-6 zdań o portfolio, zasięgu i tym, jak GastroBridge może im pomóc dotrzeć do nowych restauracji.`;
+- DEEP_ANALYSIS: 4-6 zdań o portfolio, zasięgu i tym, jak GastroBridge może im pomóc dotrzeć do nowych restauracji.
+- EXTRACT_EMAIL: jeden najlepszy adres e-mail z /kontakt / stopki / cennika, lub "null" jeśli brak (priorytet: kontakt handlowy / HoReCa > biuro > brak).`;
 
     case 'distributor':
       return `Co dystrybuuje firma "${company}"?
@@ -139,7 +146,8 @@ Na tej podstawie:
 
 Na tej podstawie:
 - PERSONALIZATION_HOOK: 1 zdanie, max 20 słów, odwołanie do konkretnej marki z ich portfolio lub specjalizacji.
-- DEEP_ANALYSIS: 4-6 zdań o ich pozycji rynkowej i tym, czemu warto, żeby restauracje GastroBridge ich zauważyły.`;
+- DEEP_ANALYSIS: 4-6 zdań o ich pozycji rynkowej i tym, czemu warto, żeby restauracje GastroBridge ich zauważyły.
+- EXTRACT_EMAIL: jeden najlepszy adres e-mail z /kontakt / stopki, lub "null" jeśli brak (priorytet: sprzedaż / przedstawiciel handlowy > biuro > brak).`;
 
     case 'cooperative':
     case 'producer_group':
@@ -152,7 +160,8 @@ Na tej podstawie:
 
 Na tej podstawie:
 - PERSONALIZATION_HOOK: 1 zdanie, max 20 słów, odniesienie do skali zrzeszenia, regionu lub charakteru kooperatywy.
-- DEEP_ANALYSIS: 4-6 zdań o strukturze, asortymencie członków i potencjale współpracy z GastroBridge.`;
+- DEEP_ANALYSIS: 4-6 zdań o strukturze, asortymencie członków i potencjale współpracy z GastroBridge.
+- EXTRACT_EMAIL: jeden najlepszy adres e-mail z /kontakt / stopki, lub "null" jeśli brak (priorytet: koordynator / zarząd > sekretariat > brak).`;
 
     case 'importer':
       return `Co importuje firma "${company}"?
@@ -163,7 +172,8 @@ Na tej podstawie:
 
 Na tej podstawie:
 - PERSONALIZATION_HOOK: 1 zdanie, max 20 słów, odniesienie do ich konkretnej marki, kraju pochodzenia lub specjalizacji.
-- DEEP_ANALYSIS: 4-6 zdań o ich portfolio i wartości dla restauracji oraz tym, jak GastroBridge może wspierać ich dystrybucję.`;
+- DEEP_ANALYSIS: 4-6 zdań o ich portfolio i wartości dla restauracji oraz tym, jak GastroBridge może wspierać ich dystrybucję.
+- EXTRACT_EMAIL: jeden najlepszy adres e-mail z /kontakt / stopki, lub "null" jeśli brak (priorytet: sprzedaż / HoReCa > biuro > brak).`;
 
     case 'unknown':
     default:
@@ -175,7 +185,8 @@ Na tej podstawie:
 
 Na tej podstawie:
 - PERSONALIZATION_HOOK: 1 zdanie, max 20 słów, neutralne (nie zakładaj typu).
-- DEEP_ANALYSIS: 4-6 zdań — co konkretnie wiadomo o firmie ze źródeł i co GastroBridge może jej zaproponować.`;
+- DEEP_ANALYSIS: 4-6 zdań — co konkretnie wiadomo o firmie ze źródeł i co GastroBridge może jej zaproponować.
+- EXTRACT_EMAIL: jeden najlepszy adres e-mail z /kontakt / stopki, lub "null" jeśli brak.`;
   }
 }
 

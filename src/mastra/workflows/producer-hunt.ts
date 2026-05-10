@@ -28,6 +28,8 @@ import {
   producerHuntJsonRepairAgent,
   producerHuntCloudFallbackAgent,
 } from '../agents/marketing-agent';
+import { researcherAgent } from '../agents/researcher-agent.js';
+import { knowledgeAgent } from '../agents/knowledge-agent.js';
 import { workflowModels } from '../config/workflow-models.js';
 import { getDb } from '../lib/mongo';
 import { GmailService } from '../tools/google/gmail.js';
@@ -68,6 +70,11 @@ import {
   researchQuestionFor,
   finalEnrichmentPromptFor,
 } from './producer-hunt/enrichment-prompts.js';
+import {
+  researcherTaskFor,
+  discoveryQuestionFor,
+  knowledgeAgentDiscoveryInstruction,
+} from './producer-hunt/discovery-prompts.js';
 import {
   draftPromptFor,
   fallbackDraftFor,
@@ -173,6 +180,36 @@ const discoveryResponseSchema = z.object({
   leads: z.array(leadSchema).default([]),
 });
 
+// Output researcher-agent (PSEV) — Blok 1a
+const researcherFindingSchema = z.object({
+  claim: z.string().optional(),
+  sources: z.array(z.string()).default([]),
+  verificationLevel: z.enum(['high', 'medium', 'low']).optional(),
+});
+
+const researcherOutputSchema = z.object({
+  status: z.enum(['completed', 'partial', 'failed']).optional(),
+  summary: z.string().optional(),
+  confidence: z.string().optional(),
+  findings: z.array(researcherFindingSchema).default([]),
+  contradictions: z.array(z.string()).optional(),
+  notes: z.string().optional(),
+});
+
+// Output knowledge-agent (NLM discovery) — Blok 1b
+const nlmDiscoveryOutputSchema = z.object({
+  status: z.enum(['completed', 'partial', 'failed']).optional(),
+  notebookId: z.string().optional(),
+  leads: z.array(leadSchema).default([]),
+  notes: z.string().optional(),
+});
+
+// Source list (URL + opcjonalny tytuł), przekazywane z Bloku 1a → 1b
+const sourceItemSchema = z.object({
+  url: z.string(),
+  title: z.string().optional(),
+});
+
 const isValidEmail = (e?: string | null): e is string =>
   !!normalizeOptionalText(e) && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeOptionalText(e)!);
 
@@ -270,15 +307,195 @@ const tryParseJson = <T = unknown>(text: string): T | null => {
   }
 };
 
-// ── Step 01: discover-leads ─────────────────────────────────────────────────
-const discoverLeadsStep = createStep({
-  id: 'discover-leads',
-  description: 'Wyszukuje lokalnych producentów w zadanym regionie (NotebookLM-driven discovery).',
+// ── Step 01a: gather-sources ────────────────────────────────────────────────
+// Researcher Agent (PSEV) szuka URL stron firm-kandydatów. Tavily multi-round
+// jako fallback gdy researcher zwróci niewystarczająco źródeł.
+const gatherSourcesStep = createStep({
+  id: 'gather-sources',
+  description: 'Researcher Agent (PSEV) szuka URL kandydatów; Tavily multi-round jako fallback.',
   inputSchema: z.object({
     region: z.string(),
     count: z.number().default(10),
     productType: z.string().optional(),
     supplierTypes: z.array(supplierTypeSchema).optional(),
+    userContext: z.string().optional(),
+  }),
+  outputSchema: z.object({
+    taskId: z.string(),
+    region: z.string(),
+    count: z.number(),
+    productType: z.string().nullable(),
+    userContext: z.string().nullable(),
+    acceptableSupplierTypes: z.array(supplierTypeSchema),
+    sources: z.array(sourceItemSchema),
+  }),
+  execute: async (context) => {
+    const taskId = `producer-hunt-${randomUUID().slice(0, 8)}`;
+    const { region, count, productType, supplierTypes, userContext } = context.inputData;
+    const acceptableSupplierTypes = (supplierTypes && supplierTypes.length > 0
+      ? supplierTypes.filter((t) => t !== 'unknown')
+      : ACCEPTABLE_SUPPLIER_TYPES) as SupplierType[];
+    console.log(`[producer-hunt:${taskId}] gather-sources region=${region} spec=${productType ?? 'all'} types=${acceptableSupplierTypes.join(',')} ctx=${userContext ? 'yes' : 'no'}`);
+
+    // Preflight checks (modele dla downstream stepów)
+    const models = workflowModels.producerHunt;
+    assertSafeProducerHuntModel(models.discovery, 'discovery', taskId);
+    assertSafeProducerHuntModel(models.enrichment, 'enrichment', taskId);
+    assertSafeProducerHuntModel(models.draftEmail, 'draftEmail', taskId);
+
+    const isUsableForNotebook = (url: string) => {
+      const lower = url.toLowerCase();
+      if (SOCIAL_AND_NLM_INCOMPATIBLE_HINTS.some((d) => lower.includes(d))) return false;
+      if (EXCLUDED_DOMAIN_HINTS.some((d) => lower.includes(d))) return false;
+      return true;
+    };
+
+    // ── 1. Researcher Agent (PSEV) — primary source ─────────────────────
+    const collected = new Map<string, { url: string; title?: string }>();
+    let researcherStatus: 'completed' | 'partial' | 'failed' = 'failed';
+    let researcherFindings = 0;
+    try {
+      const brief = researcherTaskFor({
+        region,
+        productType,
+        acceptableSupplierTypes,
+        count,
+        userContext,
+      });
+      console.log(`[producer-hunt:${taskId}] researcher: PSEV brief sent (target ~${count * 3} URLs)`);
+      const res = await researcherAgent.generate([{ role: 'user', content: brief }]);
+      const parsed = tryParseJson<unknown>(res.text);
+      const validation = researcherOutputSchema.safeParse(parsed);
+      if (validation.success) {
+        researcherStatus = validation.data.status ?? 'completed';
+        for (const finding of validation.data.findings) {
+          researcherFindings++;
+          for (const url of finding.sources) {
+            if (!url || typeof url !== 'string') continue;
+            if (collected.has(url)) continue;
+            if (!isUsableForNotebook(url)) continue;
+            collected.set(url, { url, title: finding.claim });
+          }
+        }
+        console.log(`[producer-hunt:${taskId}] researcher: status=${researcherStatus}, findings=${researcherFindings}, usable URLs=${collected.size}`);
+      } else {
+        console.warn(`[producer-hunt:${taskId}] researcher: output nieparsowalny — przechodzę do Tavily fallback`);
+      }
+    } catch (err) {
+      console.warn(`[producer-hunt:${taskId}] researcher fail:`, (err as Error).message);
+    }
+
+    // ── 2. Tavily multi-round fallback gdy researcher dał za mało ─────────
+    type SearchHit = { title: string; url: string; content: string; score: number };
+    const accumulatedHits = new Map<string, SearchHit>();
+    let queriesIssued = 0;
+
+    if (collected.size < count * 2) {
+      console.log(`[producer-hunt:${taskId}] tavily fallback start (researcher dał ${collected.size}, target=${count * 2})`);
+
+      const runQueries = async (queries: string[], roundLabel: string) => {
+        const remaining = Math.max(0, TAVILY_QUERY_BUDGET - queriesIssued);
+        const slice = queries.slice(0, remaining);
+        if (slice.length === 0) {
+          console.log(`[producer-hunt:${taskId}] ${roundLabel}: query budget exhausted`);
+          return;
+        }
+        queriesIssued += slice.length;
+        const responses = await Promise.all(
+          slice.map((q) => searchWebTool.execute!({ query: q, maxResults: 5 }, {} as any)),
+        );
+        for (const res of responses) {
+          if (!res || !('success' in res) || !res.success) continue;
+          for (const hit of res.results as SearchHit[]) {
+            if (!accumulatedHits.has(hit.url)) accumulatedHits.set(hit.url, hit);
+          }
+        }
+      };
+
+      const activeProfiles = acceptableSupplierTypes
+        .map((t) => DISCOVERY_PROFILES[t as Exclude<SupplierType, 'unknown'>])
+        .filter(Boolean);
+
+      const round1Queries: string[] = [];
+      for (const profile of activeProfiles) {
+        const base = profile.baseQueries(region, productType);
+        const niche = profile.nicheQueries(region, productType);
+        const merged = [...base, ...niche].slice(0, MAX_QUERIES_PER_PROFILE_ROUND_1);
+        round1Queries.push(...merged);
+      }
+      console.log(`[producer-hunt:${taskId}] tavily round1: ${round1Queries.length} queries across ${activeProfiles.length} profiles`);
+      await runQueries(round1Queries, 'tavily round1');
+
+      if (accumulatedHits.size < count * 2 && queriesIssued < TAVILY_QUERY_BUDGET) {
+        const regionTokens = getRegionTokens(region);
+        const cities = regionTokens.filter((t) => t.length > 4 && !t.includes('skie') && !t.includes('slask')).slice(0, 4);
+        const round2Queries: string[] = [];
+        for (const profile of activeProfiles) {
+          for (const city of cities) {
+            round2Queries.push(...profile.cityQueries(region, city, productType));
+          }
+        }
+        if (round2Queries.length > 0) {
+          console.log(`[producer-hunt:${taskId}] tavily round2: ${round2Queries.length} city-level queries (cities=${cities.join(',')})`);
+          await runQueries(round2Queries, 'tavily round2');
+        }
+      }
+
+      for (const hit of accumulatedHits.values()) {
+        if (collected.has(hit.url)) continue;
+        if (!isUsableForNotebook(hit.url)) continue;
+        collected.set(hit.url, { url: hit.url, title: hit.title });
+      }
+    }
+
+    const sources = Array.from(collected.values()).slice(0, 16);
+    console.log(`[producer-hunt:${taskId}] gather-sources finished: ${sources.length} URLs (researcher findings=${researcherFindings}, tavily queries=${queriesIssued}/${TAVILY_QUERY_BUDGET}, raw tavily hits=${accumulatedHits.size}).`);
+
+    await logProducerHuntEvent({
+      taskId,
+      stepId: 'gather-sources',
+      event: 'sources_summary',
+      metrics: {
+        region,
+        productType: productType ?? null,
+        requestedCount: count,
+        userContext: userContext ? userContext.slice(0, 200) : null,
+        acceptableSupplierTypes,
+        researcherStatus,
+        researcherFindings,
+        tavilyQueriesIssued: queriesIssued,
+        tavilyQueryBudget: TAVILY_QUERY_BUDGET,
+        tavilyRawHits: accumulatedHits.size,
+        finalSources: sources.length,
+      },
+    });
+
+    return {
+      taskId,
+      region,
+      count,
+      productType: productType ?? null,
+      userContext: userContext ?? null,
+      acceptableSupplierTypes,
+      sources,
+    };
+  },
+});
+
+// ── Step 01b: discover-via-nlm ──────────────────────────────────────────────
+// Knowledge Agent (NotebookLM) tworzy notebook ze źródeł i odpytuje go o listę
+// firm. Fallback: LLM ze snippetów (gdy NLM zawiódł lub zwrócił mało wyników).
+const discoverViaNlmStep = createStep({
+  id: 'discover-via-nlm',
+  description: 'Knowledge Agent ładuje źródła do NotebookLM i odpytuje o listę firm.',
+  inputSchema: z.object({
+    taskId: z.string(),
+    region: z.string(),
+    count: z.number(),
+    productType: z.string().nullable(),
+    userContext: z.string().nullable(),
+    acceptableSupplierTypes: z.array(supplierTypeSchema),
+    sources: z.array(sourceItemSchema),
   }),
   outputSchema: z.object({
     taskId: z.string(),
@@ -287,223 +504,61 @@ const discoverLeadsStep = createStep({
     acceptableSupplierTypes: z.array(supplierTypeSchema),
   }),
   execute: async (context) => {
-    const taskId = `producer-hunt-${randomUUID().slice(0, 8)}`;
-    const { region, count, productType, supplierTypes } = context.inputData;
-    const acceptableSupplierTypes = (supplierTypes && supplierTypes.length > 0
-      ? supplierTypes.filter((t) => t !== 'unknown')
-      : ACCEPTABLE_SUPPLIER_TYPES) as SupplierType[];
-    console.log(`[producer-hunt:${taskId}] discover-leads region=${region} spec=${productType ?? 'all'} types=${acceptableSupplierTypes.join(',')}`);
-
-    // Preflight checks
-    const models = workflowModels.producerHunt;
-    assertSafeProducerHuntModel(models.discovery, 'discovery', taskId);
-    assertSafeProducerHuntModel(models.enrichment, 'enrichment', taskId);
-    assertSafeProducerHuntModel(models.draftEmail, 'draftEmail', taskId);
-
-    // 1. Multi-profile, multi-round Tavily search z twardym budżetem.
-    type SearchHit = { title: string; url: string; content: string; score: number };
-    const accumulatedHits = new Map<string, SearchHit>();
-    let queriesIssued = 0;
-
-    const runQueries = async (queries: string[], roundLabel: string) => {
-      const remaining = Math.max(0, TAVILY_QUERY_BUDGET - queriesIssued);
-      const slice = queries.slice(0, remaining);
-      if (slice.length === 0) {
-        console.log(`[producer-hunt:${taskId}] ${roundLabel}: query budget exhausted`);
-        return;
-      }
-      queriesIssued += slice.length;
-      const responses = await Promise.all(
-        slice.map((q) => searchWebTool.execute!({ query: q, maxResults: 5 }, {} as any)),
-      );
-      for (const res of responses) {
-        if (!res || !('success' in res) || !res.success) continue;
-        for (const hit of res.results as SearchHit[]) {
-          if (!accumulatedHits.has(hit.url)) accumulatedHits.set(hit.url, hit);
-        }
-      }
-    };
-
-    const activeProfiles = acceptableSupplierTypes
-      .map((t) => DISCOVERY_PROFILES[t as Exclude<SupplierType, 'unknown'>])
-      .filter(Boolean);
-
-    // Runda 1: bazowe + niszowe (limit per profil)
-    const round1Queries: string[] = [];
-    for (const profile of activeProfiles) {
-      const base = profile.baseQueries(region, productType);
-      const niche = profile.nicheQueries(region, productType);
-      const merged = [...base, ...niche].slice(0, MAX_QUERIES_PER_PROFILE_ROUND_1);
-      round1Queries.push(...merged);
-    }
-    console.log(`[producer-hunt:${taskId}] discover round1: ${round1Queries.length} queries across ${activeProfiles.length} profiles`);
-    await runQueries(round1Queries, 'discover round1');
-
-    // Runda 2: city-level fallback gdy mamy < count*2 surowych hitów
-    if (accumulatedHits.size < count * 2 && queriesIssued < TAVILY_QUERY_BUDGET) {
-      const regionTokens = getRegionTokens(region);
-      // bierz tylko miasta (skip warianty regionu typu "slask", "slaskie")
-      const cities = regionTokens.filter((t) => t.length > 4 && !t.includes('skie') && !t.includes('slask')).slice(0, 4);
-      const round2Queries: string[] = [];
-      for (const profile of activeProfiles) {
-        for (const city of cities) {
-          round2Queries.push(...profile.cityQueries(region, city, productType));
-        }
-      }
-      if (round2Queries.length > 0) {
-        console.log(`[producer-hunt:${taskId}] discover round2: ${round2Queries.length} city-level queries (cities=${cities.join(',')})`);
-        await runQueries(round2Queries, 'discover round2');
-      }
-    }
-
-    const uniqueResults = Array.from(accumulatedHits.values());
-
-    // Filtr URL przed NotebookLM:
-    //  - odrzuć NLM-incompatible (social, video)
-    //  - odrzuć B2C marketplaces / sieci handlowe
-    //  - dopuść hurtownie/dystrybutorów (nie odrzucamy domen typu hurtownia.pl)
-    const isUsableForNotebook = (url: string) => {
-      const lower = url.toLowerCase();
-      if (SOCIAL_AND_NLM_INCOMPATIBLE_HINTS.some((d) => lower.includes(d))) return false;
-      if (EXCLUDED_DOMAIN_HINTS.some((d) => lower.includes(d))) return false;
-      return true;
-    };
-
-    const topUrls = uniqueResults.filter((r) => isUsableForNotebook(r.url)).slice(0, 12);
-
-    console.log(`[producer-hunt:${taskId}] total unique links: ${uniqueResults.length}, queries issued: ${queriesIssued}/${TAVILY_QUERY_BUDGET}, top ${topUrls.length} → NotebookLM.`);
+    const { taskId, region, count, productType, userContext, acceptableSupplierTypes, sources } = context.inputData;
 
     let leads: Lead[] = [];
-    let notebookId = '';
+    let nlmStatus: 'completed' | 'partial' | 'failed' | 'skipped' = 'skipped';
 
-    try {
-      // 2. Notatnik Odkrywcy w NotebookLM
-      console.log(`[producer-hunt:${taskId}] tworzę Discovery Notebook...`);
-      const createRes = await knowledgeCreateNotebookTool.execute!({ title: `Discovery: Producers ${region} (${taskId})` }, {} as any);
-      if (createRes && 'success' in createRes && createRes.success) {
-        notebookId = (createRes as any).notebookId;
-        
-        // Dodawanie źródeł równolegle
-        console.log(`[producer-hunt:${taskId}] dodaję ${topUrls.length} źródeł do NotebookLM...`);
-        await Promise.all(
-          topUrls.map(url => knowledgeAddSourceTool.execute!({
-            notebook: notebookId,
-            sourceType: 'url',
-            url: url.url,
-            title: url.title
-          }, {} as any))
-        );
+    if (sources.length > 0) {
+      const discoveryQuestion = discoveryQuestionFor({
+        region,
+        productType: productType ?? undefined,
+        acceptableSupplierTypes,
+        count,
+        userContext: userContext ?? undefined,
+      });
+      const notebookTitle = `Discovery: Producers ${region} (${taskId})`;
+      const instruction = knowledgeAgentDiscoveryInstruction({
+        taskId,
+        region,
+        notebookTitle,
+        sources,
+        discoveryQuestion,
+        count,
+      });
 
-        // Czekamy chwilę na indeksowanie (NotebookLM potrzebuje czasu)
-        console.log(`[producer-hunt:${taskId}] czekam 10s na indeksowanie...`);
-        await new Promise(resolve => setTimeout(resolve, 10000));
-
-        const acceptableTypesText = acceptableSupplierTypes.join(', ');
-        const discoveryQuestion = `Na podstawie załadowanych źródeł, sporządź listę do ${count} firm z województwa ${region},
-które mogą dostarczać żywność do restauracji w modelu B2B (cel: GastroBridge).
-Specjalizacja: ${productType ?? 'ogólna (nabiał, mięso, warzywa, sery, przetwory, mrożonki, suchy magazyn)'}.
-
-Akceptowane typy dostawcy: ${acceptableTypesText}.
-Definicje:
-- producer        – producent / wytwórca, gospodarstwo, manufaktura, RHD
-- manufacturer    – większy zakład przetwórstwa
-- cooperative     – kooperatywa / spółdzielnia
-- producer_group  – grupa producencka, zrzeszenie hodowców
-- wholesaler      – hurtownia spożywcza, hurtownia HoReCa, cash & carry
-- distributor     – dystrybutor regionalny / krajowy do gastronomii (foodservice)
-- importer        – importer specjalistyczny (np. produkty włoskie, hiszpańskie, azjatyckie)
-- farm_aggregator – platforma agregująca rolników / marketplace producentów
-- unknown         – jeśli nie potrafisz dopasować — to też zwróć, oznacz "unknown"
-
-Pomiń:
-- portale ogłoszeniowe, katalogi firm (panoramafirm, gowork, pkt.pl, oferteo, aleo);
-- duże sieci handlowe B2C (Biedronka, Lidl, Auchan, Tesco, Kaufland, Carrefour);
-- restauracje, hotele, pizzerie, bary jako podmiot docelowy (to są nasi klienci, nie dostawcy);
-- gigantyczne sieci hurtowe (Selgros, Makro) — można je zostawić dla kontekstu, ale ICP to
-  ich potencjalni dostawcy/poddostawcy.
-
-Dla każdej firmy zwróć:
-1.  company: Pełna nazwa firmy
-2.  supplierType: jeden z typów wyżej
-3.  directToHoreca: "yes" | "limited" | "no" | "unknown" — czy sprzedają bezpośrednio do restauracji/hoteli/cateringu
-4.  brandsOrPortfolio: lista 2-5 marek lub kategorii w portfolio, jeśli wynika ze źródeł
-5.  servesRegions: lista województw / miast zasięgu dostaw, jeśli widać; w razie wątpliwości jedno województwo: ["${region}"]
-6.  email: adres e-mail lub null (szukaj w stopkach i podstronach kontaktu)
-7.  website: oficjalna strona WWW lub null
-8.  city: miasto / miejscowość siedziby
-9.  productCategory: konkretna kategoria (np. nabiał, mięso, warzywa, mrożonki, oliwa)
-10. sourceUrls: 1-3 źródła potwierdzające typ i ofertę
-11. emailSource: skąd pochodzi e-mail, jeśli jest
-12. isProducer: true tylko gdy źródło wskazuje realne wytwarzanie. Dla hurtowni/dystrybutorów/importerów — false.
-13. confidence: liczba 0-1 — pewność, że firma istnieje i pasuje do typu
-14. reason: 1 zdanie — co konkretnie oferują i komu sprzedają
-
-Zasady:
-- Nie wpisuj "Brak danych" ani "brak" — używaj null.
-- Jeśli firma jest restauracją/hotelem (końcowym konsumentem), nie umieszczaj jej na liście.
-- Jeśli widzisz hurtownię HoReCa lub dystrybutora foodservice — DOPISZ JĄ. To są wartościowi
-  partnerzy GastroBridge, nie filtruj ich jako "pośredników".
-- Jeśli nie potrafisz określić typu — supplierType: "unknown" (lead pójdzie do research_needed,
-  ale go nie odrzucamy automatycznie).
-
-Zwróć WYŁĄCZNIE JSON w formacie:
-{ "leads": [
-  {
-    "company": "...",
-    "supplierType": "wholesaler",
-    "directToHoreca": "yes",
-    "brandsOrPortfolio": ["..."],
-    "servesRegions": ["..."],
-    "email": null,
-    "website": null,
-    "city": "...",
-    "productCategory": "...",
-    "sourceUrls": ["..."],
-    "emailSource": null,
-    "isProducer": false,
-    "confidence": 0.8,
-    "reason": "..."
-  }
-] }`;
-
-        console.log(`[producer-hunt:${taskId}] odpytuję NotebookLM o listę leadów...`);
-        const queryRes = await knowledgeQueryTool.execute!({
-          notebook: notebookId,
-          question: discoveryQuestion,
-          timeout: 180
-        }, {} as any);
-
-        if (queryRes && 'success' in queryRes && queryRes.success) {
-          const answer = (queryRes as any).answer || '';
-          const parsed = tryParseJson<{ leads?: Lead[] } | Lead[]>(answer);
-          if (Array.isArray(parsed)) leads = parsed;
-          else if (parsed && Array.isArray(parsed.leads)) leads = parsed.leads;
+      try {
+        console.log(`[producer-hunt:${taskId}] knowledge-agent: tworzę Discovery Notebook (${sources.length} źródeł)...`);
+        const res = await knowledgeAgent.generate([{ role: 'user', content: instruction }]);
+        const parsed = tryParseJson<unknown>(res.text);
+        const validation = nlmDiscoveryOutputSchema.safeParse(parsed);
+        if (validation.success) {
+          nlmStatus = validation.data.status ?? 'completed';
+          leads = validation.data.leads ?? [];
+          console.log(`[producer-hunt:${taskId}] knowledge-agent: status=${nlmStatus}, leads=${leads.length}, notebookId=${validation.data.notebookId ?? '?'}`);
+        } else {
+          nlmStatus = 'failed';
+          console.warn(`[producer-hunt:${taskId}] knowledge-agent: output nieparsowalny:`, validation.error.message);
         }
+      } catch (err) {
+        nlmStatus = 'failed';
+        console.warn(`[producer-hunt:${taskId}] knowledge-agent fail:`, (err as Error).message);
       }
-    } catch (err) {
-      console.warn(`[producer-hunt:${taskId}] NotebookLM discovery fail:`, (err as Error).message);
-    } finally {
-      if (notebookId) {
-        await cleanupNotebook({
-          taskId,
-          stepId: 'discover-leads',
-          notebookId,
-          title: `Discovery: Producers ${region} (${taskId})`,
-          kind: 'discovery',
-        });
-      }
+    } else {
+      console.warn(`[producer-hunt:${taskId}] discover-via-nlm: brak źródeł — pomijam NLM, lecę fallbackiem LLM (jeśli mamy snippety… ale tu ich nie ma).`);
     }
 
-    // Fallback do LLM snippets jeśli NotebookLM zawiódł lub zwrócił mało wyników
+    // Fallback do LLM gdy NLM zawiódł lub zwrócił mało — używamy tytułów źródeł jako kontekstu
     const minAcceptable = count;
-    if (leads.length < minAcceptable) {
-      console.log(`[producer-hunt:${taskId}] NotebookLM zwrócił mniej niż target (${leads.length}/${count}), używam fallbacku przez snippets...`);
-      const searchContext = uniqueResults.slice(0, 20).map(r => `[${r.title}](${r.url}): ${r.content.slice(0, 400)}`).join('\n\n');
+    if (leads.length < minAcceptable && sources.length > 0) {
+      console.log(`[producer-hunt:${taskId}] NLM zwrócił ${leads.length}/${count}, uruchamiam LLM fallback ze źródeł...`);
+      const searchContext = sources.slice(0, 20).map(s => `[${s.title ?? s.url}](${s.url})`).join('\n\n');
       const fallbackTypesText = acceptableSupplierTypes.join(', ');
-      const fallbackPrompt = `Na podstawie poniższych snippetów wybierz do ${count} firm z ${region},
+      const ctxLine = userContext ? `\nDODATKOWY KONTEKST: ${userContext}` : '';
+      const fallbackPrompt = `Na podstawie poniższych źródeł wybierz do ${count} firm z ${region},
 które mogą dostarczać żywność do restauracji w modelu B2B (cel: GastroBridge).
 
-Akceptowane typy dostawcy: ${fallbackTypesText}.
+Akceptowane typy dostawcy: ${fallbackTypesText}.${ctxLine}
 Klasyfikuj każdą firmę do jednego z typów:
 - producer / manufacturer (wytwórca / zakład przetwórstwa),
 - cooperative / producer_group / farm_aggregator (kooperatywa / grupa / platforma),
@@ -520,7 +575,7 @@ Pomiń:
 Nie odrzucaj hurtowni i dystrybutorów — to wartościowi partnerzy GastroBridge.
 Nie wpisuj "Brak danych" — używaj null.
 
-Snippety:
+Źródła:
 ${searchContext}
 
 Zwróć WYŁĄCZNIE JSON:
@@ -542,10 +597,10 @@ Zwróć WYŁĄCZNIE JSON:
     "reason": "..."
   }
 ] }`;
-      
+
       const res = await generateJsonWithFallback({
         taskId,
-        stepId: 'discover-leads-fallback',
+        stepId: 'discover-via-nlm-fallback',
         prompt: fallbackPrompt,
         schema: discoveryResponseSchema,
         localAgent: producerHuntDiscoveryAgent,
@@ -553,11 +608,11 @@ Zwróć WYŁĄCZNIE JSON:
         cloudFallbackAgent: producerHuntCloudFallbackAgent,
         fallback: () => ({ leads: [] }),
       });
-      
+
       leads = [...leads, ...res.leads];
     }
 
-    // Ostateczna deduplikacja i walidacja
+    // Dedup + walidacja
     const seen = new Set();
     const normalizedLeads = leads
       .filter((l) => l?.company && l.company.length >= 3)
@@ -565,43 +620,38 @@ Zwróć WYŁĄCZNIE JSON:
 
     const finalLeads = normalizedLeads.filter(l => {
       if (!l.company || l.company.length < 3) return false;
-      
-      // Bardziej agresywna deduplikacja
       const normalizedName = l.company.toLowerCase()
         .replace(/sp\. z o\.o\.|s\.c\.|sp\. j\.|p\.h\.u\.|p\.p\.h\.u\.|spółka|"/g, '')
         .trim();
-      
       const emailDomain = l.email && isValidEmail(l.email) ? l.email.split('@')[1].toLowerCase() : null;
-      
       const key = emailDomain ? `domain:${emailDomain}` : `name:${normalizedName}`;
-      
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     }).slice(0, count);
 
-    console.log(`[producer-hunt:${taskId}] discover-leads finished, found ${finalLeads.length} leads.`);
+    console.log(`[producer-hunt:${taskId}] discover-via-nlm finished, found ${finalLeads.length} leads (nlmStatus=${nlmStatus}).`);
     await logProducerHuntEvent({
       taskId,
-      stepId: 'discover-leads',
+      stepId: 'discover-via-nlm',
       event: 'discover_summary',
       metrics: {
         region,
         productType: productType ?? null,
         requestedCount: count,
-        rawHits: uniqueResults.length,
-        topUrls: topUrls.length,
-        queriesIssued,
-        queryBudget: TAVILY_QUERY_BUDGET,
-        acceptableSupplierTypes,
+        nlmStatus,
+        sources: sources.length,
+        nlmLeads: leads.length,
         found: finalLeads.length,
         validEmail: finalLeads.filter((l) => isValidEmail(l.email)).length,
         withWebsite: finalLeads.filter((l) => !!l.website).length,
+        acceptableSupplierTypes,
       },
     });
     return { taskId, region, leads: finalLeads, acceptableSupplierTypes };
   },
 });
+
 
 // ── Step 02: create-research-leads ──────────────────────────────────────────
 const createResearchLeadsStep = createStep({
@@ -802,6 +852,7 @@ const enrichLeadsStep = createStep({
       // skorzystać do zachowania danych NLM zamiast pisać 'Enrichment niedostępny.'
       let nlmAnalysis = '';
       let nlmHook = '';
+      let nlmEmail = '';
       let leadContext = '';
       let preservedSource: 'nlm' | 'searchContext' | 'leadReason' | 'none' = 'none';
 
@@ -892,7 +943,13 @@ const enrichLeadsStep = createStep({
               if (queryRes && 'success' in queryRes && queryRes.success) {
                 const answer = (queryRes as any).answer || '';
                 nlmHook = answer.match(/PERSONALIZATION_HOOK:\s*(.*)/)?.[1]?.trim() || '';
-                nlmAnalysis = answer.match(/DEEP_ANALYSIS:\s*(.*)/s)?.[1]?.trim() || answer;
+                nlmAnalysis = answer.match(/DEEP_ANALYSIS:\s*(.*?)(?=\n\s*EXTRACT_EMAIL:|$)/s)?.[1]?.trim() || answer;
+                const rawNlmEmail = answer.match(/EXTRACT_EMAIL:\s*(.*)/)?.[1]?.trim() || '';
+                // NLM zwraca "null" string gdy nie znalazł — odfiltruj
+                if (rawNlmEmail && rawNlmEmail.toLowerCase() !== 'null' && isValidEmail(rawNlmEmail)) {
+                  nlmEmail = rawNlmEmail;
+                  console.log(`[producer-hunt:${taskId}] NLM extracted email for ${lead.company}: ${nlmEmail}`);
+                }
               }
             }
           } catch (nlmErr) {
@@ -962,8 +1019,18 @@ const enrichLeadsStep = createStep({
           nlmHook || defaultHookForType(declaredOrInferredType, region),
         );
 
+        // Priorytet email: existing valid email z discovery > email wyciągnięty z NotebookLM > null
+        const effectiveEmail = isValidEmail(lead.email)
+          ? lead.email
+          : (nlmEmail && isValidEmail(nlmEmail) ? nlmEmail : lead.email);
+        const effectiveEmailSource = lead.email && isValidEmail(lead.email)
+          ? lead.emailSource
+          : (nlmEmail ? 'notebooklm' : lead.emailSource);
+
         const candidate = {
           ...lead,
+          email: effectiveEmail,
+          emailSource: effectiveEmailSource,
           companyName: normalizeOptionalText(parsed.companyName) ?? lead.company,
           website: normalizeNullableString(parsed.website ?? researchWebsite ?? website ?? lead.website),
           personalizationHook,
@@ -1804,12 +1871,13 @@ const sendOnApproveStep = createStep({
 export const producerHuntWorkflow = createWorkflow({
   id: 'producer-hunt',
   description:
-    'Wyszukuje producentów (10-step): discovery → research-only → enrichment → email-extraction → draft → gmail-draft → save-fs → update-crm → approval → send.',
+    'Wyszukuje producentów (11-step): gather-sources → discover-via-nlm → classify → enrichment → email-extraction → draft → gmail-draft → save-fs → update-crm → approval → send.',
   inputSchema: z.object({
     region: z.string(),
     count: z.number().default(10),
     productType: z.string().optional(),
     supplierTypes: z.array(supplierTypeSchema).optional(),
+    userContext: z.string().optional(),
   }),
   outputSchema: z.object({
     taskId: z.string(),
@@ -1818,7 +1886,8 @@ export const producerHuntWorkflow = createWorkflow({
     approved: z.boolean(),
   }),
 })
-  .then(discoverLeadsStep)
+  .then(gatherSourcesStep)
+  .then(discoverViaNlmStep)
   .then(createResearchLeadsStep)
   .then(enrichLeadsStep)
   .then(extractEmailsStep)
