@@ -162,9 +162,9 @@ export function resolveModelId(key: ModelKey): string {
 // ═════════════════════════════════════════════════════════════════════════════
 
 export const agentModels = {
-  metaAgent: 'claude-opus-4.6' as ModelKey,
-  codingAgent: 'claude-opus-4.6' as ModelKey,
-  codeReviewAgent: 'claude-haiku-4.5' as ModelKey,
+  metaAgent: 'nemotron-super-free' as ModelKey,
+  codingAgent: 'nemotron-super-free' as ModelKey,
+  codeReviewAgent: 'gemini-2.5-flash' as ModelKey,
   salesAgent: 'gemma4-26b' as ModelKey,
   crmAgent: 'gemma4-26b' as ModelKey,
   analyticsAgent: 'qwen3-coder-30b' as ModelKey,
@@ -183,8 +183,8 @@ export const agentModels = {
 export const workflowAssignments = {
   coding: {
     default: 'claude-opus-4.6' as ModelKey,  // diagnose-and-plan
-    patch: 'claude-sonnet-4.5' as ModelKey,  // execute-patch fallback
-    review: 'claude-haiku-4.5' as ModelKey,  // code review (Haiku: tani + dobry do walidacji)
+    patch: 'gemini-2.5-flash' as ModelKey,  // execute-patch fallback
+    review: 'gemini-2.5-flash' as ModelKey,  // code review (Haiku: tani + dobry do walidacji)
     selfHealingPlanner: 'claude-opus-4.6' as ModelKey,
     selfHealingReview: 'claude-opus-4.6' as ModelKey,
     jsonRepair: 'gemini-2.5-flash' as ModelKey,
