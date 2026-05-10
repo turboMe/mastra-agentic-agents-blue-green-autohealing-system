@@ -228,7 +228,7 @@ async function acceptSnapshot(snapshot: SnapshotDoc) {
 }
 
 export const recordBeforeChangeTool = createTool({
-  id: 'coding.record_before_change',
+  id: 'coding_record_before_change',
   description:
     'Zapisuje snapshot pliku przed edycja. Wywolaj przed kazdym write_file, po przeczytaniu pliku przez view.',
   inputSchema: z.object({
@@ -298,7 +298,7 @@ export const recordBeforeChangeTool = createTool({
 });
 
 export const recordAfterChangeTool = createTool({
-  id: 'coding.record_after_change',
+  id: 'coding_record_after_change',
   description:
     'Zapisuje hash i tresc po edycji pliku oraz aktualizuje artifact filesChanged. Wywolaj po write_file.',
   inputSchema: z.object({
@@ -371,7 +371,7 @@ export const recordAfterChangeTool = createTool({
 });
 
 export const rejectFileChangeTool = createTool({
-  id: 'coding.reject_file',
+  id: 'coding_reject_file',
   description:
     'Cofa zmiane agenta dla pojedynczego pliku, ale tylko jesli aktualny hash pliku nadal zgadza sie z afterHash snapshotu.',
   inputSchema: z.object({
@@ -426,7 +426,7 @@ export const rejectFileChangeTool = createTool({
 });
 
 export const rejectAllChangesTool = createTool({
-  id: 'coding.reject_all',
+  id: 'coding_reject_all',
   description:
     'Cofa wszystkie otwarte zmiany agenta dla taskId. Kazdy plik jest cofany tylko gdy aktualny hash zgadza sie z afterHash.',
   inputSchema: z.object({
@@ -486,7 +486,7 @@ export const rejectAllChangesTool = createTool({
 });
 
 export const acceptFileChangeTool = createTool({
-  id: 'coding.accept_file',
+  id: 'coding_accept_file',
   description:
     'Oznacza pojedyncza zmiane agenta jako zaakceptowana, jesli aktualny hash nadal zgadza sie z afterHash.',
   inputSchema: z.object({
@@ -541,7 +541,7 @@ export const acceptFileChangeTool = createTool({
 });
 
 export const acceptAllChangesTool = createTool({
-  id: 'coding.accept_all',
+  id: 'coding_accept_all',
   description:
     'Oznacza wszystkie otwarte zmiany agenta dla taskId jako zaakceptowane, jesli hashe plikow nadal zgadzaja sie z afterHash.',
   inputSchema: z.object({
@@ -601,7 +601,7 @@ export const acceptAllChangesTool = createTool({
 });
 
 export const writeFileTrackedTool = createTool({
-  id: 'coding.write_file_tracked',
+  id: 'coding_write_file_tracked',
   description:
     'Zapisuje plik po weryfikacji artifactu i automatycznie dodaje snapshoty before/after dla pelnego trackingu i mozliwosci rollbacku. Glowne narzedzie edycyjne agenta.',
   inputSchema: z.object({

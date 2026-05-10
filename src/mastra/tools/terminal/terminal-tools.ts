@@ -30,7 +30,7 @@ async function getSandboxDir(): Promise<string> {
 }
 
 export const readFileTool = createTool({
-  id: 'fs.read_file',
+  id: 'fs_read_file',
   description: 'Odczytuje zawartość pliku z katalogu piaskownicy (sandbox). Używaj tego narzędzia do sprawdzania kodu, konfiguracji lub innych plików tekstowych.',
   inputSchema: z.object({
     filePath: z.string().describe('Ścieżka do pliku względem katalogu piaskownicy.'),
@@ -54,7 +54,7 @@ export const readFileTool = createTool({
 });
 
 export const writeFileTool = createTool({
-  id: 'fs.write_file',
+  id: 'fs_write_file',
   description: 'Zapisuje tekst do pliku w katalogu piaskownicy (sandbox). Jeżeli katalogi po drodze nie istnieją, zostaną utworzone.',
   inputSchema: z.object({
     filePath: z.string().describe('Ścieżka docelowa pliku względem katalogu piaskownicy.'),
@@ -81,7 +81,7 @@ export const writeFileTool = createTool({
 });
 
 export const shellExecuteTool = createTool({
-  id: 'shell.execute',
+  id: 'shell_execute',
   description: 'Wykonuje komendę powłoki (bash) wewnatrz katalogu piaskownicy. Przydatne do analizy, kompilacji, uruchamiania skryptów itp. Komenda jest weryfikowana przez Terminal Safety Guard przed wykonaniem.',
   inputSchema: z.object({
     command: z.string().describe('Komenda bash do wykonania.'),

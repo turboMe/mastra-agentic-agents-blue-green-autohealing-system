@@ -7,7 +7,7 @@ description: >-
   and supply chain attack patterns. Use when reviewing GitHub Actions, GitLab CI,
   or any AI-driven automation pipeline for security risks.
 keywords: [security, audit, cicd, github-actions, prompt-injection, supply-chain, pipeline]
-allowedTools: [fs.read_file, shell.execute, search_content]
+allowedTools: [fs_read_file, shell_execute, search_content]
 minComplexity: moderate
 estimatedTokens: 16000
 outputFormat: text

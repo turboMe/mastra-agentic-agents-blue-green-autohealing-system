@@ -18,7 +18,7 @@ export const KNOWN_NOTEBOOKS = [
 // knowledge.query – query existing notebook
 // ────────────────────────────────────────────────────────────────────────────
 export const knowledgeQueryTool = createTool({
-  id: 'knowledge.query',
+  id: 'knowledge_query',
   description: `Zadaje pytanie do istniejącego notebooka NotebookLM (RAG po dokumentach).
 Dostępne notebooki: ${KNOWN_NOTEBOOKS.join(', ')}.
 Używaj do: pytań o rynek HoReCa (rynek), regulacje RHD (rhd), konkurencję (konkurencja), wiedzę chefa (chef_*).`,
@@ -53,7 +53,7 @@ Używaj do: pytań o rynek HoReCa (rynek), regulacje RHD (rhd), konkurencję (ko
 // knowledge.query_multi – cross-notebook query
 // ────────────────────────────────────────────────────────────────────────────
 export const knowledgeQueryMultiTool = createTool({
-  id: 'knowledge.query_multi',
+  id: 'knowledge_query_multi',
   description: 'Pyta kilka notebooków jednocześnie i zwraca odpowiedzi z każdego. Używaj gdy pytanie dotyczy wielu domen (np. rynek + konkurencja).',
   inputSchema: z.object({
     notebooks: z.array(z.string()).min(1).max(4).describe('Lista nazw notebooków (max 4)'),
@@ -82,7 +82,7 @@ export const knowledgeQueryMultiTool = createTool({
 // knowledge.list_notebooks
 // ────────────────────────────────────────────────────────────────────────────
 export const knowledgeListNotebooksTool = createTool({
-  id: 'knowledge.list_notebooks',
+  id: 'knowledge_list_notebooks',
   description: 'Zwraca listę wszystkich dostępnych notebooków NotebookLM (ID + tytuł).',
   inputSchema: z.object({}),
   outputSchema: z.object({
@@ -105,7 +105,7 @@ export const knowledgeListNotebooksTool = createTool({
 // knowledge.create_temp_notebook (for enrichment workflows)
 // ────────────────────────────────────────────────────────────────────────────
 export const knowledgeCreateNotebookTool = createTool({
-  id: 'knowledge.create_notebook',
+  id: 'knowledge_create_notebook',
   description: 'Tworzy tymczasowy notebook NotebookLM do jednorazowego researchu (np. dla jednej firmy w producer-hunt). Użyj knowledge.add_source aby dodać URL, potem knowledge.query, na końcu knowledge.delete_notebook.',
   inputSchema: z.object({
     title: z.string().describe('Tytuł notebooka (np. "Temp: Acme Farm research")'),
@@ -127,7 +127,7 @@ export const knowledgeCreateNotebookTool = createTool({
 });
 
 export const knowledgeAddSourceTool = createTool({
-  id: 'knowledge.add_source',
+  id: 'knowledge_add_source',
   description: 'Dodaje źródło (URL lub tekst) do notebooka NotebookLM.',
   inputSchema: z.object({
     notebook: z.string().describe('ID lub tytuł notebooka'),
@@ -159,7 +159,7 @@ export const knowledgeAddSourceTool = createTool({
 });
 
 export const knowledgeDeleteNotebookTool = createTool({
-  id: 'knowledge.delete_notebook',
+  id: 'knowledge_delete_notebook',
   description: 'Usuwa notebook NotebookLM (używaj do czyszczenia tymczasowych notebooków po researchu).',
   inputSchema: z.object({
     notebookId: z.string().describe('ID notebooka do usunięcia'),
@@ -183,7 +183,7 @@ export const knowledgeDeleteNotebookTool = createTool({
 // knowledge.research_start
 // ────────────────────────────────────────────────────────────────────────────
 export const knowledgeResearchStartTool = createTool({
-  id: 'knowledge.research_start',
+  id: 'knowledge_research_start',
   description: 'Rozpoczyna pogłębiony research (Deep Research) w NotebookLM na dany temat lub dla konkretnej firmy.',
   inputSchema: z.object({
     query: z.string().describe('Temat researchu (np. "Deep research about Acme Farm products and history")'),

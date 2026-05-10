@@ -101,7 +101,7 @@ const SearchResultSchema = z.object({
 type SearchResultItem = z.infer<typeof SearchResultSchema>;
 
 export const competitorAnalysisTool = createTool({
-  id: 'business.competitor_analysis',
+  id: 'business_competitor_analysis',
   description:
     'Analyzes a competitor company using multi-query Tavily research. Returns structured sections (overview, products, pricing, reviews, news) and raw context. Use when you need competitive intelligence about a company.',
   inputSchema: z.object({

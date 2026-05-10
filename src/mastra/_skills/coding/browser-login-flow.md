@@ -6,7 +6,7 @@ description: >-
   Covers session management, cookie persistence, MFA handling,
   credential safety, and OAuth/SSO flows.
 keywords: [browser, login, authentication, session, cookie, oauth, mfa, playwright]
-allowedTools: [shell.execute, fs.read_file]
+allowedTools: [shell_execute, fs_read_file]
 minComplexity: moderate
 estimatedTokens: 8000
 outputFormat: text

@@ -8,7 +8,7 @@ description: >-
   Trigger: "clean data", "deduplication", "normalize", "fix data quality",
   "import CSV", "data validation", "sanitize records".
 keywords: [data cleaning, deduplication, normalization, validation, mongodb, csv, sanitization, data quality]
-allowedTools: [db.query, db.write, fs.read_file, fs.write_file, terminal.run_command]
+allowedTools: [db_query, db_write, fs_read_file, fs_write_file, terminal_run_command]
 minComplexity: moderate
 estimatedTokens: 10000
 outputFormat: markdown

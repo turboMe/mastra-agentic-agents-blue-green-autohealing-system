@@ -19,7 +19,7 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 export const initWorktreeTool = createTool({
-  id: 'coding.init_worktree',
+  id: 'coding_init_worktree',
   description: 'Tworzy i przygotowuje izolowane srodowisko git worktree dla podanego zadania (branch task-<taskId>). Skrypt umozliwia testowanie bez uszkodzen w glownym branchu.',
   inputSchema: z.object({
     taskId: z.string(),
@@ -97,7 +97,7 @@ export const initWorktreeTool = createTool({
 });
 
 export const removeWorktreeTool = createTool({
-  id: 'coding.remove_worktree',
+  id: 'coding_remove_worktree',
   description: 'Sprzata zasoby git worktree powiazane z podanym zadaniem. Usuwa fizyczny folder i lokalny branch.',
   inputSchema: z.object({
     taskId: z.string(),
@@ -165,7 +165,7 @@ export const removeWorktreeTool = createTool({
 });
 
 export const applyWorktreePatchTool = createTool({
-  id: 'coding.apply_patch',
+  id: 'coding_apply_patch',
   description: 'Finalizuje prace w worktree. Commituje zmiany w izolowanym srodowisku i laczy (git merge) je na zywym glownym srodowisku Mastra. Wymaga approval.',
   inputSchema: z.object({
     taskId: z.string(),
@@ -240,7 +240,7 @@ export const applyWorktreePatchTool = createTool({
 // ── Narzędzia do przeglądania worktree (dla codeReviewAgent) ──────────────────
 
 export const listWorktreeFilesTool = createTool({
-  id: 'coding.list_worktree_files',
+  id: 'coding_list_worktree_files',
   description: 'Listuje pliki w worktree dla danego zadania. Pozwala reviewerowi zobaczyć jakie pliki zostały dodane lub zmodyfikowane w izolowanym środowisku.',
   inputSchema: z.object({
     taskId: z.string(),
@@ -287,7 +287,7 @@ export const listWorktreeFilesTool = createTool({
 });
 
 export const readWorktreeFileTool = createTool({
-  id: 'coding.read_worktree_file',
+  id: 'coding_read_worktree_file',
   description: 'Czyta zawartość pliku z worktree danego zadania. Niezbędne dla reviewera do weryfikacji kodu źródłowego w izolowanym środowisku.',
   inputSchema: z.object({
     taskId: z.string(),
@@ -345,7 +345,7 @@ export const readWorktreeFileTool = createTool({
 });
 
 export const worktreeDiffTool = createTool({
-  id: 'coding.worktree_diff',
+  id: 'coding_worktree_diff',
   description: 'Zwraca git diff z worktree dla danego zadania. Pokazuje dokładnie jakie zmiany zostały wprowadzone względem głównego brancha.',
   inputSchema: z.object({
     taskId: z.string(),

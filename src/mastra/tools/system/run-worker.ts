@@ -28,7 +28,7 @@ const PRESET_TO_MODEL: Record<string, string> = Object.fromEntries(
 );
 
 export const runWorkerTool = createTool({
-  id: 'system.run_worker',
+  id: 'system_run_worker',
   description: `Spawns a blank LLM worker with a custom brief written by meta-agent.
 No built-in personality, no tools — pure text-in-text-out generation.
 Use for ad-hoc tasks that do not fit any registered expert (delegate_task).

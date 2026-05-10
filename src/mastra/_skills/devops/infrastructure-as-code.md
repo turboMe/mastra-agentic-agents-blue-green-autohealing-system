@@ -8,7 +8,7 @@ description: >-
   essential Terraform workflow. Trigger: "terraform", "IaC", "infrastructure",
   "provision resources", "cloud setup", "docker-compose production".
 keywords: [terraform, IaC, infrastructure, GCP, AWS, docker-compose, cloud, provisioning, state]
-allowedTools: [terminal.run_command, fs.read_file, fs.write_file]
+allowedTools: [terminal_run_command, fs_read_file, fs_write_file]
 minComplexity: moderate
 estimatedTokens: 11000
 outputFormat: markdown

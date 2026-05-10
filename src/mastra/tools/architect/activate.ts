@@ -11,7 +11,7 @@ type ActivationPolicy = {
 };
 
 export const activateAutomationTool = createTool({
-  id: 'architect.activate_automation',
+  id: 'architect_activate_automation',
   description:
     'Aktywuje workflow n8n tylko jesli jest mastra-managed, przechodzi activation validation, risk scoring i activation policy.',
   inputSchema: z.object({

@@ -8,7 +8,7 @@ export class LiveRepoWriteBlockedError extends Error {
   constructor(taskId: string, reason: string) {
     super(
       `[SAFETY] Write to live repo blocked for task ${taskId}: ${reason}. ` +
-      `Wywolaj coding.init_worktree najpierw — agent nie edytuje runtime na ktorym zyje.`
+      `Wywolaj coding_init_worktree najpierw — agent nie edytuje runtime na ktorym zyje.`
     );
     this.name = 'LiveRepoWriteBlockedError';
   }
@@ -31,10 +31,10 @@ export async function getWorkspacePathForWrite(taskId: string): Promise<string> 
   const db = await getDb();
   const artifact = await db.collection('code_task_artifacts').findOne({ taskId });
   if (!artifact) {
-    throw new LiveRepoWriteBlockedError(taskId, 'artifact nie istnieje (uruchom coding.create_artifact)');
+    throw new LiveRepoWriteBlockedError(taskId, 'artifact nie istnieje (uruchom coding_create_artifact)');
   }
   if (typeof artifact.worktreePath !== 'string' || !artifact.worktreePath) {
-    throw new LiveRepoWriteBlockedError(taskId, 'brak worktreePath w artifact (uruchom coding.init_worktree)');
+    throw new LiveRepoWriteBlockedError(taskId, 'brak worktreePath w artifact (uruchom coding_init_worktree)');
   }
   return artifact.worktreePath;
 }
@@ -134,7 +134,7 @@ export const codeWorkspace = new Workspace({
     basePath: AGENTIC_AGENTS_REPO,
     contained: true,
     // SAFETY: live repo is READ-ONLY through workspace tool `write_file`.
-    // All agent writes must go through coding.write_file_tracked → worktree.
+    // All agent writes must go through coding_write_file_tracked → worktree.
     // Worktree writes (fs/promises.writeFile) and shell commands (git worktree/merge) bypass this.
     readOnly: true,
   }),

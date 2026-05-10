@@ -7,7 +7,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 
 export const triggerWorkflowTool = createTool({
-  id: 'workflow.trigger',
+  id: 'workflow_trigger',
   description: 'Uruchamia zarejestrowany workflow Mastra o podanym ID. Użyj gdy chcesz uruchomić jeden z workflowów domenowych (producer-hunt, weekly-content, morning-briefing itd.) zamiast próbować wykonać wszystkie kroki samemu.',
   inputSchema: z.object({
     workflowId: z.string().describe('ID workflowu, np. "producer-hunt", "weekly-content", "morning-briefing", "weekly-report"'),

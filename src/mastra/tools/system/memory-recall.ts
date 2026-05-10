@@ -23,7 +23,7 @@ const KNOWLEDGE_TYPES: KnowledgeType[] = [
 ];
 
 export const memoryRecallTool = createTool({
-  id: 'system.memory_recall',
+  id: 'system_memory_recall',
   description: `Search system knowledge for relevant past patterns, failures, and lessons.
 Use at the start of complex tasks to check for known pitfalls, proven strategies, and architectural decisions.
 

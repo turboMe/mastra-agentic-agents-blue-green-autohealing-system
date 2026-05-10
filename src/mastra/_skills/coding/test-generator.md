@@ -7,7 +7,7 @@ description: >-
   Use when agent needs to add test coverage to untested code or create test
   suites for new functionality.
 keywords: [test, unit-test, vitest, jest, pytest, testing, mock, coverage, tdd]
-allowedTools: [fs.read_file, coding.write_file_tracked, shell.execute]
+allowedTools: [fs_read_file, coding_write_file_tracked, shell_execute]
 minComplexity: moderate
 estimatedTokens: 14000
 outputFormat: patch

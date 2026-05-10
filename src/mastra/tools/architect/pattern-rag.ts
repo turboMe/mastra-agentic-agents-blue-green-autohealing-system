@@ -23,7 +23,7 @@ const COLLECTION = 'automation_patterns';
 const MIN_SIMILARITY = 0.35;
 
 export const syncPatternsTool = createTool({
-  id: 'architect.sync_patterns',
+  id: 'architect_sync_patterns',
   description:
     'Synchronizuje katalog patternów do MongoDB z embeddingami semantycznymi. Wywołaj po edycji pattern-catalog.ts lub przy pierwszym uruchomieniu.',
   inputSchema: z.object({
@@ -91,7 +91,7 @@ export const syncPatternsTool = createTool({
 });
 
 export const matchPatternTool = createTool({
-  id: 'architect.match_pattern',
+  id: 'architect_match_pattern',
   description:
     'Wyszukuje top-K patternów najlepiej pasujących do specyfikacji automatyzacji (semantic search po embedingach). Domyślnie zwraca tylko executable patterny. Każdy match zawiera `executable` i `maturity` — tylko `executable: true` mozna podac do architect.compose_workflow.',
   inputSchema: z.object({

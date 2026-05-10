@@ -7,7 +7,7 @@ description: >-
   personalizację i A/B testing. Integruje się z producer-hunt
   i workflow'ami CRM.
 keywords: [email, communication, cold-email, follow-up, marketing, outreach, personalization]
-allowedTools: [search.web, fs.read_file]
+allowedTools: [search_web, fs_read_file]
 minComplexity: moderate
 estimatedTokens: 12000
 outputFormat: text

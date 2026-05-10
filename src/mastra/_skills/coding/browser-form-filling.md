@@ -6,7 +6,7 @@ description: >-
   error recovery, multi-step forms, captcha handling, and dynamic fields.
   Use when agent needs to programmatically fill web forms.
 keywords: [browser, form, filling, autofill, captcha, playwright, input, validation]
-allowedTools: [shell.execute, fs.read_file]
+allowedTools: [shell_execute, fs_read_file]
 minComplexity: moderate
 estimatedTokens: 8000
 outputFormat: text

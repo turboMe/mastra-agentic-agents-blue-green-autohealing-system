@@ -30,6 +30,6 @@ Zasady:
 - Użyj `existing`, gdy pytanie da się odpowiedzieć z istniejących notebooków.
 - Użyj `temporary`, gdy użytkownik podał konkretne URL-e lub tekst do zbadania.
 - Użyj `search`, gdy użytkownik chce świeżego researchu z internetu, a nie podał konkretnych źródeł.
-- `cleanup` ma być true dla notebooków tymczasowych i search.
+- `cleanup` ma być true dla notebooków tymczasowych i search_
 - Nie proponuj usuwania stałych notebooków.
-- Maksymalnie 5 wyników search.
+- Maksymalnie 5 wyników search_

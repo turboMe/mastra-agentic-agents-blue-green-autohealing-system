@@ -410,7 +410,7 @@ export async function logSafetyEvent(verdict: CommandVerdict, agentId: string): 
   await logAgentEvent({
     type: 'tool_error',
     agentId,
-    toolId: 'shell.execute',
+    toolId: 'shell_execute',
     status: verdict.action === 'BLOCK' ? 'error' : 'pending',
     errorMessage: verdict.reason,
     input: verdict.command.slice(0, 200),

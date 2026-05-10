@@ -6,7 +6,7 @@ description: >-
   Weryfikuje czy licencja jest kompatybilna z projektem (allowlist/blocklist)
   i generuje raport compliance.
 keywords: [security, license, compliance, npm, legal, dependency, audit]
-allowedTools: [shell.execute, fs.read_file]
+allowedTools: [shell_execute, fs_read_file]
 minComplexity: simple
 estimatedTokens: 5000
 outputFormat: text

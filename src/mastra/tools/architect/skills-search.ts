@@ -154,7 +154,7 @@ function extractRelevantSections(content: string, queryTerms: string[], maxChars
 
 // ── Tool definition ────────────────────────────────────────────────────────
 export const skillsSearchTool = createTool({
-  id: 'architect.skills_search',
+  id: 'architect_skills_search',
   description: 'Przeszukuje bazę wiedzy _skills/ (n8n patterns, security rules, workflow rules, terminal guides) i zwraca pasujące sekcje jako kontekst. Używaj przed projektowaniem workflow aby znaleźć właściwy pattern lub zasady bezpieczeństwa.',
   inputSchema: z.object({
     query: z.string().describe('Zapytanie w języku naturalnym lub lista słów kluczowych, np. "webhook authentication", "error handling pattern", "risk scoring"'),

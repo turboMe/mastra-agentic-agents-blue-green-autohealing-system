@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { getDb } from '../../lib/mongo.js';
 
 export const addInteractionTool = createTool({
-  id: 'crm.add_interaction',
+  id: 'crm_add_interaction',
   description: 'Dodaje notatkę lub wpis o interakcji do historii leada (spotkanie, email, telefon, draft). Nie zmienia statusu — używaj crm.update_status jeśli status też się zmienia.',
   inputSchema: z.object({
     idOrEmail: z.string().describe('ID leada (UUID) lub email kontaktu'),

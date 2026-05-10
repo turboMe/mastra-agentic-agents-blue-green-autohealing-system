@@ -105,7 +105,7 @@ const automationSpecSchema = z
   .passthrough();
 
 export const composeWorkflowTool = createTool({
-  id: 'architect.compose_workflow',
+  id: 'architect_compose_workflow',
   description:
     'Buduje JSON workflow n8n z wybranego patternu i specyfikacji. Po zbudowaniu MUSISZ wywolac architect.risk_score na wyniku zanim deployujesz.',
   inputSchema: z.object({

@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { getDb } from '../../lib/mongo.js';
 
 export const recordEmailDraftTool = createTool({
-  id: 'crm.record_email_draft',
+  id: 'crm_record_email_draft',
   description:
     'Zapisuje aktualny draft maila do leada (metadata.draft) bez nadpisywania innych metadanych. Ustawia status "draft_gotowy" i dodaje wpis do historii.',
   inputSchema: z.object({

@@ -3,7 +3,7 @@ name: safe-file-edit
 category: coding
 description: Edit source files safely using the staging worktree lifecycle. Read first, write tracked, verify, then apply patch.
 keywords: [edit, file, worktree, staging, safe, write]
-allowedTools: [view, search_content, coding.init_worktree, coding.write_file_tracked, coding.run_test, coding.apply_patch, coding.remove_worktree]
+allowedTools: [view, search_content, coding_init_worktree, coding_write_file_tracked, coding_run_test, coding_apply_patch, coding_remove_worktree]
 minComplexity: simple
 estimatedTokens: 6000
 outputFormat: diff

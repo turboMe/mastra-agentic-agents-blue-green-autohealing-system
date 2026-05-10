@@ -3,7 +3,7 @@ name: fix-typescript-error
 category: coding
 description: Diagnose and fix TypeScript compilation errors by analyzing error messages, reading affected files, and applying minimal targeted patches.
 keywords: [typescript, tsc, compilation, type-error, import, interface]
-allowedTools: [view, search_content, coding.write_file_tracked, coding.run_test]
+allowedTools: [view, search_content, coding_write_file_tracked, coding_run_test]
 minComplexity: simple
 estimatedTokens: 8000
 outputFormat: patch

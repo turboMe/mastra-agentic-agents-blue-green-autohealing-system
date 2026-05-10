@@ -8,7 +8,7 @@ description: >-
   (wrong assumptions). Includes checklist, decision matrix,
   and question templates.
 keywords: [requirements, ambiguity, clarification, assumptions, planning, questions, task-understanding]
-allowedTools: [fs.read_file, workspace.view]
+allowedTools: [fs_read_file, workspace_view]
 minComplexity: simple
 estimatedTokens: 10000
 outputFormat: text

@@ -3,12 +3,12 @@ name: competitor-analysis-strategy
 category: meta
 description: >-
   Strategic framework for competitive intelligence gathering using
-  business.competitor_analysis tool. Covers SWOT synthesis, Porter's 5 Forces
+  business_competitor_analysis tool. Covers SWOT synthesis, Porter's 5 Forces
   framing, pricing intelligence, and output formatting.
   Trigger: "analyze competitor", "research competition", "competitive intel",
   "how does X compare", "battlecard for X".
 keywords: [competitor, analysis, competitive intelligence, SWOT, pricing, market, research, battlecard]
-allowedTools: [business.competitor_analysis, search.web, search.find_company_links]
+allowedTools: [business_competitor_analysis, search_web, search_find_company_links]
 minComplexity: moderate
 estimatedTokens: 12000
 outputFormat: markdown
@@ -20,8 +20,8 @@ last_used: null
 ---
 # Competitor Analysis Strategy
 
-> Use `business.competitor_analysis` as the primary research tool.
-> Supplement with `search.web` for gaps.
+> Use `business_competitor_analysis` as the primary research tool.
+> Supplement with `search_web` for gaps.
 > Output: structured SWOT + competitive summary.
 
 ## When to Use This Skill
@@ -44,7 +44,7 @@ Before calling the tool, clarify:
 ### Step 2 — Run Competitor Analysis Tool
 
 ```
-business.competitor_analysis({
+business_competitor_analysis({
   companyName: "Exact Company Name",
   website: "https://company.com",        // optional but recommended
   industry: "restaurant management SaaS", // optional — improves relevance
@@ -167,7 +167,7 @@ Apply confidence scores to each finding:
 
 ## Multi-Competitor Comparison
 
-When comparing 2+ competitors, run `business.competitor_analysis` for each,
+When comparing 2+ competitors, run `business_competitor_analysis` for each,
 then build a comparison matrix:
 
 ```markdown
@@ -192,11 +192,11 @@ then build a comparison matrix:
 
 ## Supplementary Searches
 
-If `business.competitor_analysis` misses something, supplement with `search.web`:
+If `business_competitor_analysis` misses something, supplement with `search_web`:
 
 ```
-search.web({ query: "[Company] pricing 2025 site:g2.com OR site:capterra.com" })
-search.web({ query: "[Company] vs [OurProduct] comparison" })
-search.web({ query: "[Company] customer complaints problems" })
-search.web({ query: "[Company] funding investment valuation" })
+search_web({ query: "[Company] pricing 2025 site:g2.com OR site:capterra.com" })
+search_web({ query: "[Company] vs [OurProduct] comparison" })
+search_web({ query: "[Company] customer complaints problems" })
+search_web({ query: "[Company] funding investment valuation" })
 ```

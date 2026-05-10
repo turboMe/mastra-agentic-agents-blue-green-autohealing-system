@@ -4,7 +4,7 @@ import { MongoClient } from 'mongodb';
 import { getRuntimeTopology } from '../../config/runtime-topology.js';
 
 export const runtimeCheckTool = createTool({
-  id: 'architect.runtime_check',
+  id: 'architect_runtime_check',
   description: 'Sprawdza gotowość środowiska runtime dla automatyzacji n8n.',
   inputSchema: z.object({
     requiresPublicWebhook: z.boolean().optional(),

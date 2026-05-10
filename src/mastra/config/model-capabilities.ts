@@ -219,8 +219,8 @@ const cloudModels: ModelCapability[] = [
     available: true,
   },
   {
-    modelId: models['claude-haiku-4.6'],
-    name: 'Claude Haiku 4.6',
+    modelId: models['claude-haiku-4.5'],
+    name: 'Claude Haiku 4.5',
     tier: 'cloud-fast',
     maxComplexity: 'simple',
     strengths: ['fast', 'review', 'validation', 'json'],

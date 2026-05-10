@@ -24,7 +24,7 @@ export const modelPresets = {
 
   // Anthropic
   anthropicSonnet: resolveModelId('claude-sonnet-4.6'),
-  anthropicHaiku: resolveModelId('claude-haiku-4.6'),
+  anthropicHaiku: resolveModelId('claude-haiku-4.5'),
 } as const;
 
 export const workflowModels = {

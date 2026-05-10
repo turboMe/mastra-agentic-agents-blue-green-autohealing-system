@@ -9,7 +9,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 
 export const webhookSendTool = createTool({
-  id: 'webhook.send',
+  id: 'webhook_send',
   description:
     'Wysyła payload JSON do dowolnego webhook URL (Slack, Discord, n8n, Make, Zapier). ' +
     'Używaj do integracji z zewnętrznymi systemami powiadomień i automatyzacji.',
@@ -72,7 +72,7 @@ export const webhookSendTool = createTool({
 // ── Preset: Slack Webhook ────────────────────────────────────────────────────
 
 export const slackWebhookTool = createTool({
-  id: 'webhook.slack',
+  id: 'webhook_slack',
   description:
     'Wysyła wiadomość do kanału Slack przez Incoming Webhook. ' +
     'Wymaga SLACK_WEBHOOK_URL w .env.',
@@ -111,7 +111,7 @@ export const slackWebhookTool = createTool({
 // ── Preset: Discord Webhook ──────────────────────────────────────────────────
 
 export const discordWebhookTool = createTool({
-  id: 'webhook.discord',
+  id: 'webhook_discord',
   description:
     'Wysyła wiadomość do kanału Discord przez Webhook URL. ' +
     'Wymaga DISCORD_WEBHOOK_URL w .env.',

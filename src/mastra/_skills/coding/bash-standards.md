@@ -6,7 +6,7 @@ description: >-
   patterns, argument parsing, error handling, dependency validation, and colored
   output. Use when creating or reviewing bash/shell scripts for production use.
 keywords: [bash, shell, script, best-practices, error-handling, getopts, template]
-allowedTools: [fs.read_file, coding.write_file_tracked, shell.execute]
+allowedTools: [fs_read_file, coding_write_file_tracked, shell_execute]
 minComplexity: simple
 estimatedTokens: 18000
 outputFormat: patch

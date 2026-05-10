@@ -7,7 +7,7 @@ description: >-
   Use when agent needs to verify API behavior, debug HTTP requests, or validate
   endpoint contracts.
 keywords: [api, rest, graphql, curl, http, testing, endpoint, json, authentication]
-allowedTools: [shell.execute, fs.read_file]
+allowedTools: [shell_execute, fs_read_file]
 minComplexity: simple
 estimatedTokens: 10000
 outputFormat: text

@@ -51,7 +51,7 @@ async function logWriteEvent(params: {
 // ────────────────────────────────────────────────────────────────────────────
 
 export const mongoQueryTool = createTool({
-  id: 'db.query',
+  id: 'db_query',
   description:
     'Readonly MongoDB query tool. Supports find, findOne, aggregate, count, distinct. ' +
     'Use for inspecting collections without any risk of data modification. ' +
@@ -131,7 +131,7 @@ export const mongoQueryTool = createTool({
 // ────────────────────────────────────────────────────────────────────────────
 
 export const mongoWriteTool = createTool({
-  id: 'db.write',
+  id: 'db_write',
   description:
     'MUTATING MongoDB tool. Supports insertOne, updateOne, updateMany, deleteOne, deleteMany, replaceOne. ' +
     'ALWAYS requires confirm: true — you MUST inform the user what data will be modified and get their approval ' +

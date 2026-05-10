@@ -8,7 +8,7 @@ description: >-
   Trigger: "research the market for X", "market analysis", "market size",
   "industry trends", "target customer research", "market opportunity".
 keywords: [market research, industry analysis, market size, TAM SAM SOM, trends, data sources, confidence]
-allowedTools: [search.web, business.competitor_analysis, search.find_company_links]
+allowedTools: [search_web, business_competitor_analysis, search_find_company_links]
 minComplexity: moderate
 estimatedTokens: 13000
 outputFormat: markdown

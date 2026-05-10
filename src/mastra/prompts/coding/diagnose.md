@@ -49,7 +49,7 @@ Dla każdego subtaska określ:
 
 ## Output
 
-Po zakończeniu diagnostyki ZAKTUALIZUJ artifact (`coding.update_artifact`) ustawiając:
+Po zakończeniu diagnostyki ZAKTUALIZUJ artifact (`coding_update_artifact`) ustawiając:
 - `status` → `planning`
 - `plan` → lista kroków planu (tekstowo)
 - `filesRead` → lista przeczytanych plików
@@ -57,8 +57,8 @@ Po zakończeniu diagnostyki ZAKTUALIZUJ artifact (`coding.update_artifact`) usta
 
 ## WAŻNE OGRANICZENIA
 
-- ❌ NIE twórz worktree (`coding.init_worktree`)
-- ❌ NIE edytuj plików (`coding.write_file_tracked`)
+- ❌ NIE twórz worktree (`coding_init_worktree`)
+- ❌ NIE edytuj plików (`coding_write_file_tracked`)
 - ❌ NIE uruchamiaj apply_patch
 - ✅ TYLKO czytaj, szukaj, analizuj
 - ✅ TYLKO aktualizuj artifact z planem

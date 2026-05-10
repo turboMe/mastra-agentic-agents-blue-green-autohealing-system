@@ -6,7 +6,7 @@ description: >-
   Obejmuje sanityzację inputów, ochronę system promptów,
   walidację MCP tool calls i filtrowanie outputów.
 keywords: [security, prompt-injection, defense, llm, sanitization, input-validation, mcp]
-allowedTools: [fs.read_file, shell.execute]
+allowedTools: [fs_read_file, shell_execute]
 minComplexity: moderate
 estimatedTokens: 12000
 outputFormat: text

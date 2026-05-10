@@ -3,7 +3,7 @@ name: run-verification
 category: coding
 description: Run verification commands (TSC, tests, linters) and interpret results. Determines if code changes are safe to apply.
 keywords: [test, verify, tsc, lint, check, validation]
-allowedTools: [coding.run_test, view]
+allowedTools: [coding_run_test, view]
 minComplexity: trivial
 estimatedTokens: 3000
 outputFormat: verdict

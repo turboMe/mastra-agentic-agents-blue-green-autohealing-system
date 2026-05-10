@@ -7,7 +7,7 @@ description: >-
   management. Trigger: "deploy to Cloud Run", "GCP deploy", "deploy container",
   "push to production", "Cloud Run rollback".
 keywords: [cloud run, gcp, docker, deploy, container, artifact registry, traffic splitting, rollback]
-allowedTools: [terminal.run_command, fs.read_file, fs.write_file]
+allowedTools: [terminal_run_command, fs_read_file, fs_write_file]
 minComplexity: moderate
 estimatedTokens: 12000
 outputFormat: markdown

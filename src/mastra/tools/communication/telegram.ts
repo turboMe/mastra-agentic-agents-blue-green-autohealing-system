@@ -52,7 +52,7 @@ function getDefaultChatId(): string {
 // ── Tools ────────────────────────────────────────────────────────────────────
 
 export const telegramSendMessageTool = createTool({
-  id: 'telegram.send_message',
+  id: 'telegram_send_message',
   description:
     'Wysyła wiadomość tekstową przez Telegram bota. Używaj do powiadomień, ' +
     'alertów o błędach, raportów statusu. Obsługuje Markdown formatting.',
@@ -92,7 +92,7 @@ export const telegramSendMessageTool = createTool({
 });
 
 export const telegramSendAlertTool = createTool({
-  id: 'telegram.send_alert',
+  id: 'telegram_send_alert',
   description:
     'Wysyła sformatowany alert o krytycznym zdarzeniu przez Telegram. ' +
     'Używaj gdy ErrorCollector wykryje powtarzający się błąd lub system wymaga uwagi.',
@@ -142,7 +142,7 @@ export const telegramSendAlertTool = createTool({
 });
 
 export const telegramSendDocumentTool = createTool({
-  id: 'telegram.send_document',
+  id: 'telegram_send_document',
   description:
     'Wysyła plik/dokument przez Telegram bota. Przydatne do wysyłania ' +
     'raportów, logów, screenshotów.',

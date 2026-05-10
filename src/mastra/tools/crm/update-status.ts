@@ -8,7 +8,7 @@ import { getDb } from '../../lib/mongo.js';
 import { CRM_STATUSES } from './search-leads.js';
 
 export const updateStatusTool = createTool({
-  id: 'crm.update_status',
+  id: 'crm_update_status',
   description: 'Zmienia status leada w CRM i zapisuje powód w historii interakcji. Używaj gdy lead odpowie, przejdzie do kolejnego etapu, lub zrezygnuje.',
   inputSchema: z.object({
     idOrEmail: z.string().describe('ID leada (UUID) lub email kontaktu'),

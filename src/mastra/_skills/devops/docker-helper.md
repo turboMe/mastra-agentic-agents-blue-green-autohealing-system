@@ -6,7 +6,7 @@ description: >-
   needs to work with Dockerfiles, docker-compose, inspect running containers,
   debug networking issues, or optimize image builds.
 keywords: [docker, container, dockerfile, compose, image, devops, debugging]
-allowedTools: [shell.execute, fs.read_file, fs.write_file]
+allowedTools: [shell_execute, fs_read_file, fs_write_file]
 minComplexity: simple
 estimatedTokens: 14000
 outputFormat: text

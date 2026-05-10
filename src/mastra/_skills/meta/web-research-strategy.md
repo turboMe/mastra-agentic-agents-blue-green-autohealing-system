@@ -7,7 +7,7 @@ description: >-
   source triangulation, credibility scoring, and confidence assessment.
   Use when agent needs to research a topic thoroughly rather than single-query.
 keywords: [research, web-search, strategy, triangulation, multi-query, tavily, firecrawl, planning]
-allowedTools: [search.web, search.find_company_links, fs.read_file]
+allowedTools: [search_web, search_find_company_links, fs_read_file]
 minComplexity: moderate
 estimatedTokens: 14000
 outputFormat: text
@@ -20,7 +20,7 @@ last_used: null
 # Web Research Strategy
 
 > For thorough research tasks. Do NOT use for simple factual lookups
-> (use `search.web` directly for those).
+> (use `search_web` directly for those).
 
 ## Trigger
 - "research X thoroughly"
@@ -74,9 +74,9 @@ Given a broad research question, decompose into 3-5 targeted sub-questions.
 
 ## Step 2: SEARCH — Multi-Query Execution
 
-For each sub-question, run `search.web`:
+For each sub-question, run `search_web`:
 ```
-search.web({ query: "sub-question here", maxResults: 5 })
+search_web({ query: "sub-question here", maxResults: 5 })
 ```
 
 **Query Expansion Rules:**
@@ -160,7 +160,7 @@ A claim is verified when **3+ independent sources** agree.
 
 ## Anti-Patterns (DON'T)
 
-❌ Single-query research (use `search.web` directly instead)
+❌ Single-query research (use `search_web` directly instead)
 ❌ Trusting first result without verification
 ❌ Ignoring contradictory evidence
 ❌ Citing marketing content as authoritative

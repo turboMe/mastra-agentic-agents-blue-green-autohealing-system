@@ -8,7 +8,7 @@ description: >-
   Trigger: any MongoDB access, data inspection, "check the database",
   "update record", "delete", "fix data", "query collection".
 keywords: [mongodb, database, readonly, safety, query, write, confirm, audit]
-allowedTools: [db.query, db.write]
+allowedTools: [db_query, db_write]
 minComplexity: simple
 estimatedTokens: 8000
 outputFormat: text

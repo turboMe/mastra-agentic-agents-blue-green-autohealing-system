@@ -62,8 +62,8 @@ const diagnoseAndPlan = createStep({
       ``,
       `## Identyfikator zadania: ${taskId}`,
       ``,
-      `Na samym początku użyj \`coding.create_artifact\` aby zainicjować artifact z ID: ${taskId}.`,
-      `Po zakończeniu diagnostyki zaktualizuj artifact (\`coding.update_artifact\`) z pełnym polem \`diagnosticPlan\` i ustaw status na \`planning\`.`,
+      `Na samym początku użyj \`coding_create_artifact\` aby zainicjować artifact z ID: ${taskId}.`,
+      `Po zakończeniu diagnostyki zaktualizuj artifact (\`coding_update_artifact\`) z pełnym polem \`diagnosticPlan\` i ustaw status na \`planning\`.`,
     ].join('\n');
 
     await agent.generate(prompt);
@@ -134,7 +134,7 @@ const executePatch = createStep({
 
         // 2. Init worktree
         await agent.generate(
-          `Użyj coding.init_worktree z taskId="${taskId}" aby przygotować staging worktree. ` +
+          `Użyj coding_init_worktree z taskId="${taskId}" aby przygotować staging worktree. ` +
           `Odpowiedz krótko kiedy gotowe.`,
         );
 
@@ -258,10 +258,10 @@ const executePatch = createStep({
       ``,
       `## Identyfikator zadania: ${taskId}`,
       ``,
-      `Użyj pełnego cyklu Staging Worktree (\`coding.init_worktree\`).`,
+      `Użyj pełnego cyklu Staging Worktree (\`coding_init_worktree\`).`,
       `Po zapisaniu wszystkich plików w worktree, KONIECZNIE:`,
       `1. Uruchom w worktree komendę: git diff HEAD (aby wygenerować diff zmian).`,
-      `2. Zaktualizuj artefakt (\`coding.update_artifact\`) ustawiając pole diffSummary na wynik tego diffa.`,
+      `2. Zaktualizuj artefakt (\`coding_update_artifact\`) ustawiając pole diffSummary na wynik tego diffa.`,
       `3. Ustaw status artefaktu na waiting_approval.`,
       `UWAGA: nie wywołuj narzędzia apply_patch samodzielnie! Oczekujesz na codeReviewAgent.`,
     ].join('\n');
@@ -503,7 +503,7 @@ const decisionGate = createStep({
                 const cleanupAgent = mastra?.getAgent('codingAgent');
                 if (cleanupAgent) {
                   await cleanupAgent.generate(
-                    `Użyj coding.remove_worktree z taskId="${taskId}" aby posprzątać zasoby worktree.`,
+                    `Użyj coding_remove_worktree z taskId="${taskId}" aby posprzątać zasoby worktree.`,
                   );
                 }
 
@@ -550,7 +550,7 @@ const decisionGate = createStep({
         const agent = mastra?.getAgent('codingAgent');
         if (!agent) throw new Error('codingAgent not found for merge');
 
-        await agent.generate(`Użyj narzędzia coding.apply_patch z taskId="${taskId}" aby scalić zatwierdzone zmiany do głównego repozytorium. Następnie użyj coding.remove_worktree z taskId="${taskId}" aby posprzątać zasoby worktree.`);
+        await agent.generate(`Użyj narzędzia coding_apply_patch z taskId="${taskId}" aby scalić zatwierdzone zmiany do głównego repozytorium. Następnie użyj coding_remove_worktree z taskId="${taskId}" aby posprzątać zasoby worktree.`);
 
         return {
           taskId,
@@ -582,7 +582,7 @@ const decisionGate = createStep({
 
       await agent.generate(`Zadanie ${taskId} wymaga poprawek. Komentarz codeReviewAgent (iteracja ${iteration}):
       ${comments}
-      Popraw kod w worktree zgodnie z uwagami. Gdy skończysz poprawki, zaktualizuj artefakt (coding.update_artifact) i ustaw status na waiting_approval.`);
+      Popraw kod w worktree zgodnie z uwagami. Gdy skończysz poprawki, zaktualizuj artefakt (coding_update_artifact) i ustaw status na waiting_approval.`);
 
       // Teraz ponownie uruchamiamy review
       const reviewAgent = mastra?.getAgent('codeReviewAgent');
@@ -616,7 +616,7 @@ const decisionGate = createStep({
         if (resumeData.confirmMerge) {
           const mergeAgent = mastra?.getAgent('codingAgent');
           if (mergeAgent) {
-            await mergeAgent.generate(`Użyj narzędzia coding.apply_patch z taskId="${taskId}" i następnie coding.remove_worktree z taskId="${taskId}".`);
+            await mergeAgent.generate(`Użyj narzędzia coding_apply_patch z taskId="${taskId}" i następnie coding_remove_worktree z taskId="${taskId}".`);
           }
           return {
             taskId,

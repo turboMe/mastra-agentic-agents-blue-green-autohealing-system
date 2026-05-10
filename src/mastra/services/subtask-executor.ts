@@ -624,8 +624,8 @@ async function buildScopedPrompt(
     `### Instructions`,
     `- Work ONLY on files from the list above (unless this is a 'create' task)`,
     `- Do not edit files outside your scope`,
-    `- Use coding.write_file_tracked with taskId="${taskId}"`,
-    `- After completion, describe what you did in coding.update_artifact`,
+    `- Use coding_write_file_tracked with taskId="${taskId}"`,
+    `- After completion, describe what you did in coding_update_artifact`,
     `- Your subtaskId: ${subtask.id}`,
   );
 
@@ -693,7 +693,7 @@ function buildRetryPrompt(
     `- Analyze WHY the previous attempt failed`,
     `- Re-read target files — they may have changed`,
     `- Fix the specific problems listed above`,
-    `- Use coding.write_file_tracked with taskId="${taskId}"`,
+    `- Use coding_write_file_tracked with taskId="${taskId}"`,
     `- Run npx tsc --noEmit after changes`,
     `- Your subtaskId: ${subtask.id}`,
   );

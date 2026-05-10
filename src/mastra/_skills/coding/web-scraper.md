@@ -7,7 +7,7 @@ description: >-
   Use when agent needs to scrape web content, extract data from HTML pages,
   or build ETL pipelines from web sources.
 keywords: [scraping, web, curl, html, extraction, parsing, etl, data]
-allowedTools: [shell.execute, fs.write_file, fs.read_file]
+allowedTools: [shell_execute, fs_write_file, fs_read_file]
 minComplexity: moderate
 estimatedTokens: 12000
 outputFormat: json

@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { getSkillRegistry } from '../../services/skill-registry.js';
 
 export const skillReportTool = createTool({
-  id: 'skill.report_result',
+  id: 'skill_report_result',
   description: `Report the result of executing a skill. Updates the skill's success rate.
 Call this after completing a skill procedure to provide feedback.
 This helps the system learn which skills are reliable.`,

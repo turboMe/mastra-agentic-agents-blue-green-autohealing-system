@@ -182,7 +182,7 @@ export function analyzeWorkflow(workflowJson: unknown): { score: number; finding
 
 // ── Tool definition ────────────────────────────────────────────────────────
 export const riskScoringTool = createTool({
-  id: 'architect.risk_score',
+  id: 'architect_risk_score',
   description: 'Analizuje workflow n8n (JSON) pod kątem bezpieczeństwa. Zwraca ocenę ryzyka (0-100), listę znalezisk i werdykt. ZAWSZE uruchom przed deploy\'em. Werdykt "block" lub "review" wymaga użycia system.request_approval.',
   inputSchema: z.object({
     workflowJson: z.string().describe('Workflow n8n jako string JSON (obiekt workflow, nie wrapper)'),

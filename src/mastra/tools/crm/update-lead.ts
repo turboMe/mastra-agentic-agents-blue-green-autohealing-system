@@ -9,7 +9,7 @@ import { getDb } from '../../lib/mongo.js';
 import { CRM_STATUSES } from './search-leads.js';
 
 export const updateLeadTool = createTool({
-  id: 'crm.update_lead',
+  id: 'crm_update_lead',
   description:
     'Aktualizuje dowolne pola istniejącego leada (companyName, segment, region, contactPerson, phone, status, metadata, etc.) i dodaje wpis do historii. Używaj gdy zdobędziesz nowe info o leadzie poza zwykłą zmianą statusu.',
   inputSchema: z.object({

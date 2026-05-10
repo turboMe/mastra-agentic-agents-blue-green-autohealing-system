@@ -7,7 +7,7 @@ description: >-
   detect regressions, and optimize token efficiency. Use when developing,
   refining, or auditing prompts for agentic workflows.
 keywords: [prompt, testing, evaluation, llm, quality, regression, scoring, optimization]
-allowedTools: [shell.execute, fs.read_file, fs.write_file]
+allowedTools: [shell_execute, fs_read_file, fs_write_file]
 minComplexity: moderate
 estimatedTokens: 13000
 outputFormat: text

@@ -149,7 +149,7 @@ function normalizeArtifact(doc: Record<string, unknown>): CodeTaskArtifact {
 }
 
 export const createCodeTaskArtifactTool = createTool({
-  id: 'coding.create_artifact',
+  id: 'coding_create_artifact',
   description:
     'Tworzy artifact zadania kodowego: plan, pliki, komendy, diff, wynik testow i status rollbacku. Wywolaj na poczatku kazdego coding taska.',
   inputSchema: z.object({
@@ -205,7 +205,7 @@ export const createCodeTaskArtifactTool = createTool({
 });
 
 export const updateCodeTaskArtifactTool = createTool({
-  id: 'coding.update_artifact',
+  id: 'coding_update_artifact',
   description:
     'Aktualizuje artifact zadania kodowego. Przekazane pola zastepuja poprzednie wartosci, wiec podawaj kompletny stan dla aktualizowanych list.',
   inputSchema: z.object({
@@ -278,7 +278,7 @@ export const updateCodeTaskArtifactTool = createTool({
 });
 
 export const getCodeTaskArtifactTool = createTool({
-  id: 'coding.get_artifact',
+  id: 'coding_get_artifact',
   description: 'Pobiera artifact zadania kodowego po taskId. Artefakt jest kompresowany (pomija hashe ledgerowe), zeby chronic okno kontekstu LLM.',
   inputSchema: z.object({
     taskId: z.string(),
@@ -330,7 +330,7 @@ export const getCodeTaskArtifactTool = createTool({
 });
 
 export const runTestCommandTool = createTool({
-  id: 'coding.run_test',
+  id: 'coding_run_test',
   description: 'Uruchamia polecenie testowe (np. npm test, npx tsc) w glownym katalogu repozytorium i zapisuje wynik do artifact.testResult oraz commandsRun.',
   inputSchema: z.object({
     taskId: z.string(),
@@ -436,7 +436,7 @@ export const runTestCommandTool = createTool({
 });
 
 export const submitReviewTool = createTool({
-  id: 'coding.submit_review',
+  id: 'coding_submit_review',
   description: 'Zapisuje wynik code review w artifact (approve, needs_changes, block). Używane przez CodeReviewAgenta.',
   inputSchema: z.object({
     taskId: z.string(),

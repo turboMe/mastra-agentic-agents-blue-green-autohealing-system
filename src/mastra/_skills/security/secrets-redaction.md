@@ -8,7 +8,7 @@ description: >-
   GitHub, Slack, Telegram, JWT, klucze prywatne) i zamienia na
   [REDACTED:typ-sekretu].
 keywords: [security, secrets, redaction, api-key, token, password, sanitization, leak-prevention]
-allowedTools: [fs.read_file]
+allowedTools: [fs_read_file]
 minComplexity: simple
 estimatedTokens: 6000
 outputFormat: text

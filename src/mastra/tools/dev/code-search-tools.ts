@@ -225,7 +225,7 @@ async function searchCode(
 // ── Tool: code.search ────────────────────────────────────────────────────────
 
 export const codeSearchTool = createTool({
-  id: 'code.search',
+  id: 'code_search',
   description:
     'Semantic search across a codebase — finds code by meaning, not just keywords. ' +
     'Uses embeddings to match your query against function/class/interface definitions. ' +
@@ -280,7 +280,7 @@ export const codeSearchTool = createTool({
 // ── Tool: code.embed_stats ───────────────────────────────────────────────────
 
 export const codeEmbedStatsTool = createTool({
-  id: 'code.embed_stats',
+  id: 'code_embed_stats',
   description: 'Get statistics about code embeddings for a repository.',
   inputSchema: z.object({
     repoPath: z.string().optional().describe(

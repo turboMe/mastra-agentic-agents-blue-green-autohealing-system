@@ -25,7 +25,7 @@ const AGENTS_MAP = {
 type AgentKey = keyof typeof AGENTS_MAP;
 
 export const delegateTaskTool = createTool({
-  id: 'system.delegate_task',
+  id: 'system_delegate_task',
   description: `Hand off a task to a domain EXPERT agent that has its own identity, tools, and memory.
 Use this when the task requires the expert's TOOL STACK (Gmail, Calendar, n8n, CRM write paths, Pattern RAG).
 For pure text-generation without side-effects, use system.run_worker instead — it's lighter and you control the full prompt.

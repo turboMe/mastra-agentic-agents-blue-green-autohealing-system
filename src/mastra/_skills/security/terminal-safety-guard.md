@@ -8,7 +8,7 @@ description: >-
   lub ALLOW (bezpieczne do wykonania). Chroni przed rm -rf /, fork bombami,
   DROP DATABASE, eksfiltracja SSH keys i innymi niebezpiecznymi operacjami.
 keywords: [security, terminal, safety, guard, bash, shell, destructive, command, blocker]
-allowedTools: [shell.execute, fs.read_file]
+allowedTools: [shell_execute, fs_read_file]
 minComplexity: simple
 estimatedTokens: 8000
 outputFormat: text

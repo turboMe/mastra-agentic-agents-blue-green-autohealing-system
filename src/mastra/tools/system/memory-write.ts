@@ -24,7 +24,7 @@ const KNOWLEDGE_TYPES: KnowledgeType[] = [
 const KNOWLEDGE_TTL_DAYS = 90;
 
 export const memoryWriteTool = createTool({
-  id: 'system.memory_write_observation',
+  id: 'system_memory_write_observation',
   description: `Save an observation, pattern, or decision to system knowledge for future recall.
 
 Use this to persist:

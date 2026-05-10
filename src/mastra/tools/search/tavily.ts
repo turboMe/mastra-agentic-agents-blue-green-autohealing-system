@@ -47,7 +47,7 @@ const DIRECTORIES = [
 // searchWebTool
 // ────────────────────────────────────────────────────────────────────────────
 export const searchWebTool = createTool({
-  id: 'search.web',
+  id: 'search_web',
   description: 'Wyszukuje w internecie przez Tavily API. Używaj do aktualnych informacji (wiadomości, trendy, dane rynkowe) lub gdy NotebookLM nie ma odpowiedzi.',
   inputSchema: z.object({
     query: z.string().describe('Zapytanie do wyszukiwarki (po polsku lub angielsku)'),
@@ -78,7 +78,7 @@ export const searchWebTool = createTool({
 // findCompanyLinksTool
 // ────────────────────────────────────────────────────────────────────────────
 export const findCompanyLinksTool = createTool({
-  id: 'search.find_company_links',
+  id: 'search_find_company_links',
   description: 'Wyszukuje oficjalną stronę WWW, LinkedIn i Facebook firmy. Przydatne w producer-hunt do enrichmentu leadów przed draftowaniem emaila.',
   inputSchema: z.object({
     companyName: z.string().describe('Nazwa firmy do wyszukania'),

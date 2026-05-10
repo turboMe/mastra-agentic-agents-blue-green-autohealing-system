@@ -89,6 +89,7 @@ export const codingAgent: Agent = new Agent({
       // Phase 1.1b — OM keeps context across 15+ subtask orchestrations
       observationalMemory: {
         model: resolveModelId(infrastructure.observationalMemory),
+        scope: 'resource',  // tolerate requests bez threadId (Mastra 1.32+ rzuca twardo dla scope:'thread')
         temporalMarkers: true,
         observation: {
           threadTitle: true,

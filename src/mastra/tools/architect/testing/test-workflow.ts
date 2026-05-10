@@ -8,7 +8,7 @@ import { analyzeExecution } from './execution-analyzer.js';
 import type { TestFinding, TestStatus } from './test-types.js';
 
 export const testWorkflowTool = createTool({
-  id: 'architect.test_workflow',
+  id: 'architect_test_workflow',
   description:
     'Testuje workflow Mastry. Tryby: mock (validation + test plan, bez wykonania), manual (instrukcje dla uzytkownika), real_credentials (rzeczywiste wykonanie i analiza execution). Wymaga ze workflow jest mastra-managed.',
   inputSchema: z.object({

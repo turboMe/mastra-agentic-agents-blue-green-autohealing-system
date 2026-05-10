@@ -10,7 +10,7 @@ import { CRM_STATUSES } from './search-leads.js';
 import { randomUUID } from 'crypto';
 
 export const createLeadTool = createTool({
-  id: 'crm.create_lead',
+  id: 'crm_create_lead',
   description: 'Tworzy lub aktualizuje leada w CRM (upsert po email lub firmie). Używaj do dodawania nowych producentów, importu kontaktów z Gmail, lub odtwarzania danych po enrichmencie.',
   inputSchema: z.object({
     companyName: z.string().min(1).describe('Nazwa firmy (wymagana)'),

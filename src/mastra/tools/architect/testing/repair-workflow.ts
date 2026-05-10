@@ -9,7 +9,7 @@ import type { RepairChange, RepairResult, TestFinding } from './test-types.js';
 const MAX_ATTEMPTS = 3;
 
 export const repairWorkflowTool = createTool({
-  id: 'architect.repair_workflow',
+  id: 'architect_repair_workflow',
   description:
     'Probuje minimalnie zaadaptowac workflow do bledow z validate_workflow / test_workflow. Maksymalnie 3 proby per automationId. Nie generuje workflow od zera — tylko patche.',
   inputSchema: z.object({

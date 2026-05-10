@@ -7,7 +7,7 @@ description: >-
   matrix testing, and deployment strategies. Use when setting up, debugging,
   or optimizing continuous integration and deployment pipelines.
 keywords: [cicd, github-actions, gitlab-ci, pipeline, deployment, workflow, automation]
-allowedTools: [fs.read_file, coding.write_file_tracked, shell.execute]
+allowedTools: [fs_read_file, coding_write_file_tracked, shell_execute]
 minComplexity: moderate
 estimatedTokens: 16000
 outputFormat: patch

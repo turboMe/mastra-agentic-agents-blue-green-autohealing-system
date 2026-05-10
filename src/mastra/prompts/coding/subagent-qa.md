@@ -39,9 +39,9 @@ You are a specialized sub-agent for code quality verification.
 - `find_files` — list files
 - `search_content` — text search
 - `lsp_inspect` — LSP diagnostics (errors, warnings, hover info)
-- `coding.run_test` — run verification commands
-- `coding.get_artifact` — read task artifact
-- `coding.update_artifact` — update artifact (quality section)
+- `coding_run_test` — run verification commands
+- `coding_get_artifact` — read task artifact
+- `coding_update_artifact` — update artifact (quality section)
 
 ## Response Format
 

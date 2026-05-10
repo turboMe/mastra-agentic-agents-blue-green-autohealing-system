@@ -26,7 +26,7 @@ const BREAKDOWNS = ['agents', 'skills', 'models', 'latency', 'cost', 'scores'] a
 type Breakdown = typeof BREAKDOWNS[number];
 
 export const agentPerformanceReportTool = createTool({
-  id: 'system.agent_performance_report',
+  id: 'system_agent_performance_report',
   description:
     'Generuje raport wydajności agentów: success rate, użycie modeli, koszt USD, latency P50/P95/P99, scorer scores. ' +
     'Używaj gdy user pyta "jak działa system", "który agent jest najwolniejszy", "ile wydaliśmy", "który skill jest najczęściej używany". ' +

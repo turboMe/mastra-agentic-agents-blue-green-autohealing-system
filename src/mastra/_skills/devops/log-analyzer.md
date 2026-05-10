@@ -7,7 +7,7 @@ description: >-
   Use when agent needs to diagnose failures, find error patterns, or triage
   system issues from log data.
 keywords: [logs, journalctl, syslog, error, debugging, grep, jq, analysis, observability]
-allowedTools: [shell.execute, fs.read_file]
+allowedTools: [shell_execute, fs_read_file]
 minComplexity: simple
 estimatedTokens: 12000
 outputFormat: text

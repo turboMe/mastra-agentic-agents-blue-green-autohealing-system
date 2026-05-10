@@ -7,7 +7,7 @@ description: >-
   edge case inventory, and verification plan before coding begins.
   Integrates with diagnosticPlan.verificationPlan.
 keywords: [requirements, acceptance-criteria, given-when-then, testing, definition-of-done, edge-cases]
-allowedTools: [fs.read_file, workspace.view]
+allowedTools: [fs_read_file, workspace_view]
 minComplexity: simple
 estimatedTokens: 8000
 outputFormat: text

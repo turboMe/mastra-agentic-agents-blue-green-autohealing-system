@@ -99,17 +99,17 @@ export const SUBAGENT_ROLES: Record<string, SubAgentRole> = {
       'the full workspace and tracked write capability.',
     allowedTools: [
       // Read
-      'workspace.view',
-      'workspace.find_files',
-      'workspace.search_content',
-      'workspace.workspace_search',
-      'workspace.lsp_inspect',
+      'workspace_view',
+      'workspace_find_files',
+      'workspace_search_content',
+      'workspace_workspace_search',
+      'workspace_lsp_inspect',
       // Write (tracked)
-      'coding.write_file_tracked',
+      'coding_write_file_tracked',
       // Artifact management
-      'coding.create_artifact',
-      'coding.get_artifact',
-      'coding.update_artifact',
+      'coding_create_artifact',
+      'coding_get_artifact',
+      'coding_update_artifact',
     ],
     defaultModelTier: 'local-heavy',
     promptTemplate: 'coding/subagent-file-editor',
@@ -132,11 +132,11 @@ export const SUBAGENT_ROLES: Record<string, SubAgentRole> = {
       'Can read files for context but does NOT edit files.',
     allowedTools: [
       // Read
-      'workspace.view',
-      'workspace.find_files',
-      'workspace.search_content',
+      'workspace_view',
+      'workspace_find_files',
+      'workspace_search_content',
       // Commands (safe only)
-      'coding.run_test',
+      'coding_run_test',
     ],
     defaultModelTier: 'local-micro',
     promptTemplate: 'coding/subagent-terminal',
@@ -160,15 +160,15 @@ export const SUBAGENT_ROLES: Record<string, SubAgentRole> = {
       'Does NOT edit files — only reports issues for the orchestrator to fix.',
     allowedTools: [
       // Read
-      'workspace.view',
-      'workspace.find_files',
-      'workspace.search_content',
-      'workspace.lsp_inspect',
+      'workspace_view',
+      'workspace_find_files',
+      'workspace_search_content',
+      'workspace_lsp_inspect',
       // Commands (safe only)
-      'coding.run_test',
+      'coding_run_test',
       // Artifact (read + update for quality notes)
-      'coding.get_artifact',
-      'coding.update_artifact',
+      'coding_get_artifact',
+      'coding_update_artifact',
       // Browser automation (Phase F2 — Playwright MCP)
       'browser_navigate',
       'browser_click',
@@ -197,10 +197,10 @@ export const SUBAGENT_ROLES: Record<string, SubAgentRole> = {
       'Reports findings in structured format with source citations.',
     allowedTools: [
       // Read
-      'workspace.view',
+      'workspace_view',
       // Web search
-      'search.web',
-      'search.find_company_links',
+      'search_web',
+      'search_find_company_links',
       // Browser automation (Playwright MCP)
       'browser_navigate',
       'browser_click',
@@ -208,8 +208,8 @@ export const SUBAGENT_ROLES: Record<string, SubAgentRole> = {
       'browser_snapshot',
       'browser_screenshot',
       // Artifact management
-      'coding.create_artifact',
-      'coding.update_artifact',
+      'coding_create_artifact',
+      'coding_update_artifact',
     ],
     defaultModelTier: 'cloud-fast',
     promptTemplate: 'coding/subagent-researcher',

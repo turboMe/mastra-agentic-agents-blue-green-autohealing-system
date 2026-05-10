@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { getSkillRegistry } from '../../services/skill-registry.js';
 
 export const skillSearchTool = createTool({
-  id: 'skill.search',
+  id: 'skill_search',
   description: `Search the Skill Registry for skills relevant to a task.
 Returns ranked results with name, description, category, and similarity score.
 

@@ -7,7 +7,7 @@ description: >-
   page objects, test fixtures, assertions, and visual regression.
   Integrates with QA SubAgent role for automated test execution.
 keywords: [testing, e2e, playwright, qa, automation, regression, integration]
-allowedTools: [shell.execute, fs.read_file, coding.write_file_tracked, coding.run_test]
+allowedTools: [shell_execute, fs_read_file, coding_write_file_tracked, coding_run_test]
 minComplexity: moderate
 estimatedTokens: 10000
 outputFormat: text

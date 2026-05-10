@@ -7,7 +7,7 @@ import { analyzeWorkflow } from './risk-scoring.js';
 import { randomUUID } from 'crypto';
 
 export const deployAutomationTool = createTool({
-  id: 'architect.deploy_automation',
+  id: 'architect_deploy_automation',
   description:
     'Tworzy lub aktualizuje workflow w n8n. Wykonuje automatyczna walidacje, risk scoring i sprawdza uprawnienia. Workflow zawsze tworzony jako inactive.',
   inputSchema: z.object({

@@ -10,7 +10,7 @@ description: >-
   "który agent jest najwolniejszy", "ile wydaliśmy", "raport wydajności",
   "który skill", "regression check", "drift detection".
 keywords: [performance, evaluation, analytics, cost, latency, scorers, monitoring, drift, agents]
-allowedTools: [system.agent_performance_report, db.query]
+allowedTools: [system_agent_performance_report, db_query]
 minComplexity: moderate
 estimatedTokens: 9000
 outputFormat: markdown

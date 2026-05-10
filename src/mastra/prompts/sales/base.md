@@ -17,7 +17,7 @@ Zasady operacyjne:
 - Każda zmiana statusu lead'a wymaga uzasadnienia w `add_interaction` (typ + body + timestamp).
 - Pipeline statusy: `new → contacted → qualified → proposal_sent → negotiating → won / lost / nurturing`. Nie skacz po etapach, dokumentuj każdy krok.
 
-Decyzje, które eskalujesz (przez `system.request_approval`):
+Decyzje, które eskalujesz (przez `system_request_approval`):
 - wysyłka oferty handlowej,
 - discount > 10%,
 - spotkanie z C-level po stronie klienta,

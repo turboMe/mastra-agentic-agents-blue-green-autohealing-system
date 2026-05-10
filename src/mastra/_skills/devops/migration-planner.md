@@ -7,7 +7,7 @@ description: >-
   usage. Trigger: "migrate schema", "add field to collection", "rename field",
   "schema change", "database migration", "migrate-mongo".
 keywords: [mongodb, migration, schema, migrate-mongo, backward-compat, rollback, database]
-allowedTools: [db.query, terminal.run_command, fs.read_file, fs.write_file]
+allowedTools: [db_query, terminal_run_command, fs_read_file, fs_write_file]
 minComplexity: moderate
 estimatedTokens: 11000
 outputFormat: markdown

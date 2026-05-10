@@ -8,7 +8,7 @@ import { SlidesService } from './slides.js';
 // --- GMAIL TOOLS ---
 
 export const gmailSearchTool = createTool({
-  id: 'gmail.search',
+  id: 'gmail_search',
   description: 'Wyszukuje wątki w skrzynce Gmail po słowach kluczowych lub mailu.',
   inputSchema: z.object({
     query: z.string().describe('Zapytanie wyszukiwania (np. "is:unread", "from:klient@email.com")'),
@@ -26,7 +26,7 @@ export const gmailSearchTool = createTool({
 });
 
 export const gmailCreateDraftTool = createTool({
-  id: 'gmail.create_draft',
+  id: 'gmail_create_draft',
   description: 'Tworzy nowy szkic (draft) wiadomości email w Gmailu.',
   inputSchema: z.object({
     to: z.string().describe('Adres email odbiorcy'),
@@ -49,7 +49,7 @@ export const gmailCreateDraftTool = createTool({
 });
 
 export const gmailUpdateDraftTool = createTool({
-  id: 'gmail.update_draft',
+  id: 'gmail_update_draft',
   description: 'Aktualizuje istniejący szkic (draft) w Gmailu po jego ID.',
   inputSchema: z.object({
     draftId: z.string().describe('ID draftu do aktualizacji'),
@@ -84,7 +84,7 @@ export const gmailUpdateDraftTool = createTool({
 });
 
 export const gmailListDraftsTool = createTool({
-  id: 'gmail.list_drafts',
+  id: 'gmail_list_drafts',
   description: 'Pobiera listę aktualnych szkiców (draftów) w Gmailu.',
   inputSchema: z.object({
     maxResults: z.number().optional().default(20),
@@ -101,7 +101,7 @@ export const gmailListDraftsTool = createTool({
 });
 
 export const gmailGetDraftTool = createTool({
-  id: 'gmail.get_draft',
+  id: 'gmail_get_draft',
   description: 'Pobiera szczegóły i treść konkretnego draftu w Gmailu.',
   inputSchema: z.object({
     draftId: z.string().describe('ID draftu w Gmailu'),
@@ -118,7 +118,7 @@ export const gmailGetDraftTool = createTool({
 });
 
 export const gmailSendDraftTool = createTool({
-  id: 'gmail.send_draft',
+  id: 'gmail_send_draft',
   description: 'Wysyła istniejący szkic (draft) w Gmailu.',
   inputSchema: z.object({
     draftId: z.string().describe('ID draftu w Gmailu do wysłania'),
@@ -135,7 +135,7 @@ export const gmailSendDraftTool = createTool({
 });
 
 export const gmailDeleteDraftTool = createTool({
-  id: 'gmail.delete_draft',
+  id: 'gmail_delete_draft',
   description: 'Usuwa szkic (draft) z Gmaila.',
   inputSchema: z.object({
     draftId: z.string().describe('ID draftu w Gmailu do usunięcia'),
@@ -154,7 +154,7 @@ export const gmailDeleteDraftTool = createTool({
 // --- CALENDAR TOOLS ---
 
 export const calendarCreateEventTool = createTool({
-  id: 'calendar.create_event',
+  id: 'calendar_create_event',
   description: 'Tworzy wydarzenie w kalendarzu.',
   inputSchema: z.object({
     title: z.string().describe('Tytuł wydarzenia'),
@@ -178,7 +178,7 @@ export const calendarCreateEventTool = createTool({
 });
 
 export const calendarFindEventTool = createTool({
-  id: 'calendar.find_event',
+  id: 'calendar_find_event',
   description: 'Wyszukuje wydarzenie w kalendarzu po słowach kluczowych (np. nazwie firmy, kontaktu).',
   inputSchema: z.object({
     query: z.string().describe('Słowa kluczowe do wyszukania (np. "Acme spotkanie", "Patryk")'),
@@ -209,7 +209,7 @@ export const calendarFindEventTool = createTool({
 });
 
 export const calendarUpdateEventTool = createTool({
-  id: 'calendar.update_event',
+  id: 'calendar_update_event',
   description: 'Aktualizuje istniejące wydarzenie w kalendarzu (tytuł, czas, opis).',
   inputSchema: z.object({
     eventId: z.string().describe('ID wydarzenia z Google Calendar'),
@@ -235,7 +235,7 @@ export const calendarUpdateEventTool = createTool({
 });
 
 export const calendarDeleteEventTool = createTool({
-  id: 'calendar.delete_event',
+  id: 'calendar_delete_event',
   description: 'Usuwa wydarzenie z kalendarza po ID.',
   inputSchema: z.object({
     eventId: z.string().describe('ID wydarzenia do usunięcia'),
@@ -254,7 +254,7 @@ export const calendarDeleteEventTool = createTool({
 // --- GOOGLE SHEETS TOOLS (Faza 6.1) ---
 
 export const sheetsCreateSpreadsheetTool = createTool({
-  id: 'sheets.create_spreadsheet',
+  id: 'sheets_create_spreadsheet',
   description: 'Tworzy nowy arkusz Google Sheets. Zwraca spreadsheetId + URL. Używaj do raportów, eksportu danych CRM, list dystrybucyjnych.',
   inputSchema: z.object({
     title: z.string().describe('Tytuł nowego arkusza'),
@@ -279,7 +279,7 @@ export const sheetsCreateSpreadsheetTool = createTool({
 });
 
 export const sheetsReadRangeTool = createTool({
-  id: 'sheets.read_range',
+  id: 'sheets_read_range',
   description: 'Odczytuje zakres komórek z arkusza Google Sheets. Range w formacie A1: "Sheet1!A1:C10" lub "A1:C10" dla pierwszej zakładki.',
   inputSchema: z.object({
     spreadsheetId: z.string().describe('ID arkusza (z URL: /spreadsheets/d/{ID}/edit)'),
@@ -304,7 +304,7 @@ export const sheetsReadRangeTool = createTool({
 });
 
 export const sheetsWriteRangeTool = createTool({
-  id: 'sheets.write_range',
+  id: 'sheets_write_range',
   description: 'NADPISUJE zakres w arkuszu Google Sheets podanymi wartościami. Wymaga confirm: true. Aby dodać dane bez nadpisywania użyj sheets.append_rows.',
   inputSchema: z.object({
     spreadsheetId: z.string(),
@@ -339,7 +339,7 @@ export const sheetsWriteRangeTool = createTool({
 });
 
 export const sheetsAppendRowsTool = createTool({
-  id: 'sheets.append_rows',
+  id: 'sheets_append_rows',
   description: 'Dodaje wiersze na końcu istniejącej tabeli w arkuszu Google Sheets. Bezpieczne — nie nadpisuje istniejących danych.',
   inputSchema: z.object({
     spreadsheetId: z.string(),
@@ -364,7 +364,7 @@ export const sheetsAppendRowsTool = createTool({
 });
 
 export const sheetsGetMetadataTool = createTool({
-  id: 'sheets.get_metadata',
+  id: 'sheets_get_metadata',
   description: 'Pobiera metadane arkusza Google Sheets: tytuł, listę zakładek, wymiary. Użyj przed odczytem żeby wiedzieć jakie zakładki są dostępne.',
   inputSchema: z.object({
     spreadsheetId: z.string(),
@@ -396,7 +396,7 @@ export const sheetsGetMetadataTool = createTool({
 // --- GOOGLE SLIDES TOOLS (Faza 6.1) ---
 
 export const slidesCreatePresentationTool = createTool({
-  id: 'slides.create_presentation',
+  id: 'slides_create_presentation',
   description: 'Tworzy nową prezentację Google Slides (pustą, z 1 slajdem startowym). Używaj do raportów, deck-ów dla klientów, prezentacji wewnętrznych.',
   inputSchema: z.object({
     title: z.string().describe('Tytuł prezentacji'),
@@ -420,7 +420,7 @@ export const slidesCreatePresentationTool = createTool({
 });
 
 export const slidesGetMetadataTool = createTool({
-  id: 'slides.get_metadata',
+  id: 'slides_get_metadata',
   description: 'Pobiera metadane prezentacji Google Slides: tytuł, listę slajdów z ID i indeksami.',
   inputSchema: z.object({
     presentationId: z.string(),
@@ -450,7 +450,7 @@ export const slidesGetMetadataTool = createTool({
 });
 
 export const slidesAddSlideTool = createTool({
-  id: 'slides.add_slide',
+  id: 'slides_add_slide',
   description: 'Dodaje nowy slajd do prezentacji Google Slides. Layouts: TITLE, TITLE_AND_BODY (default), TITLE_AND_TWO_COLUMNS, BLANK, SECTION_HEADER.',
   inputSchema: z.object({
     presentationId: z.string(),
@@ -473,7 +473,7 @@ export const slidesAddSlideTool = createTool({
 });
 
 export const slidesReplaceTextTool = createTool({
-  id: 'slides.replace_text',
+  id: 'slides_replace_text',
   description: 'Zamienia placeholdery na wartości w całej prezentacji. Konwencja: użyj {{KLUCZ}} w slajdach (lub w skopiowanym templatce), potem przekaż mapę zamian. Idealne do generowania slajdów z danych.',
   inputSchema: z.object({
     presentationId: z.string(),
@@ -496,7 +496,7 @@ export const slidesReplaceTextTool = createTool({
 });
 
 export const slidesAddTextBoxTool = createTool({
-  id: 'slides.add_text_box',
+  id: 'slides_add_text_box',
   description: 'Dodaje pole tekstowe do konkretnego slajdu. Pozycja w EMU (1 cal = 914400). Używaj dla custom contentu który nie pasuje do placeholderów layoutu.',
   inputSchema: z.object({
     presentationId: z.string(),
@@ -538,7 +538,7 @@ export const slidesAddTextBoxTool = createTool({
 });
 
 export const slidesDeleteSlideTool = createTool({
-  id: 'slides.delete_slide',
+  id: 'slides_delete_slide',
   description: 'Usuwa slajd z prezentacji. Wymaga confirm: true. Operacja nieodwracalna.',
   inputSchema: z.object({
     presentationId: z.string(),

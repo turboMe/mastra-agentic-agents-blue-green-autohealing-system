@@ -18,7 +18,7 @@ import { getDb } from '../../lib/mongo.js';
 import { generateEmbedding, cosineSimilarity } from '../../lib/embedder.js';
 
 export const recallWorkerLessonsTool = createTool({
-  id: 'system.recall_worker_lessons',
+  id: 'system_recall_worker_lessons',
   description: `Recalls relevant lessons from past worker executions stored in shared memory.
 Use at the start of complex tasks to surface known pitfalls and successful patterns.
 Lessons are stored via pushSignalTool with type='lesson_learned'.

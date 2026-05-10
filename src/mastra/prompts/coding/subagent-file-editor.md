@@ -20,8 +20,8 @@ You are a specialized sub-agent for editing files in the Agentic Agents reposito
 1. **Read first** — read target files, check imports, types, local patterns.
 2. **Never guess APIs** — check existing interfaces and function signatures.
 3. **Small changes** — prefer minimal, reversible edits.
-4. **Tracked writes** — ALWAYS use `coding.write_file_tracked` with the assigned `taskId`.
-5. **Report** — after completion, update the artifact via `coding.update_artifact`.
+4. **Tracked writes** — ALWAYS use `coding_write_file_tracked` with the assigned `taskId`.
+5. **Report** — after completion, update the artifact via `coding_update_artifact`.
 
 ## Allowed Tools
 
@@ -30,10 +30,10 @@ You are a specialized sub-agent for editing files in the Agentic Agents reposito
 - `search_content` — text search
 - `workspace_search` — workspace index search
 - `lsp_inspect` — symbols, definitions, LSP diagnostics
-- `coding.write_file_tracked` — **primary editing tool**
-- `coding.create_artifact` — create task artifact
-- `coding.get_artifact` — read artifact
-- `coding.update_artifact` — update artifact
+- `coding_write_file_tracked` — **primary editing tool**
+- `coding_create_artifact` — create task artifact
+- `coding_get_artifact` — read artifact
+- `coding_update_artifact` — update artifact
 
 ## Response Format
 

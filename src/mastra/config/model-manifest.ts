@@ -60,10 +60,9 @@ export const models = {
   // ═══════════════════════════════════════════════════════════════════════════
   // ANTHROPIC (klucz: ANTHROPIC_API_KEY)
   // ═══════════════════════════════════════════════════════════════════════════
-  'claude-opus-4.7': 'anthropic/claude-opus-4-7',        // flagship, 1M ctx, complex reasoning
+  'claude-opus-4.6': 'anthropic/claude-opus-4-6',        // flagship, 1M ctx, complex reasoning
   'claude-sonnet-4.6': 'anthropic/claude-sonnet-4-6',      // daily driver, best value
-  'claude-haiku-4.6': 'anthropic/claude-haiku-4-6',       // fastest, cheapest
-  'claude-haiku-4.5': 'anthropic/claude-haiku-4-5',       // starszy haiku, ultra-tani
+  'claude-haiku-4.5': 'anthropic/claude-haiku-4-5',       // fastest, cheapest
 
   // ═══════════════════════════════════════════════════════════════════════════
   // OPENROUTER FREE (klucz: OPENROUTER_API_KEY) — $0 cost, rate-limited
@@ -163,9 +162,9 @@ export function resolveModelId(key: ModelKey): string {
 // ═════════════════════════════════════════════════════════════════════════════
 
 export const agentModels = {
-  metaAgent: 'gemini-2.5-pro' as ModelKey,
-  codingAgent: 'claude-sonnet-4.6' as ModelKey,
-  codeReviewAgent: 'claude-haiku-4.6' as ModelKey,
+  metaAgent: 'claude-opus-4.6' as ModelKey,
+  codingAgent: 'claude-opus-4.6' as ModelKey,
+  codeReviewAgent: 'claude-haiku-4.5' as ModelKey,
   salesAgent: 'gemma4-26b' as ModelKey,
   crmAgent: 'gemma4-26b' as ModelKey,
   analyticsAgent: 'qwen3-coder-30b' as ModelKey,
@@ -183,11 +182,11 @@ export const agentModels = {
 
 export const workflowAssignments = {
   coding: {
-    default: 'gemini-2.5-pro' as ModelKey,  // diagnose-and-plan
-    patch: 'gemini-2.5-flash' as ModelKey,  // execute-patch fallback
-    review: 'claude-haiku-4.6' as ModelKey,  // code review (Haiku: tani + dobry do walidacji)
-    selfHealingPlanner: 'gpt-5.3-mini' as ModelKey,
-    selfHealingReview: 'gemini-2.5-flash' as ModelKey,
+    default: 'claude-opus-4.6' as ModelKey,  // diagnose-and-plan
+    patch: 'claude-sonnet-4.5' as ModelKey,  // execute-patch fallback
+    review: 'claude-haiku-4.5' as ModelKey,  // code review (Haiku: tani + dobry do walidacji)
+    selfHealingPlanner: 'claude-opus-4.6' as ModelKey,
+    selfHealingReview: 'claude-opus-4.6' as ModelKey,
     jsonRepair: 'gemini-2.5-flash' as ModelKey,
   },
 
@@ -245,7 +244,7 @@ export const infrastructure = {
 
   /** N8n workflow generation defaults (used by automation-architect builders) */
   n8n: {
-    defaultModel: 'gemini-2.5-flash' as ModelKey,
-    reasoningModel: 'gemini-2.5-flash' as ModelKey,
+    defaultModel: 'claude-sonnet-4.6' as ModelKey,
+    reasoningModel: 'claude-opus-4.6' as ModelKey,
   },
 } as const;

@@ -12,7 +12,7 @@ import { getDb } from '../../lib/mongo.js';
 import { randomUUID } from 'crypto';
 
 export const requestApprovalTool = createTool({
-  id: 'system.request_approval',
+  id: 'system_request_approval',
   description: 'Rejestruje prośbę o zatwierdzenie ryzykownej akcji (np. wysłanie emaila, deploy workflow, zmiana statusu). ZAWSZE używaj tego narzędzia zamiast bezpośredniego wywołania gdy akcja jest nieodwracalna i wymaga potwierdzenia użytkownika.',
   inputSchema: z.object({
     tool: z.string().describe('Nazwa narzędzia/akcji do zatwierdzenia, np. "gmail.send_draft"'),

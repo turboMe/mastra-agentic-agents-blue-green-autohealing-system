@@ -7,7 +7,7 @@ description: >-
   and extracting data using accessible tree mode (token-efficient).
   Use for web scraping, UI testing, form automation, and web app debugging.
 keywords: [browser, playwright, automation, scraping, testing, screenshot, form, navigation]
-allowedTools: [shell.execute, fs.read_file]
+allowedTools: [shell_execute, fs_read_file]
 minComplexity: moderate
 estimatedTokens: 12000
 outputFormat: text

@@ -25,7 +25,7 @@ const DEFAULT_REPO = AGENTIC_AGENTS_REPO;
 // ── repo.map — Ranked repository structure ──────────────────────────────────
 
 export const repoMapTool = createTool({
-  id: 'repo.map',
+  id: 'repo_map',
   description:
     'Get a ranked structural map of a repository showing the most relevant files and symbols ' +
     'for a given task. Uses AST parsing and PageRank to prioritize files by dependency importance. ' +
@@ -99,7 +99,7 @@ export const repoMapTool = createTool({
 // ── repo.stats — Index statistics ───────────────────────────────────────────
 
 export const repoStatsTool = createTool({
-  id: 'repo.stats',
+  id: 'repo_stats',
   description:
     'Get statistics about a repository index: number of files, symbols, definitions, references. ' +
     'Also lists all currently indexed repositories. Pass repoPath for a specific repo.',
@@ -140,7 +140,7 @@ export const repoStatsTool = createTool({
 // ── repo.reindex — Force full re-index ──────────────────────────────────────
 
 export const repoReindexTool = createTool({
-  id: 'repo.reindex',
+  id: 'repo_reindex',
   description:
     'Force a full re-index of a repository. Only needed if the index seems stale. ' +
     'Normal incremental indexing happens automatically with repo.map. ' +

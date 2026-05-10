@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { getSkillRegistry } from '../../services/skill-registry.js';
 
 export const skillLoadTool = createTool({
-  id: 'skill.load',
+  id: 'skill_load',
   description: `Load the full procedure for a skill by name.
 Call this after skill.search finds a relevant skill.
 Returns the complete markdown procedure, allowed tools, and metadata.

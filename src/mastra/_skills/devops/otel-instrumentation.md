@@ -7,7 +7,7 @@ description: >-
   configuration. Use when adding observability to Node.js, Python, Go, or
   Java applications, or configuring telemetry pipelines.
 keywords: [opentelemetry, otel, tracing, metrics, observability, instrumentation, grafana, jaeger]
-allowedTools: [fs.read_file, coding.write_file_tracked, shell.execute]
+allowedTools: [fs_read_file, coding_write_file_tracked, shell_execute]
 minComplexity: moderate
 estimatedTokens: 18000
 outputFormat: patch

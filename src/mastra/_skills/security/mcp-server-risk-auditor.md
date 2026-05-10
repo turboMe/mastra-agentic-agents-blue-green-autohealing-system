@@ -6,7 +6,7 @@ description: >-
   Checklist obejmuje: uprawnienia, ryzyko exfiltracji danych,
   model autoryzacji, jakość kodu, zależności.
 keywords: [security, mcp, audit, risk, server, permissions, exfiltration]
-allowedTools: [fs.read_file, shell.execute, search_web]
+allowedTools: [fs_read_file, shell_execute, search_web]
 minComplexity: moderate
 estimatedTokens: 10000
 outputFormat: text

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { validateWorkflow } from './workflow-validator.js';
 
 export const validateWorkflowTool = createTool({
-  id: 'architect.validate_workflow',
+  id: 'architect_validate_workflow',
   description: 'Wykonuje twarda walidacje struktury i bezpieczenstwa workflow n8n.',
   inputSchema: z.object({
     workflow: z.any().describe('Workflow JSON do walidacji'),

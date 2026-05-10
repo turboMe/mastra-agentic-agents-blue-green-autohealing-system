@@ -7,7 +7,7 @@ description: >-
   Covers Vitest/Jest patterns with MongoDB, Express/Fastify,
   and external API mocking strategies.
 keywords: [testing, integration, api, database, mock, fixture, isolation, vitest, jest]
-allowedTools: [shell.execute, fs.read_file, coding.write_file_tracked, coding.run_test]
+allowedTools: [shell_execute, fs_read_file, coding_write_file_tracked, coding_run_test]
 minComplexity: moderate
 estimatedTokens: 10000
 outputFormat: text

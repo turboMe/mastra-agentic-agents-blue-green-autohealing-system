@@ -12,7 +12,7 @@ type ChefNotebookId = typeof CHEF_NOTEBOOK_IDS[number];
 // ─── Existing tools (updated) ─────────────────────────────────────────────────
 
 export const chefStartProjectTool = createTool({
-  id: 'chef.start_project',
+  id: 'chef_start_project',
   description: 'Rozpoczyna nowy projekt menu dla restauracji lub eventu. Tworzy ankietę z brakującymi polami i pytaniami kontekstowymi.',
   inputSchema: z.object({
     name: z.string().describe('Nazwa projektu (np. "Menu letnie 2025 – Bistro Roma")'),
@@ -45,7 +45,7 @@ export const chefStartProjectTool = createTool({
 });
 
 export const chefUpdateProfileTool = createTool({
-  id: 'chef.update_profile',
+  id: 'chef_update_profile',
   description: 'Aktualizuje odpowiedzi na pytania ankietowe w projekcie menu. Zwraca brakujące pola i czy profil jest kompletny.',
   inputSchema: z.object({
     projectId: z.string().describe('UUID projektu'),
@@ -70,7 +70,7 @@ export const chefUpdateProfileTool = createTool({
 });
 
 export const chefGenerateMenuTool = createTool({
-  id: 'chef.generate_menu',
+  id: 'chef_generate_menu',
   description: 'Pobiera profil projektu i kontekst z notebooków kulinarnych, aby agent mógł wygenerować menu. Po wywołaniu tego narzędzia MUSISZ samodzielnie skomponować JSON menu i zapisać przez chef.save_menu.',
   inputSchema: z.object({
     projectId: z.string().describe('UUID projektu (musi mieć kompletny profil)'),
@@ -152,7 +152,7 @@ export const chefGenerateMenuTool = createTool({
 });
 
 export const chefDraftRecipeTool = createTool({
-  id: 'chef.draft_recipe',
+  id: 'chef_draft_recipe',
   description: 'Generuje i zapisuje kartę technologiczną (BOM, mise en place, serwis) dla dania z projektu.',
   inputSchema: z.object({
     projectId: z.string(),
@@ -189,7 +189,7 @@ export const chefDraftRecipeTool = createTool({
 // ─── New tools ────────────────────────────────────────────────────────────────
 
 export const chefGetProjectTool = createTool({
-  id: 'chef.get_project',
+  id: 'chef_get_project',
   description: 'Pobiera szczegóły projektu menu wraz z aktualnym profilem i statusem.',
   inputSchema: z.object({
     projectId: z.string().describe('UUID projektu menu'),
@@ -212,7 +212,7 @@ export const chefGetProjectTool = createTool({
 });
 
 export const chefListProjectsTool = createTool({
-  id: 'chef.list_projects',
+  id: 'chef_list_projects',
   description: 'Zwraca listę projektów menu z ich statusami. Filtruj po status opcjonalnie.',
   inputSchema: z.object({
     status: z.string().optional().describe('Filter po statusie: questionnaire, review, generating, approved, archived'),
@@ -251,7 +251,7 @@ export const chefListProjectsTool = createTool({
 });
 
 export const chefSaveMenuTool = createTool({
-  id: 'chef.save_menu',
+  id: 'chef_save_menu',
   description: 'Zapisuje menu (ręcznie skomponowane lub po iteracji) do projektu. Automatycznie numeruje wersje.',
   inputSchema: z.object({
     projectId: z.string().describe('UUID projektu'),
@@ -334,7 +334,7 @@ export const chefSaveMenuTool = createTool({
 });
 
 export const chefGetMenuTool = createTool({
-  id: 'chef.get_menu',
+  id: 'chef_get_menu',
   description: 'Pobiera pełne menu z sekcjami i daniami. Wymaga menuId (UUID), nie myl z projectId.',
   inputSchema: z.object({
     menuId: z.string().describe('UUID menu'),
@@ -357,7 +357,7 @@ export const chefGetMenuTool = createTool({
 });
 
 export const chefIterateMenuTool = createTool({
-  id: 'chef.iterate_menu',
+  id: 'chef_iterate_menu',
   description: 'Zwraca istniejące menu + profil projektu, aby agent mógł zastosować feedback użytkownika i zapisać nową wersję przez chef.save_menu. Po wywołaniu tego narzędzia MUSISZ: (1) zastosować feedback do sekcji, (2) wywołać chef.save_menu z projectId i zaktualizowanymi sections.',
   inputSchema: z.object({
     menuId: z.string().describe('UUID menu do modyfikacji'),
@@ -400,7 +400,7 @@ export const chefIterateMenuTool = createTool({
 });
 
 export const chefGetRecipeTool = createTool({
-  id: 'chef.get_recipe',
+  id: 'chef_get_recipe',
   description: 'Pobiera wcześniej zapisaną recepturę (BOM) dla dania w projekcie.',
   inputSchema: z.object({
     projectId: z.string().describe('UUID projektu'),
@@ -424,7 +424,7 @@ export const chefGetRecipeTool = createTool({
 });
 
 export const chefQueryKnowledgeTool = createTool({
-  id: 'chef.query_knowledge',
+  id: 'chef_query_knowledge',
   description: `Odpytuje kulinarne bazy wiedzy NotebookLM. Dostępne notatniki: chef_master (ogólna wiedza szefa), chef_flavor (pairing smaków), chef_texture (tekstury), chef_classic (kuchnia klasyczna), chef_modern (nowoczesne techniki), chef_europe (kuchnia europejska), chef_asia (kuchnia azjatycka), chef_americas_mena (Ameryki/Bliski Wschód), chef_psychology (psychologia gościa).`,
   inputSchema: z.object({
     question: z.string().describe('Pytanie kulinarne (w języku naturalnym)'),
@@ -464,7 +464,7 @@ export const chefQueryKnowledgeTool = createTool({
 });
 
 export const chefSuggestPairingTool = createTool({
-  id: 'chef.suggest_pairing',
+  id: 'chef_suggest_pairing',
   description: 'Sugeruje pairingi smakowe dla podanych składników używając wiedzy z chef_flavor i chef_master. Zwraca komplementarne i kontrastowe pairingi oraz bridge ingredients.',
   inputSchema: z.object({
     ingredients: z.array(z.string().min(1)).min(1).max(10).describe('Lista składników do sparowania'),
@@ -512,7 +512,7 @@ export const chefSuggestPairingTool = createTool({
 });
 
 export const chefCheckSeasonalTool = createTool({
-  id: 'chef.check_seasonal',
+  id: 'chef_check_seasonal',
   description: 'Sprawdza sezonowość składników dla podanego regionu i miesiąca. Pomiń ingredients (lub podaj []) aby uzyskać ogólny przegląd sezonowy.',
   inputSchema: z.object({
     ingredients: z.array(z.string()).optional().default([]).describe('Składniki do sprawdzenia (puste = ogólny przegląd regionu)'),
@@ -565,7 +565,7 @@ export const chefCheckSeasonalTool = createTool({
 });
 
 export const chefAddNoteTool = createTool({
-  id: 'chef.add_note',
+  id: 'chef_add_note',
   description: 'Dodaje notatkę roboczą chefa — preferencje klienta, odkryte pairingi, notatki z iteracji, feedback. Notatki budują bazę wiedzy reużywalną w kolejnych projektach.',
   inputSchema: z.object({
     content: z.string().min(1).describe('Treść notatki'),
@@ -597,7 +597,7 @@ export const chefAddNoteTool = createTool({
 });
 
 export const chefSearchNotesTool = createTool({
-  id: 'chef.search_notes',
+  id: 'chef_search_notes',
   description: 'Przeszukuje notatki chefa (semantycznie lub przez regex fallback). Użyj do odtworzenia preferencji klienta lub wcześniejszych odkryć.',
   inputSchema: z.object({
     query: z.string().min(1).describe('Zapytanie wyszukiwania (np. "pairing lamb", "preferencje Jan Kowalski")'),
@@ -622,7 +622,7 @@ export const chefSearchNotesTool = createTool({
 });
 
 export const chefExportMenuTool = createTool({
-  id: 'chef.export_menu',
+  id: 'chef_export_menu',
   description: 'Eksportuje menu do formatu print-ready (Markdown lub plain text). Zwraca sformatowany dokument gotowy do wydruku lub konwersji na PDF.',
   inputSchema: z.object({
     menuId: z.string().describe('UUID menu do eksportu'),

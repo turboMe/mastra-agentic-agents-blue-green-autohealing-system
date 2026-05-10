@@ -7,7 +7,7 @@ description: >-
   suggest missing indexes, or rewrite inefficient SQL for PostgreSQL, SQLite,
   or DuckDB databases.
 keywords: [sql, database, query, explain, index, optimization, postgresql, performance]
-allowedTools: [shell.execute, fs.read_file, coding.write_file_tracked]
+allowedTools: [shell_execute, fs_read_file, coding_write_file_tracked]
 minComplexity: moderate
 estimatedTokens: 15000
 outputFormat: text

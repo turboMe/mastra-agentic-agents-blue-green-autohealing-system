@@ -8,7 +8,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 
 export const currentTimeTool = createTool({
-  id: 'system.current_time',
+  id: 'system_current_time',
   description:
     'Returns the current date and time in ISO 8601 format (UTC). Use this whenever you need a timestamp for logging, diagnostics, or reports.',
 

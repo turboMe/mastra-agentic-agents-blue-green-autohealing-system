@@ -57,7 +57,7 @@ export class RssService {
 // -- MASTRA TOOLS --
 
 export const rssGetArticlesTool = createTool({
-  id: 'rss.get_articles',
+  id: 'rss_get_articles',
   description: 'Pobiera najnowsze artykuły z bazy RSS.',
   inputSchema: z.object({
     limit: z.number().optional().default(5)
@@ -74,7 +74,7 @@ export const rssGetArticlesTool = createTool({
 });
 
 export const rssGetDigestsTool = createTool({
-  id: 'rss.get_digests',
+  id: 'rss_get_digests',
   description: 'Pobiera najnowsze podsumowania (digesty) artykułów RSS.',
   inputSchema: z.object({
     limit: z.number().optional().default(3)
@@ -91,7 +91,7 @@ export const rssGetDigestsTool = createTool({
 });
 
 export const rssSearchArticlesTool = createTool({
-  id: 'rss.search_articles',
+  id: 'rss_search_articles',
   description: 'Wyszukuje artykuły RSS po słowach kluczowych w tytule lub opisie.',
   inputSchema: z.object({
     query: z.string(),
@@ -109,7 +109,7 @@ export const rssSearchArticlesTool = createTool({
 });
 
 export const rssCreateDigestTool = createTool({
-  id: 'rss.create_digest',
+  id: 'rss_create_digest',
   description: 'Tworzy i zapisuje podsumowanie (digest) z informacji zebranych przez agenta.',
   inputSchema: z.object({
     subject: z.string().describe('Temat podsumowania (np. AI News z ostatniego tygodnia)'),
@@ -127,7 +127,7 @@ export const rssCreateDigestTool = createTool({
 });
 
 export const rssListSourcesTool = createTool({
-  id: 'rss.list_sources',
+  id: 'rss_list_sources',
   description: 'Wyświetla listę źródeł (URL) nasłuchiwanych przez pobieracza RSS.',
   inputSchema: z.object({}),
   execute: async () => {

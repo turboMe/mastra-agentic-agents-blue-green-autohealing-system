@@ -7,7 +7,7 @@ description: >-
   common troubleshooting patterns. Use when working with Kubernetes clusters,
   creating manifests, or diagnosing pod/service issues.
 keywords: [kubernetes, k8s, kubectl, helm, manifest, pod, deployment, container-orchestration]
-allowedTools: [shell.execute, fs.read_file, coding.write_file_tracked]
+allowedTools: [shell_execute, fs_read_file, coding_write_file_tracked]
 minComplexity: moderate
 estimatedTokens: 16000
 outputFormat: text

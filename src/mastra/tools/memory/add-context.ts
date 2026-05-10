@@ -12,7 +12,7 @@ import { randomUUID } from 'crypto';
 // addContextTool – save a note/context for other agents to read
 // ────────────────────────────────────────────────────────────────────────────
 export const addContextTool = createTool({
-  id: 'shared_memory.add_context',
+  id: 'shared_memory_add_context',
   description: 'Zapisuje notatkę/kontekst w pamięci współdzielonej, którą mogą odczytać inne agenty. Użyj do przechowywania kluczowych insightów, decyzji, alertów między sesjami.',
   inputSchema: z.object({
     content: z.string().describe('Treść kontekstu/notatki'),
@@ -65,7 +65,7 @@ export const addContextTool = createTool({
 // listContextTool – read active shared memory
 // ────────────────────────────────────────────────────────────────────────────
 export const listContextTool = createTool({
-  id: 'shared_memory.list_context',
+  id: 'shared_memory_list_context',
   description: 'Odczytuje aktywne wpisy z pamięci współdzielonej (jeszcze nie wygasłe). Używaj na początku sesji aby wiedzieć co inne agenty zapisały.',
   inputSchema: z.object({
     type: z.enum(['insight', 'alert', 'decision', 'signal', 'note']).optional().describe('Filtruj po typie'),
@@ -118,7 +118,7 @@ export const listContextTool = createTool({
 // pushSignalTool – broadcast a typed system signal
 // ────────────────────────────────────────────────────────────────────────────
 export const pushSignalTool = createTool({
-  id: 'shared_memory.push_signal',
+  id: 'shared_memory_push_signal',
   description: `Broadcasts a typed system signal to other agents.
 Signals are short-lived (default 12h) but can be extended (ttlHours: 720 = 30 days).
 

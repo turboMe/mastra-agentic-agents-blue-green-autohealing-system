@@ -42,7 +42,7 @@ const optionalDateString = (value: unknown): string | undefined => {
 };
 
 export const searchLeadsTool = createTool({
-  id: 'crm.search_leads',
+  id: 'crm_search_leads',
   description: 'Wyszukuje leady w CRM MongoDB. Filtruje po nazwie firmy/emailu, regionie i statusie. Zwraca listę leadów z historią interakcji.',
   inputSchema: z.object({
     query: z.string().optional().describe('Fraza do szukania w nazwie firmy lub emailu (regex, case-insensitive)'),

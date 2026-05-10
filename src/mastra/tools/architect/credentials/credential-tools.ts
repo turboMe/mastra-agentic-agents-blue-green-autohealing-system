@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { resolveCredentials } from './credential-resolver.js';
 
 export const resolveCredentialsTool = createTool({
-  id: 'architect.resolve_credentials',
+  id: 'architect_resolve_credentials',
   description: 'Mapuje wymagane serwisy na referencje credentiali w n8n.',
   inputSchema: z.object({
     required: z.array(
