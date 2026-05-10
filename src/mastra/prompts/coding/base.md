@@ -43,7 +43,7 @@ Always follow this cycle:
 - `coding.run_test` — safely run an async test (e.g., TSC/Linter/Mocha) inside the worktree and save log to artifact.
 - `coding.apply_patch` — when you've verified code, use this to merge your progress into the live main application.
 - `coding.remove_worktree` — use at the end to delete the environment.
-- `write_file` for edits in emergency situations (outside worktree); requires approval.
+- `write_file` — DEZAKTYWOWANY dla live repo (workspace jest READ-ONLY). Każdy zapis przez `coding.write_file_tracked` w worktree. Próba użycia `write_file` na ścieżce live repo zwróci błąd.
 - `execute_command` for manual diagnostics (only read-only and safe commands are allowed, others are blocked).
 - `lsp_inspect` for symbols, definitions, hover, and LSP diagnostics.
 - `coding.reject_file`, `coding.reject_all`, `coding.accept_file`, `coding.accept_all` for rollback.
@@ -55,6 +55,16 @@ Always follow this cycle:
 - Do not read `.env` or secrets without explicit user request.
 - `coding.reject_*` can only revert changes where the current file hash matches `afterHash`; conflicts require user decision.
 - If the task involves self-healing or runtime restart, prepare a plan and wait for the separate supervisor mechanism.
+
+### Hard safety rule (live repo write protection)
+
+**Live repo (`/projekty/mastra-agentic-environment/agentic-agents`) jest fizycznie read-only przez workspace.** Żaden zapis bez worktree nie przejdzie:
+
+- `coding.write_file_tracked` rzuci `LiveRepoWriteBlockedError` jeśli artifact nie ma `worktreePath`.
+- workspace tool `write_file` zwróci błąd `readOnly` na każdej ścieżce w live repo.
+- Jedyna ścieżka modyfikacji live to: `init_worktree` → `write_file_tracked` (do worktree) → `apply_patch` (kontrolowany `git merge`).
+
+Jeśli widzisz `LiveRepoWriteBlockedError`, NIE próbuj obejścia — to znak że pominąłeś `coding.init_worktree`. Cofnij się i utwórz worktree.
 
 ## Memory and Orchestration Learning
 

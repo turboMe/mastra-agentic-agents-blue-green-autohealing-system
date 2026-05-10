@@ -4,6 +4,16 @@ import { getDb } from '../lib/mongo.js';
 
 export const AGENTIC_AGENTS_REPO = '/projekty/mastra-agentic-environment/agentic-agents';
 
+export class LiveRepoWriteBlockedError extends Error {
+  constructor(taskId: string, reason: string) {
+    super(
+      `[SAFETY] Write to live repo blocked for task ${taskId}: ${reason}. ` +
+      `Wywolaj coding.init_worktree najpierw — agent nie edytuje runtime na ktorym zyje.`
+    );
+    this.name = 'LiveRepoWriteBlockedError';
+  }
+}
+
 export async function getWorkspacePath(taskId: string): Promise<string> {
   const db = await getDb();
   const artifact = await db.collection('code_task_artifacts').findOne({ taskId });
@@ -11,6 +21,22 @@ export async function getWorkspacePath(taskId: string): Promise<string> {
     return artifact.worktreePath;
   }
   return AGENTIC_AGENTS_REPO;
+}
+
+/**
+ * STRICT variant for write operations — throws if no worktree exists for the task.
+ * Use this for any tool that mutates files, so the agent never silently writes to live repo.
+ */
+export async function getWorkspacePathForWrite(taskId: string): Promise<string> {
+  const db = await getDb();
+  const artifact = await db.collection('code_task_artifacts').findOne({ taskId });
+  if (!artifact) {
+    throw new LiveRepoWriteBlockedError(taskId, 'artifact nie istnieje (uruchom coding.create_artifact)');
+  }
+  if (typeof artifact.worktreePath !== 'string' || !artifact.worktreePath) {
+    throw new LiveRepoWriteBlockedError(taskId, 'brak worktreePath w artifact (uruchom coding.init_worktree)');
+  }
+  return artifact.worktreePath;
 }
 
 const CODE_SANDBOX_ISOLATION: IsolationBackend =
@@ -107,6 +133,10 @@ export const codeWorkspace = new Workspace({
   filesystem: new LocalFilesystem({
     basePath: AGENTIC_AGENTS_REPO,
     contained: true,
+    // SAFETY: live repo is READ-ONLY through workspace tool `write_file`.
+    // All agent writes must go through coding.write_file_tracked → worktree.
+    // Worktree writes (fs/promises.writeFile) and shell commands (git worktree/merge) bypass this.
+    readOnly: true,
   }),
 
   sandbox: new LocalSandbox({

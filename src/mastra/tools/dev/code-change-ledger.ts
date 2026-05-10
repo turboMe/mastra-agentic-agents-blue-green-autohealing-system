@@ -6,7 +6,7 @@ import { promisify } from 'util';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb } from '../../lib/mongo.js';
-import { getWorkspacePath } from '../../workspaces/code-workspace.js';
+import { getWorkspacePath, getWorkspacePathForWrite } from '../../workspaces/code-workspace.js';
 
 const execAsync = promisify(exec);
 
@@ -315,7 +315,7 @@ export const recordAfterChangeTool = createTool({
   execute: async (context) => {
     try {
       const db = await getDb();
-      const workspacePath = await getWorkspacePath(context.taskId);
+      const workspacePath = await getWorkspacePathForWrite(context.taskId);
       const { absolutePath, relativePath } = normalizeRepoPath(context.path, workspacePath);
       const snapshot = await db.collection<SnapshotDoc>('code_change_snapshots').findOne({
         taskId: context.taskId,
@@ -628,9 +628,9 @@ export const writeFileTrackedTool = createTool({
         };
       }
 
-      const workspacePath = await getWorkspacePath(context.taskId);
+      const workspacePath = await getWorkspacePathForWrite(context.taskId);
       const { absolutePath, relativePath } = normalizeRepoPath(context.path, workspacePath);
-      
+
       const existingSnapshot = await db.collection<SnapshotDoc>('code_change_snapshots').findOne({
         taskId: context.taskId,
         path: relativePath,
