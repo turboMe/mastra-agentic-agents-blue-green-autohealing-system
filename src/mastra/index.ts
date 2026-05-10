@@ -522,7 +522,9 @@ export const mastra: Mastra = new Mastra({
       [WORKSPACE_TOOLS.FILESYSTEM.WRITE_FILE]: { name: 'write_file' },
       [WORKSPACE_TOOLS.FILESYSTEM.LIST_FILES]: { name: 'list_files' },
       [WORKSPACE_TOOLS.FILESYSTEM.GREP]: { name: 'search_content' },
-      [WORKSPACE_TOOLS.SANDBOX.EXECUTE_COMMAND]: { name: 'execute_command' },
+      // SANDBOX.EXECUTE_COMMAND DEZAKTYWOWANY — emituje data-workspace-metadata
+      // + data-sandbox-exit, ktore w Mastra v1.31/1.32 lamia persistencje text part.
+      // Zastapione custom toolem `metaExecuteCommandTool` (child_process.spawn) w meta-agent.
     },
   }),
 });

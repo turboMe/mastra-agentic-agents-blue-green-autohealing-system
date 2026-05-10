@@ -18,6 +18,7 @@ import { memoryRecallTool } from '../tools/system/memory-recall.js';
 import { memoryWriteTool } from '../tools/system/memory-write.js';
 import { currentTimeTool } from '../tools/system/current-time.js';
 import { skillSearchTool } from '../tools/system/skill-search.js';
+import { metaExecuteCommandTool } from '../tools/system/meta-execute-command.js';
 import {
   n8nTriggerWebhookTool,
   n8nHealthTool,
@@ -168,6 +169,8 @@ export const metaAgent: Agent = new Agent({
     skillSearchTool,
     // Utility
     currentTimeTool,
+    // Shell execution (workaround dla Mastra v1.31/1.32 bug z workspace sandbox)
+    metaExecuteCommandTool,
   },
 
   // ── Discoverable tool pool (~50 tools via semantic search) ────────────────

@@ -35,6 +35,7 @@ import { getCircuitBreaker } from './circuit-breaker.js';
 import { getBudgetTracker } from './budget-tracker.js';
 import { appendToCheckpoint } from './context-checkpoint.js';
 import { assembleContext, formatAssembledContext } from './context-assembler.js';
+import { cacheOptionsForModel } from '../lib/anthropic-cache.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -141,7 +142,7 @@ export async function executeSubtask(
   try {
     // Execute with timeout
     const response = await Promise.race([
-      agent.generate(prompt, { model: modelId } as any),
+      agent.generate(prompt, { model: modelId, ...cacheOptionsForModel(modelId) } as any),
       createTimeout(timeoutMs, `Subtask ${subtask.id} timed out after ${timeoutMs / 1000}s`),
     ]);
 

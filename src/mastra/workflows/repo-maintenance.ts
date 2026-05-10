@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { getDb } from '../lib/mongo.js';
 import { getErrorCollector } from '../services/error-collector.js';
 import { AGENTIC_AGENTS_REPO } from '../workspaces/code-workspace.js';
+import { anthropicCacheOptions } from '../lib/anthropic-cache.js';
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -337,7 +338,7 @@ const executeReviewAgent = createStep({
     Na końcu użyj submitReviewTool i prześlij verdict (approve/needs_changes) wraz z uzasadnieniem.
     Jeśli diff wygląda poprawnie i spełnia wymagania zadania, daj approve.`;
 
-    const response = await agent.generate(prompt);
+    const response = await agent.generate(prompt, anthropicCacheOptions());
 
     // Odczytujemy faktyczny werdykt z MongoDB (tam submitReviewTool go zapisał)
     const updatedArtifact = await db.collection('code_task_artifacts').findOne({ taskId: inputData.taskId });
@@ -589,9 +590,12 @@ const decisionGate = createStep({
 
       const nextIteration = iteration + 1;
 
-      await reviewAgent.generate(`Zadanie ${taskId} zostało poprawione (iteracja ${nextIteration}/${MAX_REVIEW_ITERATIONS}).
+      await reviewAgent.generate(
+        `Zadanie ${taskId} zostało poprawione (iteracja ${nextIteration}/${MAX_REVIEW_ITERATIONS}).
       Pobierz artefakt i przeprowadź ponowne Code Review.
-      Użyj submitReviewTool aby zaktualizować werdykt.`);
+      Użyj submitReviewTool aby zaktualizować werdykt.`,
+        anthropicCacheOptions(),
+      );
 
       // Sprawdzamy ponownie verdict z Mongo
       const db = await getDb();

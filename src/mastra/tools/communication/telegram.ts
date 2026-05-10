@@ -114,7 +114,7 @@ export const telegramSendAlertTool = createTool({
         warning: '🟡',
         info: '🔵',
       };
-      const icon = severityIcon[context.severity] ?? '🔵';
+      const icon = severityIcon[context.severity ?? 'info'] ?? '🔵';
 
       const message = [
         `${icon} *${escapeMarkdownV2(context.title)}*`,

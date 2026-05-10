@@ -7,6 +7,7 @@ import { resolve } from 'path';
 
 // Import subagent directly for delegation
 import { codeReviewAgent } from '../../agents/code-review-agent.js';
+import { anthropicCacheOptions } from '../../lib/anthropic-cache.js';
 
 export const createExternalProjectTool = createTool({
   id: 'createExternalProject',
@@ -76,7 +77,10 @@ export const delegateToReviewerTool = createTool({
   }),
   execute: async (context) => {
     try {
-      const response = await codeReviewAgent.generate(`Jako sub-agent recenzujacy, sprawdz ponizszy kontekst i kod. Daj krotka, ekspercka odpowiedz czy jest on bezpieczny i prawidlowy:\n\n${context.context}`);
+      const response = await codeReviewAgent.generate(
+        `Jako sub-agent recenzujacy, sprawdz ponizszy kontekst i kod. Daj krotka, ekspercka odpowiedz czy jest on bezpieczny i prawidlowy:\n\n${context.context}`,
+        anthropicCacheOptions(),
+      );
       
       return { success: true, review: response.text };
     } catch (e: any) {
