@@ -7,6 +7,7 @@ import { MongoDBStore } from '@mastra/mongodb';
 import { DuckDBStore } from '@mastra/duckdb';
 import { MastraCompositeStore } from '@mastra/core/storage';
 import { Observability, DefaultExporter, CloudExporter, SensitiveDataFilter } from '@mastra/observability';
+import { MastraEditor } from '@mastra/editor';
 import { MongoTelemetryExporter } from './services/mongo-telemetry-exporter.js';
 import { Workspace, LocalFilesystem, LocalSandbox, WORKSPACE_TOOLS } from '@mastra/core/workspace';
 
@@ -527,6 +528,7 @@ export const mastra: Mastra = new Mastra({
       // Zastapione custom toolem `metaExecuteCommandTool` (child_process.spawn) w meta-agent.
     },
   }),
+  editor: new MastraEditor(),
 });
 
 
