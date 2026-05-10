@@ -59,6 +59,7 @@ import { automationArchitect } from './agents/automation-architect';
 import { codingAgent } from './agents/coding-agent';
 import { codeReviewAgent } from './agents/code-review-agent';
 import { knowledgeAgent } from './agents/knowledge-agent';
+import { researcherAgent } from './agents/researcher-agent';
 
 // Scorers
 import { toolCallAppropriatenessScorer, completenessScorer, translationScorer } from './scorers/weather-scorer';
@@ -467,6 +468,7 @@ export const mastra: Mastra = new Mastra({
     codingAgent,
     codeReviewAgent,
     knowledgeAgent,
+    researcherAgent,
   },
   scorers: {
     toolCallAppropriatenessScorer,
