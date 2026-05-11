@@ -61,3 +61,5 @@ deploy.config.json
 # ── Clutter & Scratch ────────────────────────────────────
 scratch/
 storage/
+ideas/
+docs/
