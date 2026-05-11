@@ -54,3 +54,10 @@ _external/
 # NotebookLM MCP — local Chrome profile + config (sensitive: cookies/session)
 chrome_profile_notebooklm/
 notebooklm-config.json
+
+# ── Local Deploy Config ──────────────────────────────────
+deploy.config.json
+
+# ── Clutter & Scratch ────────────────────────────────────
+scratch/
+storage/

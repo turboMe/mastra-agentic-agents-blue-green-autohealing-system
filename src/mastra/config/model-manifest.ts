@@ -163,7 +163,7 @@ export function resolveModelId(key: ModelKey): string {
 
 export const agentModels = {
   metaAgent: 'nemotron-super-free' as ModelKey,
-  codingAgent: 'ring-free' as ModelKey,
+  codingAgent: 'nemotron-super-free' as ModelKey,
   codeReviewAgent: 'gemini-2.5-flash' as ModelKey,
   salesAgent: 'gemma4-26b' as ModelKey,
   crmAgent: 'gemma4-26b' as ModelKey,
@@ -184,7 +184,7 @@ export const agentModels = {
 
 export const workflowAssignments = {
   coding: {
-    default: 'ring-free' as ModelKey,  // diagnose-and-plan
+    default: 'nemotron-super-free' as ModelKey,  // diagnose-and-plan
     patch: 'laguna-free' as ModelKey,  // execute-patch fallback
     review: 'nemotron-nano-free' as ModelKey,  // code review (Haiku: tani + dobry do walidacji)
     selfHealingPlanner: 'gemini-2.5-pro' as ModelKey,
@@ -246,7 +246,7 @@ export const infrastructure = {
 
   /** N8n workflow generation defaults (used by automation-architect builders) */
   n8n: {
-    defaultModel: 'ring-free' as ModelKey,
-    reasoningModel: 'ring-free' as ModelKey,
+    defaultModel: 'nemotron-super-free' as ModelKey,
+    reasoningModel: 'nemotron-super-free' as ModelKey,
   },
 } as const;
