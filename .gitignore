@@ -22,9 +22,11 @@ dist
 
 # ── Database files ────────────────────────────────────────
 *.db
+*.db.*
 *.db-*
 *.duckdb
-*.duckdb.wal
+*.duckdb.*
+*.duckdb-*
 *.sqlite
 *.sqlite3
 
