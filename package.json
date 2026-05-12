@@ -20,6 +20,7 @@
     "tunnel:logs": "docker compose -f ../docker-compose.yml logs -f cloudflared",
     "tunnel:url": "docker logs af-cloudflared-n8n 2>&1 | grep -oE 'https://[-a-zA-Z0-9.]+\\.trycloudflare\\.com' | tail -n 1",
     "init-db": "bash scripts/with-node.sh npx tsx src/mastra/scripts/init-db.ts",
+    "rebuild:embeddings": "bash scripts/with-node.sh npx tsx src/mastra/scripts/rebuild-embeddings.ts",
     "cron": "bash scripts/with-node.sh npx tsx src/mastra/scripts/cron-runner.ts",
     "check:n8n-runtime": "bash scripts/with-node.sh npx tsx src/mastra/scripts/check-n8n-runtime.ts",
     "check:automation-patterns": "bash scripts/with-node.sh npx tsx src/mastra/scripts/check-automation-patterns.ts",

@@ -568,8 +568,11 @@ ensureIndexes().catch((err) =>
 // NOTE: import.meta.dirname resolves to .mastra/output/ in bundled mode,
 // so we use explicit source path to find _skills/ directory.
 import { getSkillRegistry } from './services/skill-registry.js';
+import { AGENTIC_AGENTS_REPO } from './workspaces/code-workspace.js';
 import { resolve } from 'path';
-const SKILLS_DIR = resolve('/projekty/mastra-agentic-environment/agentic-agents', 'src', 'mastra', '_skills');
+const SKILLS_DIR = process.env.MASTRA_SKILLS_DIR
+  ? resolve(process.env.MASTRA_SKILLS_DIR)
+  : resolve(AGENTIC_AGENTS_REPO, 'src', 'mastra', '_skills');
 getSkillRegistry().initialize(SKILLS_DIR).catch((err) =>
   console.error('[SkillRegistry] Initialization failed:', (err as Error).message),
 );

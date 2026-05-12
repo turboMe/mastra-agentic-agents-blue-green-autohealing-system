@@ -8,12 +8,13 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join, resolve } from 'path';
+import { AGENTIC_AGENTS_REPO } from '../../workspaces/code-workspace.js';
 
-// Resolve skills directory relative to this file at runtime
-const SKILLS_ROOT = resolve(
-  new URL('.', import.meta.url).pathname,
-  '../../_skills',
-);
+// Tool files are bundled into .mastra/output/tools, so import.meta-relative
+// resolution points at the build directory. Keep this tied to the source repo.
+const SKILLS_ROOT = process.env.MASTRA_SKILLS_DIR
+  ? resolve(process.env.MASTRA_SKILLS_DIR)
+  : resolve(AGENTIC_AGENTS_REPO, 'src', 'mastra', '_skills');
 
 interface SkillFile {
   path: string;

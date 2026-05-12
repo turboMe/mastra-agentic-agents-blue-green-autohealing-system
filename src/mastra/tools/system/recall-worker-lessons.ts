@@ -6,7 +6,7 @@
  *   data: { task_pattern: string, lesson: string, preset?: string }
  *
  * This tool queries the signals collection and ranks results by cosine similarity
- * (using the same Google text-embedding-004 embedder as Pattern RAG + chef notes).
+ * using the embedder configured in model-manifest.ts.
  *
  * Usage pattern:
  *   1. Start of a complex turn → call recall_worker_lessons to check for known pitfalls

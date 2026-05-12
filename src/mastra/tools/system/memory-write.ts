@@ -11,7 +11,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { getDb } from '../../lib/mongo.js';
-import { generateEmbedding } from '../../lib/embedder.js';
+import { EMBEDDING_MODEL_ID, generateEmbedding } from '../../lib/embedder.js';
 import type { KnowledgeType } from '../../services/memory-extractor.js';
 
 const KNOWLEDGE_TYPES: KnowledgeType[] = [
@@ -90,6 +90,7 @@ When to write:
             $set: {
               content: ctx.content.slice(0, 2000),
               embedding,
+              embeddingModel: embedding.length > 0 ? EMBEDDING_MODEL_ID : undefined,
               updatedAt: now,
               expiresAt,
               confidence: Math.min(1, (existing.confidence ?? 0.5) + 0.1),
@@ -112,6 +113,7 @@ When to write:
         title: ctx.title,
         content: ctx.content.slice(0, 2000),
         embedding,
+        embeddingModel: embedding.length > 0 ? EMBEDDING_MODEL_ID : undefined,
         sourceEventIds: [],
         confidence: 0.7,
         usageCount: 0,

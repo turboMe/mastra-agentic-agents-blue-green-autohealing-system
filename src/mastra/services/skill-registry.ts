@@ -95,7 +95,7 @@ export class SkillRegistry {
     const mdFiles = await this._findMarkdownFiles(skillsDir);
     console.log(`[SkillRegistry] Found ${mdFiles.length} skill files in ${skillsDir}`);
 
-    const embeddingPromises: Promise<void>[] = [];
+    const embeddingJobs: Array<{ name: string; metadata: SkillMetadata }> = [];
 
     for (const filePath of mdFiles) {
       try {
@@ -141,22 +141,15 @@ export class SkillRegistry {
 
         this.skills.set(name, skill);
 
-        // Generate embedding asynchronously
         if (metadata.description) {
-          embeddingPromises.push(
-            this._generateSkillEmbedding(name, metadata)
-              .catch(err => {
-                console.warn(`[SkillRegistry] Embedding failed for ${name}:`, (err as Error).message);
-              }),
-          );
+          embeddingJobs.push({ name, metadata });
         }
       } catch (err) {
         console.warn(`[SkillRegistry] Failed to parse ${filePath}:`, (err as Error).message);
       }
     }
 
-    // Wait for all embeddings (non-blocking, errors caught above)
-    await Promise.allSettled(embeddingPromises);
+    await this._generateEmbeddingsWithLimit(embeddingJobs);
 
     this.initialized = true;
     const withEmbeddings = [...this.skills.values()].filter(s => s.embedding.length > 0).length;
@@ -339,6 +332,30 @@ export class SkillRegistry {
     if (skill) {
       skill.embedding = embedding;
     }
+  }
+
+  private async _generateEmbeddingsWithLimit(
+    jobs: Array<{ name: string; metadata: SkillMetadata }>,
+  ): Promise<void> {
+    const configured = Number(process.env.SKILL_EMBEDDING_CONCURRENCY);
+    const concurrency = Number.isFinite(configured)
+      ? Math.max(1, Math.min(4, configured))
+      : 1;
+
+    let next = 0;
+    const workers = Array.from({ length: Math.min(concurrency, jobs.length) }, async () => {
+      while (next < jobs.length) {
+        const job = jobs[next++];
+        if (!job) continue;
+        try {
+          await this._generateSkillEmbedding(job.name, job.metadata);
+        } catch (err) {
+          console.warn(`[SkillRegistry] Embedding failed for ${job.name}:`, (err as Error).message);
+        }
+      }
+    });
+
+    await Promise.allSettled(workers);
   }
 }
 

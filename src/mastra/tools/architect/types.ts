@@ -128,6 +128,7 @@ export type PatternKnowledgeCard = {
 export type StoredAutomationPattern = Omit<AutomationPattern, 'build' | 'knowledgeCard'> & {
   builderId: string;
   embedding?: number[];
+  embeddingModel?: string;
   createdAt: Date;
   updatedAt: Date;
 };

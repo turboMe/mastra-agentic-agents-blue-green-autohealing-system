@@ -17,7 +17,7 @@ import { resolve } from 'path';
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import Database from 'better-sqlite3';
-import { generateEmbedding, cosineSimilarity } from '../../lib/embedder.js';
+import { EMBEDDING_MODEL_ID, generateEmbedding, cosineSimilarity } from '../../lib/embedder.js';
 import { AGENTIC_AGENTS_REPO } from '../../workspaces/code-workspace.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -61,12 +61,18 @@ function getDb(repoPath: string): Database.Database {
       end_line INTEGER NOT NULL,
       symbol_name TEXT NOT NULL DEFAULT '',
       content_hash TEXT NOT NULL,
+      embedding_model TEXT,
       embedding BLOB,
       UNIQUE(file_path, start_line, end_line)
     );
     CREATE INDEX IF NOT EXISTS idx_chunks_file ON code_chunks(file_path);
     CREATE INDEX IF NOT EXISTS idx_chunks_hash ON code_chunks(content_hash);
   `);
+
+  const columns = db.prepare('PRAGMA table_info(code_chunks)').all() as Array<{ name: string }>;
+  if (!columns.some((col) => col.name === 'embedding_model')) {
+    db.exec('ALTER TABLE code_chunks ADD COLUMN embedding_model TEXT');
+  }
 
   _dbs.set(repoPath, db);
   return db;
@@ -118,22 +124,31 @@ async function ensureEmbeddings(repoPath: string): Promise<{ embedded: number; c
   let embedded = 0;
   let cached = 0;
 
-  const getExisting = db.prepare('SELECT id, content_hash FROM code_chunks WHERE file_path = ? AND start_line = ? AND end_line = ?');
+  const getExisting = db.prepare(
+    'SELECT id, content_hash, embedding_model FROM code_chunks WHERE file_path = ? AND start_line = ? AND end_line = ?',
+  );
   const upsert = db.prepare(`
-    INSERT OR REPLACE INTO code_chunks (file_path, start_line, end_line, symbol_name, content_hash, embedding)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO code_chunks
+      (file_path, start_line, end_line, symbol_name, content_hash, embedding_model, embedding)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
 
   for (const chunk of chunks) {
-    const existing = getExisting.get(chunk.filePath, chunk.startLine, chunk.endLine) as { id: number; content_hash: string } | undefined;
+    const existing = getExisting.get(chunk.filePath, chunk.startLine, chunk.endLine) as
+      | { id: number; content_hash: string; embedding_model?: string | null }
+      | undefined;
 
-    if (existing && existing.content_hash === chunk.hash) {
+    if (
+      existing &&
+      existing.content_hash === chunk.hash &&
+      existing.embedding_model === EMBEDDING_MODEL_ID
+    ) {
       cached++;
       continue;
     }
 
     try {
-      // bge-m3 produces NaN embeddings for very short texts (variable names like 'db', 'now')
+      // Some embedders produce poor/empty vectors for very short identifiers.
       if (chunk.content.length < 8) {
         continue;
       }
@@ -142,7 +157,7 @@ async function ensureEmbeddings(repoPath: string): Promise<{ embedded: number; c
 
       upsert.run(
         chunk.filePath, chunk.startLine, chunk.endLine,
-        chunk.symbolName, chunk.hash, embeddingBuffer,
+        chunk.symbolName, chunk.hash, EMBEDDING_MODEL_ID, embeddingBuffer,
       );
       embedded++;
     } catch (err) {
@@ -170,8 +185,12 @@ async function searchCode(
   const queryEmbedding = await generateEmbedding(query);
 
   // Load all chunks with embeddings
-  let sql = 'SELECT file_path, start_line, end_line, symbol_name, embedding FROM code_chunks WHERE embedding IS NOT NULL';
-  const params: any[] = [];
+  let sql = `
+    SELECT file_path, start_line, end_line, symbol_name, embedding
+    FROM code_chunks
+    WHERE embedding IS NOT NULL AND embedding_model = ?
+  `;
+  const params: any[] = [EMBEDDING_MODEL_ID];
   if (scope) {
     sql += ' AND file_path LIKE ?';
     params.push(`${scope}%`);
@@ -260,7 +279,10 @@ export const codeSearchTool = createTool({
       const targetRepo = context.repoPath || AGENTIC_AGENTS_REPO;
       const results = await searchCode(context.query, targetRepo, context.topK, context.scope);
       const db = getDb(targetRepo);
-      const totalChunks = (db.prepare('SELECT COUNT(*) as cnt FROM code_chunks WHERE embedding IS NOT NULL').get() as any).cnt;
+      const totalChunks = (
+        db.prepare('SELECT COUNT(*) as cnt FROM code_chunks WHERE embedding IS NOT NULL AND embedding_model = ?')
+          .get(EMBEDDING_MODEL_ID) as any
+      ).cnt;
 
       return {
         success: true,
@@ -302,7 +324,10 @@ export const codeEmbedStatsTool = createTool({
       const targetRepo = context.repoPath || AGENTIC_AGENTS_REPO;
       const db = getDb(targetRepo);
       const total = (db.prepare('SELECT COUNT(*) as cnt FROM code_chunks').get() as any).cnt;
-      const embedded = (db.prepare('SELECT COUNT(*) as cnt FROM code_chunks WHERE embedding IS NOT NULL').get() as any).cnt;
+      const embedded = (
+        db.prepare('SELECT COUNT(*) as cnt FROM code_chunks WHERE embedding IS NOT NULL AND embedding_model = ?')
+          .get(EMBEDDING_MODEL_ID) as any
+      ).cnt;
       return {
         success: true,
         stats: { totalChunks: total, embeddedChunks: embedded, pendingChunks: total - embedded },

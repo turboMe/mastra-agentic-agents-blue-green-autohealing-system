@@ -7,7 +7,7 @@
  */
 
 import { getDb } from '../lib/mongo.js';
-import { generateEmbedding, cosineSimilarity } from '../lib/embedder.js';
+import { EMBEDDING_MODEL_ID, generateEmbedding, cosineSimilarity } from '../lib/embedder.js';
 import { renewKnowledgeTTL } from '../services/memory-extractor.js';
 import type { SystemKnowledge, KnowledgeType } from '../services/memory-extractor.js';
 import { randomUUID } from 'crypto';
@@ -47,7 +47,10 @@ export async function recallKnowledge(
   if (candidates.length === 0) return [];
 
   const withEmbeddings = candidates.filter(
-    c => Array.isArray(c.embedding) && c.embedding.length > 0,
+    c =>
+      Array.isArray(c.embedding) &&
+      c.embedding.length > 0 &&
+      c.embeddingModel === EMBEDDING_MODEL_ID,
   );
 
   if (withEmbeddings.length === 0) {
@@ -114,6 +117,7 @@ export async function writeKnowledge(
         $set: {
           content: content.slice(0, 2000),
           embedding,
+          embeddingModel: embedding.length > 0 ? EMBEDDING_MODEL_ID : undefined,
           updatedAt: now,
           expiresAt,
           confidence: Math.min(1, (existing.confidence ?? 0.5) + 0.1),
@@ -130,6 +134,7 @@ export async function writeKnowledge(
     title,
     content: content.slice(0, 2000),
     embedding,
+    embeddingModel: embedding.length > 0 ? EMBEDDING_MODEL_ID : undefined,
     sourceEventIds: [],
     confidence: 0.7,
     usageCount: 0,

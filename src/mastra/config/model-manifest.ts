@@ -43,6 +43,7 @@ export const models = {
   'gemini-2.5-flash': 'google/gemini-2.5-flash',         // fast, 1M ctx, daily driver
   'gemini-2.0-flash': 'google/gemini-2.0-flash',         // starszy flash, tańszy
   'gemini-2.0-flash-lite': 'google/gemini-2.0-flash-lite',    // najlżejszy Google, ultra-tani
+  'gemini-embedding-001': 'google/gemini-embedding-001', // najlepszy embed model Google
 
   // ═══════════════════════════════════════════════════════════════════════════
   // OPENAI (klucz: OPENAI_API_KEY)
@@ -163,16 +164,16 @@ export function resolveModelId(key: ModelKey): string {
 
 export const agentModels = {
   metaAgent: 'nemotron-super-free' as ModelKey,
-  codingAgent: 'nemotron-super-free' as ModelKey,
-  codeReviewAgent: 'gemini-2.5-flash' as ModelKey,
+  codingAgent: 'laguna-free' as ModelKey,
+  codeReviewAgent: 'qwen3-coder-30b' as ModelKey,
   salesAgent: 'gemma4-26b' as ModelKey,
   crmAgent: 'gemma4-26b' as ModelKey,
   analyticsAgent: 'qwen3-coder-30b' as ModelKey,
-  weatherAgent: 'gemini-2.5-flash' as ModelKey,
-  automationArchitect: 'ring-free' as ModelKey,
-  marketingAgent: 'gemini-2.5-flash' as ModelKey,
-  knowledgeAgent: 'gemini-2.5-flash' as ModelKey,   // NotebookLM ops — fast function calling for 35 MCP tools
-  researcherAgent: 'gemini-2.5-flash' as ModelKey,  // PSEV web research — browser + Tavily deep scraping
+  weatherAgent: 'gemma4-26b' as ModelKey,
+  automationArchitect: 'nemotron-super-free' as ModelKey,
+  marketingAgent: 'gemma4-26b' as ModelKey,
+  knowledgeAgent: 'gemma4-26b' as ModelKey,   // NotebookLM ops — fast function calling for 35 MCP tools
+  researcherAgent: 'nemotron-super-free' as ModelKey,  // PSEV web research — browser + Tavily deep scraping
 } as const;
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -184,8 +185,8 @@ export const agentModels = {
 
 export const workflowAssignments = {
   coding: {
-    default: 'nemotron-super-free' as ModelKey,  // diagnose-and-plan
-    patch: 'laguna-free' as ModelKey,  // execute-patch fallback
+    default: 'laguna-free' as ModelKey,  // diagnose-and-plan
+    patch: 'qwen3-coder-30b' as ModelKey,  // execute-patch fallback
     review: 'nemotron-nano-free' as ModelKey,  // code review (Haiku: tani + dobry do walidacji)
     selfHealingPlanner: 'gemini-2.5-pro' as ModelKey,
     selfHealingReview: 'nemotron-super-free' as ModelKey,
@@ -197,18 +198,18 @@ export const workflowAssignments = {
   },
 
   weeklyContent: {
-    research: 'gemini-2.5-flash' as ModelKey,
-    copyPl: 'gemini-2.5-flash' as ModelKey,
+    research: 'gemma4-26b' as ModelKey,
+    copyPl: 'gemma4-26b' as ModelKey,
     copyRepair: 'gemini-2.5-flash' as ModelKey,
-    translateEn: 'gemini-2.5-flash' as ModelKey,
+    translateEn: 'gemma4-26b' as ModelKey,
     jsonRepair: 'gpt-oss-120b-free' as ModelKey,
   },
 
   producerHunt: {
-    discovery: 'gemini-2.5-flash' as ModelKey,
+    discovery: 'gemma4-26b' as ModelKey,
     enrichment: 'gemini-2.5-flash' as ModelKey,
     emailExtraction: 'gemini-2.5-flash' as ModelKey,
-    draftEmail: 'gemini-2.5-flash' as ModelKey,
+    draftEmail: 'gemma4-26b' as ModelKey,
     jsonRepair: 'gpt-oss-120b-free' as ModelKey,
     cloudFallback: 'gemini-2.5-flash' as ModelKey,
   },
@@ -223,8 +224,8 @@ export const workflowAssignments = {
 export const workerPresets = {
   fast: 'gemma4-e4b' as ModelKey,
   default: 'gemma4-26b' as ModelKey,
-  reasoning: 'ring-free' as ModelKey,
-  powerful: 'ring-free' as ModelKey,
+  reasoning: 'qwen3-coder-30b' as ModelKey,
+  powerful: 'laguna-free' as ModelKey,
   cloud: 'gemini-2.5-flash' as ModelKey,
 } as const;
 
@@ -239,14 +240,14 @@ export const infrastructure = {
   /** Model used by Observational Memory to compress conversation history */
   observationalMemory: 'gemini-2.5-flash' as ModelKey,
 
-  /** Embedding model defaults (used by lib/embedder.ts) */
+  /** Embedding model source of truth (used by lib/embedder.ts) */
   embedding: {
     model: 'bge-m3' as ModelKey,
   },
 
   /** N8n workflow generation defaults (used by automation-architect builders) */
   n8n: {
-    defaultModel: 'nemotron-super-free' as ModelKey,
-    reasoningModel: 'nemotron-super-free' as ModelKey,
+    defaultModel: 'laguna-free' as ModelKey,
+    reasoningModel: 'laguna-free' as ModelKey,
   },
 } as const;

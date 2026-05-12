@@ -20,7 +20,7 @@
 
 import { randomUUID } from 'crypto';
 import { getDb } from '../lib/mongo.js';
-import { generateEmbedding } from '../lib/embedder.js';
+import { EMBEDDING_MODEL_ID, generateEmbedding } from '../lib/embedder.js';
 import type { AgentEvent, AgentEventType } from '../lib/agent-event-log.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -45,6 +45,7 @@ export interface SystemKnowledge {
   title: string;
   content: string;
   embedding: number[];
+  embeddingModel?: string;
   sourceEventIds: string[];
   confidence: number;       // 0–1
   usageCount: number;
@@ -116,6 +117,7 @@ async function saveKnowledge(
           updatedAt: now,
           expiresAt: new Date(now.getTime() + KNOWLEDGE_TTL_DAYS * 24 * 3600 * 1000),
           embedding,
+          embeddingModel: embedding.length > 0 ? EMBEDDING_MODEL_ID : undefined,
           confidence: Math.min(1, existing.confidence + 0.1), // grows with repetition
         },
         $addToSet: { sourceEventIds: { $each: sourceEventIds } },
@@ -130,6 +132,7 @@ async function saveKnowledge(
     title,
     content: truncate(content),
     embedding,
+    embeddingModel: embedding.length > 0 ? EMBEDDING_MODEL_ID : undefined,
     sourceEventIds,
     confidence,
     usageCount: 0,

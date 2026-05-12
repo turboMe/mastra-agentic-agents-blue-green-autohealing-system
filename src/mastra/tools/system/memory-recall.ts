@@ -12,7 +12,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb } from '../../lib/mongo.js';
-import { generateEmbedding, cosineSimilarity } from '../../lib/embedder.js';
+import { EMBEDDING_MODEL_ID, generateEmbedding, cosineSimilarity } from '../../lib/embedder.js';
 import type { SystemKnowledge, KnowledgeType } from '../../services/memory-extractor.js';
 import { renewKnowledgeTTL } from '../../services/memory-extractor.js';
 
@@ -93,7 +93,10 @@ Returns results ranked by semantic similarity. Recalled items get their TTL rene
 
       // Filter to items that have embeddings
       const withEmbeddings = candidates.filter(
-        c => Array.isArray(c.embedding) && c.embedding.length > 0,
+        c =>
+          Array.isArray(c.embedding) &&
+          c.embedding.length > 0 &&
+          c.embeddingModel === EMBEDDING_MODEL_ID,
       );
 
       if (withEmbeddings.length === 0) {

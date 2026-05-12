@@ -87,12 +87,12 @@ export async function assembleContext(options: AssembleOptions): Promise<Assembl
   }
 
   // ── 2. Relevant Code (semantic search) ──
-  // NOTE: Semantic search embedding requires Ollama running.
+  // NOTE: Semantic search uses the embedder configured in model-manifest.ts.
   // We attempt it but gracefully degrade if embedder is offline.
   let relevantCode = '';
   try {
     // Dynamic import to avoid hard dependency on embedder availability
-    const { generateEmbedding, cosineSimilarity } = await import('../lib/embedder.js');
+    const { EMBEDDING_MODEL_ID, generateEmbedding, cosineSimilarity } = await import('../lib/embedder.js');
     const Database = (await import('better-sqlite3')).default;
     const { resolve } = await import('path');
 
@@ -108,15 +108,23 @@ export async function assembleContext(options: AssembleOptions): Promise<Assembl
     }
 
     if (db) {
-      const rows = db.prepare(
-        'SELECT file_path, start_line, end_line, symbol_name, embedding FROM code_chunks WHERE embedding IS NOT NULL',
-      ).all() as Array<{
+      const columns = db.prepare('PRAGMA table_info(code_chunks)').all() as Array<{ name: string }>;
+      const hasEmbeddingModel = columns.some((col) => col.name === 'embedding_model');
+      let rows: Array<{
         file_path: string;
         start_line: number;
         end_line: number;
         symbol_name: string;
         embedding: Buffer;
-      }>;
+      }> = [];
+
+      if (hasEmbeddingModel) {
+        rows = db.prepare(
+          `SELECT file_path, start_line, end_line, symbol_name, embedding
+           FROM code_chunks
+           WHERE embedding IS NOT NULL AND embedding_model = ?`,
+        ).all(EMBEDDING_MODEL_ID) as typeof rows;
+      }
 
       if (rows.length > 0) {
         const queryEmbedding = await generateEmbedding(description);

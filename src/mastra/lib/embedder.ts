@@ -1,17 +1,16 @@
 /**
  * Singleton embedder for semantic search and RAG.
- * Default provider: local Ollama (bge-m3, 1024 dim, multilingual PL/EN).
- * Optional fallback: Google Generative AI text-embedding-* via REST.
+ * Provider and model are selected only from model-manifest.ts:
+ *   infrastructure.embedding.model -> models[alias]
  *
- * Provider selection (env):
- *   EMBEDDING_PROVIDER=ollama (default) | google
- *   EMBEDDING_MODEL=bge-m3 (default for ollama) | text-embedding-005 (google)
+ * Runtime env still supplies endpoints/secrets:
  *   OLLAMA_BASE_URL=http://localhost:11434
+ *   GOOGLE_GENERATIVE_AI_API_KEY=...
  *
  * Used by: chef notes semantic search, automation-architect pattern RAG.
  *
- * Note: changing the model changes vector dimensions. Existing embeddings in
- * MongoDB must be cleared and re-generated when switching providers/models.
+ * Note: changing the model changes vector dimensions. Consumers should store
+ * EMBEDDING_MODEL_ID next to persisted vectors and re-embed on mismatch.
  */
 
 export type EmbeddingVector = number[];
@@ -19,23 +18,41 @@ export type EmbeddingVector = number[];
 type Provider = 'ollama' | 'google';
 
 /**
- * Embedding config — env vars take priority, manifest provides defaults.
- * NOTE: model-manifest.ts only stores the alias key. We extract the raw
- * model name (e.g. 'bge-m3') from the full ID for use in API calls.
+ * Embedding config comes from the manifest so changing
+ * infrastructure.embedding.model is enough to switch provider/model.
  */
-import { models, infrastructure, resolveModelId } from '../config/model-manifest.js';
+import { infrastructure, resolveModelId } from '../config/model-manifest.js';
 
-/** Extract raw model name from full manifest ID: 'ollama/local/bge-m3' → 'bge-m3' */
-function extractModelName(fullId: string): string {
-  return fullId.split('/').pop() ?? fullId;
+interface EmbeddingConfig {
+  provider: Provider;
+  model: string;
 }
 
-const MANIFEST_EMBEDDING_MODEL = extractModelName(resolveModelId(infrastructure.embedding.model));
+export const EMBEDDING_MODEL_ID = resolveModelId(infrastructure.embedding.model);
 
-const PROVIDER: Provider = (process.env.EMBEDDING_PROVIDER as Provider) || 'ollama';
+function resolveManifestEmbeddingConfig(): EmbeddingConfig {
+  const fullId = EMBEDDING_MODEL_ID;
+  const [provider, ...parts] = fullId.split('/');
+
+  if (provider === 'ollama') {
+    const model = parts[0] === 'local' ? parts.slice(1).join('/') : parts.join('/');
+    if (!model) throw new Error(`Invalid Ollama embedding model id: ${fullId}`);
+    return { provider, model };
+  }
+
+  if (provider === 'google') {
+    const model = parts.join('/');
+    if (!model) throw new Error(`Invalid Google embedding model id: ${fullId}`);
+    return { provider, model };
+  }
+
+  throw new Error(`Unsupported embedding provider in model manifest: ${fullId}`);
+}
+
+const EMBEDDING_CONFIG = resolveManifestEmbeddingConfig();
+const PROVIDER = EMBEDDING_CONFIG.provider;
+const EMBEDDING_MODEL = EMBEDDING_CONFIG.model;
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-const OLLAMA_MODEL = process.env.EMBEDDING_MODEL || MANIFEST_EMBEDDING_MODEL;
-const GOOGLE_MODEL = process.env.EMBEDDING_MODEL || 'text-embedding-005';
 const GOOGLE_API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 
 async function fetchOllamaEmbedding(text: string): Promise<EmbeddingVector> {
@@ -43,18 +60,18 @@ async function fetchOllamaEmbedding(text: string): Promise<EmbeddingVector> {
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: OLLAMA_MODEL, prompt: text }),
+    body: JSON.stringify({ model: EMBEDDING_MODEL, prompt: text }),
     signal: AbortSignal.timeout(30_000),
   });
 
   if (!response.ok) {
     const err = await response.text();
-    throw new Error(`Ollama embeddings error ${response.status} (model=${OLLAMA_MODEL}): ${err}`);
+    throw new Error(`Ollama embeddings error ${response.status} (model=${EMBEDDING_MODEL}): ${err}`);
   }
 
   const data = (await response.json()) as { embedding?: number[] };
   if (!Array.isArray(data.embedding) || data.embedding.length === 0) {
-    throw new Error(`Ollama returned empty embedding (model=${OLLAMA_MODEL})`);
+    throw new Error(`Ollama returned empty embedding (model=${EMBEDDING_MODEL})`);
   }
   return data.embedding;
 }
@@ -63,12 +80,12 @@ async function fetchGoogleEmbedding(text: string): Promise<EmbeddingVector> {
   const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   if (!apiKey) throw new Error('GOOGLE_GENERATIVE_AI_API_KEY not set — google embedder unavailable');
 
-  const url = `${GOOGLE_API_BASE}/${GOOGLE_MODEL}:embedContent?key=${apiKey}`;
+  const url = `${GOOGLE_API_BASE}/${EMBEDDING_MODEL}:embedContent?key=${apiKey}`;
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: `models/${GOOGLE_MODEL}`,
+      model: `models/${EMBEDDING_MODEL}`,
       content: { parts: [{ text }] },
     }),
     signal: AbortSignal.timeout(15_000),
@@ -111,13 +128,13 @@ async function fetchGoogleBatch(texts: string[]): Promise<EmbeddingVector[]> {
   const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   if (!apiKey) throw new Error('GOOGLE_GENERATIVE_AI_API_KEY not set — google embedder unavailable');
 
-  const url = `${GOOGLE_API_BASE}/${GOOGLE_MODEL}:batchEmbedContents?key=${apiKey}`;
+  const url = `${GOOGLE_API_BASE}/${EMBEDDING_MODEL}:batchEmbedContents?key=${apiKey}`;
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       requests: texts.map((text) => ({
-        model: `models/${GOOGLE_MODEL}`,
+        model: `models/${EMBEDDING_MODEL}`,
         content: { parts: [{ text }] },
       })),
     }),

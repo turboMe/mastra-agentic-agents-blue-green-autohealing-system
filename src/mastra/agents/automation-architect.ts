@@ -1,5 +1,5 @@
 import { Agent } from '@mastra/core/agent';
-import { agentModels, resolveModelId } from '../config/model-manifest.js';
+import { agentModels, infrastructure, resolveModelId } from '../config/model-manifest.js';
 import { Memory } from '@mastra/memory';
 import {
   n8nTriggerWebhookTool,
@@ -34,7 +34,42 @@ export const automationArchitect = new Agent({
   maxRetries: 3,
   memory: new Memory({
     options: {
-      lastMessages: 20,
+      lastMessages: 30,
+      observationalMemory: {
+        model: resolveModelId(infrastructure.observationalMemory),
+        scope: 'thread',
+        temporalMarkers: true,
+        observation: {
+          threadTitle: true,
+        },
+      },
+      workingMemory: {
+        enabled: true,
+        template: `# Automation Architect Working Memory
+
+## Runtime Context
+- **Topology**:
+- **Last verified n8n status**:
+- **Endpoint assumptions**:
+
+## Active Automation Work
+- **Current request**:
+- **Selected pattern**:
+- **Workflow IDs**:
+- **Missing config or credentials**:
+
+## Safety Decisions
+- **Risk findings**:
+- **Approvals required or granted**:
+- **Activation constraints**:
+
+## Learned Patterns
+- **Reliable n8n patterns**:
+- **Known validation pitfalls**:
+- **Repair notes**:
+`,
+      },
+      generateTitle: true,
     },
   }),
   tools: {

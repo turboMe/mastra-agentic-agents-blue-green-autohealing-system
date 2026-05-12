@@ -3,14 +3,15 @@
  *
  * Tools:
  * - architect.sync_patterns — jednorazowo lub po edycji catalog.ts. Zapisuje
- *   do `automation_patterns` z embeddingami (domyślnie lokalny Ollama bge-m3,
- *   1024 dim, multilingual; provider sterowany przez EMBEDDING_PROVIDER).
+ *   do `automation_patterns` z embeddingami sterowanymi przez
+ *   model-manifest.ts -> infrastructure.embedding.model.
  * - architect.match_pattern — szuka top-K patternów dla zadanego AutomationSpec.
  */
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb } from '../../lib/mongo.js';
 import {
+  EMBEDDING_MODEL_ID,
   generateEmbedding,
   cosineSimilarity,
 } from '../../lib/embedder.js';
@@ -49,7 +50,12 @@ export const syncPatternsTool = createTool({
     for (const p of PATTERN_CATALOG) {
       const existing = await col.findOne({ id: p.id });
       const descChanged = !!existing && existing.description !== p.description;
-      const needsEmbedding = force || !existing || descChanged || !existing.embedding;
+      const needsEmbedding =
+        force ||
+        !existing ||
+        descChanged ||
+        !existing.embedding ||
+        existing.embeddingModel !== EMBEDDING_MODEL_ID;
 
       let embedding = existing?.embedding;
       if (needsEmbedding) {
@@ -78,6 +84,7 @@ export const syncPatternsTool = createTool({
         n8nCommunityCompatible: p.n8nCommunityCompatible,
         builderId: p.id,
         embedding,
+        embeddingModel: embedding ? EMBEDDING_MODEL_ID : existing?.embeddingModel,
         createdAt: existing?.createdAt ?? new Date(),
         updatedAt: new Date(),
       };
@@ -128,7 +135,10 @@ export const matchPatternTool = createTool({
 
       const db = await getDb();
       const col = db.collection<StoredAutomationPattern>(COLLECTION);
-      const stored = await col.find({ embedding: { $exists: true } }).toArray();
+      const stored = await col.find({
+        embedding: { $exists: true },
+        embeddingModel: EMBEDDING_MODEL_ID,
+      }).toArray();
 
       if (stored.length === 0) {
         return {
