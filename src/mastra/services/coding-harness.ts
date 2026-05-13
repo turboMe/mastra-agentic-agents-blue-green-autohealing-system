@@ -172,6 +172,22 @@ export async function generateCoding<TResponse = unknown>(
   try {
     const response = await callAgentGenerate<TResponse>({ ...input, prompt: finalPrompt });
     const durationMs = Date.now() - start;
+
+    // ── Diagnostic: trace response structure ──
+    const resp = response as Record<string, unknown>;
+    const steps = Array.isArray(resp.steps) ? resp.steps as Array<Record<string, unknown>> : [];
+    const toolCalls = steps.flatMap((s) => Array.isArray(s.toolCalls) ? s.toolCalls as Array<Record<string, unknown>> : []);
+    console.log(`[Harness] Response: text=${(resp.text as string || '').length} chars, finishReason=${resp.finishReason}, steps=${steps.length}, toolCalls=${toolCalls.length}, suspended=${resp.finishReason === 'suspended'}`);
+    if (toolCalls.length > 0) {
+      toolCalls.forEach((tc) => {
+        const payload = tc.payload as Record<string, unknown> | undefined;
+        console.log(`[Harness]   toolCall: ${payload?.toolName || tc.toolName || 'unknown'} args=${JSON.stringify(payload?.args || tc.args || {}).slice(0, 200)}`);
+      });
+    }
+    if (resp.finishReason === 'suspended') {
+      console.warn(`[Harness] ⚠️ Agent SUSPENDED — likely a tool with requireApproval blocked the loop. suspendPayload:`, JSON.stringify((resp as any).suspendPayload || {}).slice(0, 300));
+    }
+
     const outputPreview = extractOutputPreview(response);
 
     if (harnessEnabled) {

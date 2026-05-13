@@ -163,8 +163,8 @@ export function resolveModelId(key: ModelKey): string {
 // ═════════════════════════════════════════════════════════════════════════════
 
 export const agentModels = {
-  metaAgent: 'gemini-2.5-flash' as ModelKey,  // was: laguna-free — switched for harness testing (tool calling)
-  codingAgent: 'gemini-2.5-flash' as ModelKey,  // was: qwen3-coder-30b — switched for harness testing (tool calling)
+  metaAgent: 'gemini-2.5-pro' as ModelKey,  // was: laguna-free — switched for harness testing (tool calling)
+  codingAgent: 'gemini-2.5-pro' as ModelKey,  // was: qwen3-coder-30b — switched for harness testing (tool calling)
   codeReviewAgent: 'qwen3-coder-30b' as ModelKey,
   salesAgent: 'gemma4-26b' as ModelKey,
   crmAgent: 'gemma4-26b' as ModelKey,
