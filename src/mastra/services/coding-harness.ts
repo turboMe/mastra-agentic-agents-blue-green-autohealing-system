@@ -176,17 +176,28 @@ export async function generateCoding<TResponse = unknown>(
     // ── Diagnostic: trace response structure ──
     const resp = response as Record<string, unknown>;
     const steps = Array.isArray(resp.steps) ? resp.steps as Array<Record<string, unknown>> : [];
-    const toolCalls = steps.flatMap((s) => Array.isArray(s.toolCalls) ? s.toolCalls as Array<Record<string, unknown>> : []);
-    console.log(`[Harness] Response: text=${(resp.text as string || '').length} chars, finishReason=${resp.finishReason}, steps=${steps.length}, toolCalls=${toolCalls.length}, suspended=${resp.finishReason === 'suspended'}`);
-    if (toolCalls.length > 0) {
-      toolCalls.forEach((tc) => {
+    const allToolCalls = steps.flatMap((s) => Array.isArray(s.toolCalls) ? s.toolCalls as Array<Record<string, unknown>> : []);
+    const allToolResults = steps.flatMap((s) => Array.isArray(s.toolResults) ? s.toolResults as Array<Record<string, unknown>> : []);
+    console.log(`[Harness] Response: text=${(resp.text as string || '').length} chars, finishReason=${resp.finishReason}, steps=${steps.length}, toolCalls=${allToolCalls.length}, toolResults=${allToolResults.length}`);
+    if (allToolCalls.length > 0) {
+      allToolCalls.forEach((tc) => {
         const payload = tc.payload as Record<string, unknown> | undefined;
-        console.log(`[Harness]   toolCall: ${payload?.toolName || tc.toolName || 'unknown'} args=${JSON.stringify(payload?.args || tc.args || {}).slice(0, 200)}`);
+        const name = payload?.toolName || tc.toolName || 'unknown';
+        const args = payload?.args || tc.args || {};
+        console.log(`[Harness]   toolCall: ${name} args=${JSON.stringify(args).slice(0, 300)}`);
+      });
+    }
+    if (allToolResults.length > 0) {
+      allToolResults.forEach((tr) => {
+        console.log(`[Harness]   toolResult: ${tr.toolName} result=${JSON.stringify(tr.result || '').slice(0, 200)}`);
       });
     }
     if (resp.finishReason === 'suspended') {
-      console.warn(`[Harness] ⚠️ Agent SUSPENDED — likely a tool with requireApproval blocked the loop. suspendPayload:`, JSON.stringify((resp as any).suspendPayload || {}).slice(0, 300));
+      console.warn(`[Harness] ⚠️ Agent SUSPENDED — tool with requireApproval blocked. suspendPayload:`, JSON.stringify((resp as any).suspendPayload || {}).slice(0, 300));
     }
+    // Dump full response keys for debugging
+    console.log(`[Harness] Response keys: ${Object.keys(resp).join(', ')}`);
+    console.log(`[Harness] Full response (truncated): ${JSON.stringify(resp).slice(0, 800)}`);
 
     const outputPreview = extractOutputPreview(response);
 
