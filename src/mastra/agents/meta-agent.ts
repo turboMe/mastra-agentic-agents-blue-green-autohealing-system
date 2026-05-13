@@ -19,6 +19,7 @@ import { memoryWriteTool } from '../tools/system/memory-write.js';
 import { currentTimeTool } from '../tools/system/current-time.js';
 import { skillSearchTool } from '../tools/system/skill-search.js';
 import { metaExecuteCommandTool } from '../tools/system/meta-execute-command.js';
+import { checkPendingUpdatesTool } from '../tools/system/check-pending-updates.js';
 import {
   n8nTriggerWebhookTool,
   n8nHealthTool,
@@ -94,7 +95,18 @@ import { pendingUpdatesProcessor } from '../processors/pending-updates.js';
 async function buildInstructions(): Promise<string> {
   // base v3: full orchestrator rules — parallel calling, worker briefs, retry loop, creativity.
   // response.md (JSON wrapper) removed — Mastra Studio renders plain markdown directly.
-  return await combinePrompts('meta/base');
+  const basePrompt = await combinePrompts('meta/base');
+  
+  // Inject async delegation awareness
+  const asyncDelegationRule = `
+## Background Task Updates (MANDATORY)
+At the START of every conversation turn, you MUST call \`checkPendingUpdates\` tool.
+If it returns hasUpdates=true, report those results to the user BEFORE answering their question.
+This is how you receive results from async delegations (coding agent background tasks, builds, etc.).
+Never skip this step — the user is waiting for these results.
+`;
+  
+  return basePrompt + '\n' + asyncDelegationRule;
 }
 
 export const metaAgent: Agent = new Agent({
@@ -174,6 +186,8 @@ export const metaAgent: Agent = new Agent({
     currentTimeTool,
     // Shell execution (workaround dla Mastra v1.31/1.32 bug z workspace sandbox)
     metaExecuteCommandTool,
+    // Background task results (async delegation + bg_task completions)
+    checkPendingUpdatesTool,
   },
 
   // ── Discoverable tool pool (~50 tools via semantic search) ────────────────
