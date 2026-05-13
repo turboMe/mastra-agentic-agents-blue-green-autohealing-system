@@ -20,7 +20,35 @@ export type AgentEventType =
   | 'retry_success' | 'retry_failed'
   | 'autoheal_triggered' | 'autoheal_resolved'
   | 'lesson_learned' | 'skill_used'
-  | 'approval_requested' | 'approval_granted' | 'approval_denied';
+  | 'approval_requested' | 'approval_granted' | 'approval_denied'
+  | 'precontext_injected'
+  | 'semantic_memory_check_started'
+  | 'semantic_memory_pending_prepared'
+  | 'semantic_memory_injected'
+  | 'semantic_memory_suppressed'
+  | 'file_touch'
+  | 'file_conflict_warning'
+  | 'code_outline_used'
+  | 'bg_task_started'
+  | 'bg_task_progress'
+  | 'bg_task_completed'
+  | 'soft_interrupt_queued'
+  | 'soft_interrupt_consumed'
+  | 'run_started'
+  | 'run_phase_changed'
+  | 'run_completed'
+  | 'run_failed'
+  | 'llm_call_started'
+  | 'llm_call_completed'
+  | 'llm_call_failed'
+  | 'tool_call_started'
+  | 'tool_call_completed'
+  | 'tool_call_failed'
+  | 'tool_output_compacted'
+  | 'policy_allowed'
+  | 'policy_blocked'
+  | 'cache_usage_observed'
+  | 'cache_miss_reason';
 
 // ── Event Schema ─────────────────────────────────────────────────────────────
 
@@ -29,8 +57,12 @@ export interface AgentEvent {
   type: AgentEventType;
   timestamp: Date;
   agentId: string;
+  runId?: string;
+  turnId?: string;
+  threadId?: string;
   taskId?: string;
   subtaskId?: string;
+  feature?: string;
   model?: string;
   toolId?: string;
   input?: string;           // truncated (max 500 chars)
@@ -39,6 +71,7 @@ export interface AgentEvent {
   errorMessage?: string;
   durationMs?: number;
   tokenUsage?: { prompt: number; completion: number };
+  data?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
   expiresAt: Date;
 }
@@ -91,6 +124,8 @@ export async function queryAgentEvents(
   filter: {
     type?: AgentEventType;
     agentId?: string;
+    runId?: string;
+    threadId?: string;
     taskId?: string;
     since?: Date;
     limit?: number;
@@ -101,6 +136,8 @@ export async function queryAgentEvents(
 
   if (filter.type) query.type = filter.type;
   if (filter.agentId) query.agentId = filter.agentId;
+  if (filter.runId) query.runId = filter.runId;
+  if (filter.threadId) query.threadId = filter.threadId;
   if (filter.taskId) query.taskId = filter.taskId;
   if (filter.since) query.timestamp = { $gte: filter.since };
 

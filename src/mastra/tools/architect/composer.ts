@@ -161,6 +161,7 @@ export const composeWorkflowTool = createTool({
   }),
   execute: async (context) => {
     try {
+      const spec = context.spec as AutomationSpec;
       const pattern = getPatternById(context.patternId);
       if (!pattern) {
         return {
@@ -184,7 +185,7 @@ export const composeWorkflowTool = createTool({
       // Walidacja wymaganych inputow: kazdy alias z pattern.requiredInputs
       // powinien pasowac do nazwy ktoregos ze spec.inputs[].name (case-insensitive,
       // substring match — taka sama logika jak w jarvis findInput) I miec wartosc.
-      const specInputs = (context.spec.inputs ?? []) as Array<{
+      const specInputs = (spec.inputs ?? []) as Array<{
         name: string;
         value?: any;
         defaultValue?: any;
@@ -228,7 +229,7 @@ export const composeWorkflowTool = createTool({
         };
       }
 
-      const built = pattern.build(context.spec as unknown as AutomationSpec);
+      const built = pattern.build(spec);
 
       const nodes = (built.nodes as Array<{ name?: string }>) ?? [];
       const rawConnections =
@@ -251,7 +252,7 @@ export const composeWorkflowTool = createTool({
       }
 
       const workflow = {
-        name: context.workflowName ?? context.spec.name,
+        name: context.workflowName ?? spec.name,
         nodes,
         connections: rawConnections,
         settings: (built.settings as Record<string, unknown>) ?? {},

@@ -75,6 +75,8 @@ export type AutomationGoldenPathResult = {
   error?: string;
 };
 
+type AutomationGoldenPathTestResult = NonNullable<AutomationGoldenPathResult['lastTest']>;
+
 type RuntimeRequirements = {
   requiresPublicWebhook: boolean;
   requiresMastraApi: boolean;
@@ -371,7 +373,9 @@ export async function syncAutomationStatus(input: {
     return { synced: false, message: 'Automation has no n8n workflow id.' };
   }
 
-  const workflowId = input.workflowId || existing.n8nWorkflowId;
+  const workflowId = input.workflowId || existing?.n8nWorkflowId;
+  if (!workflowId) return { synced: false, message: 'Automation has no n8n workflow id.' };
+
   const n8n = new N8nService();
   const workflow = await n8n.getWorkflow(workflowId);
   const n8nActive = workflow.active === true;
@@ -716,7 +720,7 @@ async function runMockTest(
   automationId: string,
   workflowId: string,
   workflow: any,
-): Promise<AutomationGoldenPathResult['lastTest']> {
+): Promise<AutomationGoldenPathTestResult> {
   const validation = validateWorkflow(workflow, 'strict');
   const findings = validationToFindings(validation);
   const mock = generateMockPayload(workflow);
