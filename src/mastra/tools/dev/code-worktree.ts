@@ -6,6 +6,8 @@ import { z } from 'zod';
 import { getDb } from '../../lib/mongo.js';
 import { AGENTIC_AGENTS_REPO } from '../../workspaces/code-workspace.js';
 import { copyFile, stat, readFile, readdir } from 'fs/promises';
+import { getFileActivityWarning, recordFileActivity } from '../../services/file-activity.js';
+import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
 
 const execAsync = promisify(exec);
 
@@ -170,12 +172,16 @@ export const applyWorktreePatchTool = createTool({
   inputSchema: z.object({
     taskId: z.string(),
     commitMessage: z.string().describe('Tresc wiadomosci commita dla wygenerowanych zmian.').optional(),
+    subtaskId: z.string().optional(),
+    agentId: z.string().optional(),
+    threadId: z.string().optional(),
   }),
   outputSchema: z.object({
     success: z.boolean(),
     message: z.string(),
     error: z.string().optional(),
     stdout: z.string().optional(),
+    fileActivityWarnings: z.array(z.string()).optional(),
   }),
   execute: async (context) => {
     try {
@@ -185,6 +191,21 @@ export const applyWorktreePatchTool = createTool({
       if (!artifact || !artifact.worktreePath || !artifact.branchName) {
         return { success: false, message: `Brak aktywnego worktree dla zadania ${context.taskId}.` };
       }
+
+      const changedFiles = Array.isArray(artifact.filesChanged)
+        ? artifact.filesChanged.map((entry: any) => String(entry?.path ?? '')).filter(Boolean)
+        : [];
+      const fileActivityWarnings = (await Promise.all(changedFiles.map((file) =>
+        getFileActivityWarning({
+          taskId: context.taskId,
+          subtaskId: context.subtaskId,
+          agentId: context.agentId,
+          threadId: context.threadId,
+          file,
+          op: 'patch',
+          summary: context.commitMessage ?? 'Apply worktree patch',
+        }),
+      ))).filter(Boolean);
 
       // 1. Commit zmian w izolowanym worktree
       const msg = context.commitMessage || `agent(patch): Apply automated task ${context.taskId}`;
@@ -221,11 +242,26 @@ export const applyWorktreePatchTool = createTool({
         { taskId: context.taskId },
         { $set: { status: 'done', updatedAt: new Date().toISOString() } }
       );
+      await Promise.all(changedFiles.map((file) =>
+        recordFileActivity({
+          taskId: context.taskId,
+          subtaskId: context.subtaskId,
+          agentId: context.agentId,
+          threadId: context.threadId,
+          file,
+          op: 'patch',
+          summary: context.commitMessage ?? 'Applied worktree patch',
+        }),
+      ));
 
       return {
         success: true,
-        message: `Zmiany prawidlowo zmergowane do glownego repozytorium! Środowisko live zaktualizowane.`,
+        message: [
+          `Zmiany prawidlowo zmergowane do glownego repozytorium! Środowisko live zaktualizowane.`,
+          ...fileActivityWarnings,
+        ].filter(Boolean).join('\n\n'),
         stdout: stdoutMerge,
+        fileActivityWarnings: fileActivityWarnings.length > 0 ? fileActivityWarnings : undefined,
       };
     } catch (error: any) {
       return {
@@ -292,6 +328,11 @@ export const readWorktreeFileTool = createTool({
   inputSchema: z.object({
     taskId: z.string(),
     filePath: z.string().describe('Ścieżka względna do pliku w worktree, np. "scratch/test.js" lub "src/index.ts".'),
+    subtaskId: z.string().optional(),
+    agentId: z.string().optional(),
+    threadId: z.string().optional(),
+    runId: z.string().optional(),
+    turnId: z.string().optional(),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -300,7 +341,11 @@ export const readWorktreeFileTool = createTool({
     message: z.string(),
     error: z.string().optional(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'coding_read_worktree_file',
+    category: 'file',
+    risk: 'low',
+    execute: async (context) => {
     try {
       const db = await getDb();
       const artifact = await db.collection('code_task_artifacts').findOne({ taskId: context.taskId });
@@ -317,6 +362,15 @@ export const readWorktreeFileTool = createTool({
       }
 
       const content = await readFile(fullPath, 'utf-8');
+      await recordFileActivity({
+        taskId: context.taskId,
+        subtaskId: context.subtaskId,
+        agentId: context.agentId,
+        threadId: context.threadId,
+        file: context.filePath,
+        op: 'read',
+        summary: 'Read worktree file',
+      });
 
       // Limit rozmiaru (200KB) zeby nie przeciazyc LLM
       if (content.length > 200_000) {
@@ -341,7 +395,8 @@ export const readWorktreeFileTool = createTool({
         error: error.message,
       };
     }
-  },
+    },
+  }),
 });
 
 export const worktreeDiffTool = createTool({

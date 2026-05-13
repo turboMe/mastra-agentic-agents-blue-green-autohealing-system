@@ -120,6 +120,40 @@ async function main() {
     { expireAfterSeconds: 90 * 24 * 3600 },
   );
 
+  // ── harness file activity ledger ──────────────────────────────────────────
+  console.log('📎 file_activity...');
+  const fileActivity = db.collection('file_activity');
+  await fileActivity.createIndex({ file: 1, createdAt: -1 });
+  await fileActivity.createIndex({ taskId: 1, file: 1, createdAt: -1 });
+  await fileActivity.createIndex({ agentId: 1, createdAt: -1 });
+  await fileActivity.createIndex(
+    { expiresAt: 1 },
+    { expireAfterSeconds: 0 },
+  );
+
+  // ── harness tool execution envelope ───────────────────────────────────────
+  console.log('🧰 tool_executions...');
+  const toolExecutions = db.collection('tool_executions');
+  await toolExecutions.createIndex({ runId: 1, createdAt: 1 });
+  await toolExecutions.createIndex({ taskId: 1, createdAt: -1 });
+  await toolExecutions.createIndex({ toolId: 1, createdAt: -1 });
+  await toolExecutions.createIndex(
+    { expiresAt: 1 },
+    { expireAfterSeconds: 0 },
+  );
+
+  // ── harness output compaction artifacts ───────────────────────────────────
+  console.log('🗜️  harness_artifacts...');
+  const harnessArtifacts = db.collection('harness_artifacts');
+  await harnessArtifacts.createIndex({ id: 1 }, { unique: true });
+  await harnessArtifacts.createIndex({ runId: 1, createdAt: 1 });
+  await harnessArtifacts.createIndex({ taskId: 1, createdAt: -1 });
+  await harnessArtifacts.createIndex({ kind: 1, createdAt: -1 });
+  await harnessArtifacts.createIndex(
+    { expiresAt: 1 },
+    { expireAfterSeconds: 0 },
+  );
+
   // ── rss_intelligence ──────────────────────────────────────────────────────
   console.log('📰 rss_intelligence.rss_articles / content_signals...');
   const rss = rssDb.collection('rss_articles');

@@ -5,6 +5,9 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb } from '../../lib/mongo.js';
 import { getWorkspacePath } from '../../workspaces/code-workspace.js';
+import { recordFileActivity } from '../../services/file-activity.js';
+import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
+import { compactHarnessOutput } from '../../services/harness-output-compactor.js';
 
 const execAsync = promisify(exec);
 
@@ -34,6 +37,9 @@ const commandRunSchema = z.object({
   approvalRequired: z.boolean(),
   exitCode: z.number().optional(),
   summary: z.string(),
+  outputPreview: z.string().optional(),
+  outputArtifactId: z.string().optional(),
+  outputTruncated: z.boolean().optional(),
 });
 
 const approvalRequestSchema = z.object({
@@ -46,6 +52,10 @@ const testResultSchema = z.object({
   command: z.string(),
   status: z.enum(TEST_STATUSES),
   summary: z.string(),
+  outputArtifactId: z.string().optional(),
+  outputTruncated: z.boolean().optional(),
+  originalBytes: z.number().optional(),
+  previewBytes: z.number().optional(),
 });
 
 const subtaskSchema = z.object({
@@ -336,16 +346,29 @@ export const runTestCommandTool = createTool({
     taskId: z.string(),
     command: z.string().describe('Komenda do uruchomienia, np. npx tsc --noEmit'),
     summary: z.string().describe('Krotki cel testu, np. Weryfikacja skladni'),
+    subtaskId: z.string().optional(),
+    agentId: z.string().optional(),
+    threadId: z.string().optional(),
+    runId: z.string().optional(),
+    turnId: z.string().optional(),
   }),
   outputSchema: z.object({
     success: z.boolean(),
     taskId: z.string(),
     exitCode: z.number().optional(),
     output: z.string(),
+    outputArtifactId: z.string().optional(),
+    outputTruncated: z.boolean().optional(),
+    originalBytes: z.number().optional(),
+    previewBytes: z.number().optional(),
     message: z.string(),
     error: z.string().optional(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'coding_run_test',
+    category: 'shell',
+    risk: 'medium',
+    execute: async (context) => {
     try {
       const db = await getDb();
       const artifact = await db.collection('code_task_artifacts').findOne({ taskId: context.taskId });
@@ -391,18 +414,42 @@ export const runTestCommandTool = createTool({
       }
 
       const timestamp = nowIso();
+      const compaction = await compactHarnessOutput({
+        text: output,
+        kind: 'command_log',
+        taskId: context.taskId,
+        subtaskId: context.subtaskId,
+        agentId: context.agentId,
+        threadId: context.threadId,
+        runId: context.runId,
+        turnId: context.turnId,
+        toolId: 'coding_run_test',
+        metadata: {
+          command,
+          exitCode,
+          status,
+          summary: context.summary,
+        },
+      });
 
       const newCommandRun = {
         command: context.command,
         approvalRequired: false,
         exitCode,
         summary: context.summary,
+        outputPreview: compaction.preview,
+        outputArtifactId: compaction.fullTextArtifactId,
+        outputTruncated: compaction.truncated,
       };
 
       const testResult = {
         command: context.command,
         status,
-        summary: output.substring(0, 1000) + (output.length > 1000 ? '...' : ''),
+        summary: compaction.preview,
+        outputArtifactId: compaction.fullTextArtifactId,
+        outputTruncated: compaction.truncated,
+        originalBytes: compaction.originalBytes,
+        previewBytes: compaction.previewBytes,
       };
 
       await db.collection('code_task_artifacts').updateOne(
@@ -415,12 +462,25 @@ export const runTestCommandTool = createTool({
           },
         }
       );
+      await recordFileActivity({
+        taskId: context.taskId,
+        subtaskId: context.subtaskId,
+        agentId: context.agentId,
+        threadId: context.threadId,
+        op: 'test',
+        summary: `${context.summary}: ${command} (${status})`,
+        diffPreview: compaction.preview,
+      });
 
       return {
         success: exitCode === 0,
         taskId: context.taskId,
         exitCode,
-        output: testResult.summary,
+        output: compaction.preview,
+        outputArtifactId: compaction.fullTextArtifactId,
+        outputTruncated: compaction.truncated,
+        originalBytes: compaction.originalBytes,
+        previewBytes: compaction.previewBytes,
         message: exitCode === 0 ? 'Test zakonczony sukcesem.' : 'Test zwrocil bledy.',
       };
     } catch (error) {
@@ -432,7 +492,8 @@ export const runTestCommandTool = createTool({
         error: (error as Error).message,
       };
     }
-  },
+    },
+  }),
 });
 
 export const submitReviewTool = createTool({

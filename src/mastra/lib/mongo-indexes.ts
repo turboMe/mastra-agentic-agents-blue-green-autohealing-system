@@ -59,5 +59,30 @@ export async function ensureIndexes(): Promise<void> {
     { injectedAt: 1 }, { expireAfterSeconds: 90 * 24 * 3600 },
   );
 
-  console.log('[MongoIndexes] TTL indexes ensured for: signals, shared_memory, auto_healing_tickets, agent_events, agent_run_events, system_knowledge, pending_memory_context, injected_memory_context');
+  // ── File activity ledger indexes (Harness Etap 3) ──────────────────────
+  await db.collection('file_activity').createIndex({ file: 1, createdAt: -1 });
+  await db.collection('file_activity').createIndex({ taskId: 1, file: 1, createdAt: -1 });
+  await db.collection('file_activity').createIndex({ agentId: 1, createdAt: -1 });
+  await db.collection('file_activity').createIndex(
+    { expiresAt: 1 }, { expireAfterSeconds: 0 },
+  );
+
+  // ── Tool execution envelope indexes (Harness Etap 3) ───────────────────
+  await db.collection('tool_executions').createIndex({ runId: 1, createdAt: 1 });
+  await db.collection('tool_executions').createIndex({ taskId: 1, createdAt: -1 });
+  await db.collection('tool_executions').createIndex({ toolId: 1, createdAt: -1 });
+  await db.collection('tool_executions').createIndex(
+    { expiresAt: 1 }, { expireAfterSeconds: 0 },
+  );
+
+  // ── Harness artifact indexes (Harness output compaction) ────────────────
+  await db.collection('harness_artifacts').createIndex({ id: 1 }, { unique: true });
+  await db.collection('harness_artifacts').createIndex({ runId: 1, createdAt: 1 });
+  await db.collection('harness_artifacts').createIndex({ taskId: 1, createdAt: -1 });
+  await db.collection('harness_artifacts').createIndex({ kind: 1, createdAt: -1 });
+  await db.collection('harness_artifacts').createIndex(
+    { expiresAt: 1 }, { expireAfterSeconds: 0 },
+  );
+
+  console.log('[MongoIndexes] TTL indexes ensured for: signals, shared_memory, auto_healing_tickets, agent_events, agent_run_events, system_knowledge, pending_memory_context, injected_memory_context, file_activity, tool_executions, harness_artifacts');
 }

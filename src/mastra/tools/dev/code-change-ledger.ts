@@ -7,6 +7,8 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb } from '../../lib/mongo.js';
 import { getWorkspacePath, getWorkspacePathForWrite } from '../../workspaces/code-workspace.js';
+import { getFileActivityWarning, recordFileActivity } from '../../services/file-activity.js';
+import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
 
 const execAsync = promisify(exec);
 
@@ -234,11 +236,19 @@ export const recordBeforeChangeTool = createTool({
   inputSchema: z.object({
     taskId: z.string(),
     path: z.string().describe('Sciezka wzgledem repo lub absolutna sciezka wewnatrz repo.'),
+    subtaskId: z.string().optional(),
+    agentId: z.string().optional(),
+    threadId: z.string().optional(),
+    runId: z.string().optional(),
+    turnId: z.string().optional(),
+    lineStart: z.number().int().positive().optional(),
+    lineEnd: z.number().int().positive().optional(),
   }),
   outputSchema: z.object({
     success: z.boolean(),
     snapshot: snapshotOutputSchema.optional(),
     message: z.string(),
+    fileActivityWarning: z.string().optional(),
     error: z.string().optional(),
   }),
   execute: async (context) => {
@@ -246,6 +256,17 @@ export const recordBeforeChangeTool = createTool({
       const db = await getDb();
       const workspacePath = await getWorkspacePath(context.taskId);
       const { absolutePath, relativePath } = normalizeRepoPath(context.path, workspacePath);
+      await recordFileActivity({
+        taskId: context.taskId,
+        subtaskId: context.subtaskId,
+        agentId: context.agentId,
+        threadId: context.threadId,
+        file: relativePath,
+        op: 'read',
+        lineStart: context.lineStart,
+        lineEnd: context.lineEnd,
+        summary: 'Snapshot before change',
+      });
       const existing = await db.collection<SnapshotDoc>('code_change_snapshots').findOne({
         taskId: context.taskId,
         path: relativePath,
@@ -305,11 +326,19 @@ export const recordAfterChangeTool = createTool({
     taskId: z.string(),
     path: z.string(),
     summary: z.string().min(1).describe('Krotki opis zmiany w tym pliku.'),
+    subtaskId: z.string().optional(),
+    agentId: z.string().optional(),
+    threadId: z.string().optional(),
+    runId: z.string().optional(),
+    turnId: z.string().optional(),
+    lineStart: z.number().int().positive().optional(),
+    lineEnd: z.number().int().positive().optional(),
   }),
   outputSchema: z.object({
     success: z.boolean(),
     snapshot: snapshotOutputSchema.optional(),
     message: z.string(),
+    fileActivityWarning: z.string().optional(),
     error: z.string().optional(),
   }),
   execute: async (context) => {
@@ -317,6 +346,17 @@ export const recordAfterChangeTool = createTool({
       const db = await getDb();
       const workspacePath = await getWorkspacePathForWrite(context.taskId);
       const { absolutePath, relativePath } = normalizeRepoPath(context.path, workspacePath);
+      const fileActivityWarning = await getFileActivityWarning({
+        taskId: context.taskId,
+        subtaskId: context.subtaskId,
+        agentId: context.agentId,
+        threadId: context.threadId,
+        file: relativePath,
+        op: 'edit',
+        lineStart: context.lineStart,
+        lineEnd: context.lineEnd,
+        summary: context.summary,
+      });
       const snapshot = await db.collection<SnapshotDoc>('code_change_snapshots').findOne({
         taskId: context.taskId,
         path: relativePath,
@@ -354,11 +394,26 @@ export const recordAfterChangeTool = createTool({
         },
       );
       await upsertArtifactFileChange(updatedSnapshot, after.hash, context.summary);
+      await recordFileActivity({
+        taskId: context.taskId,
+        subtaskId: context.subtaskId,
+        agentId: context.agentId,
+        threadId: context.threadId,
+        file: relativePath,
+        op: 'edit',
+        lineStart: context.lineStart,
+        lineEnd: context.lineEnd,
+        summary: context.summary,
+      });
 
       return {
         success: true,
         snapshot: toSnapshotOutput(updatedSnapshot),
-        message: `Snapshot po edycji zapisany dla ${relativePath}.`,
+        message: [
+          `Snapshot po edycji zapisany dla ${relativePath}.`,
+          fileActivityWarning,
+        ].filter(Boolean).join('\n\n'),
+        fileActivityWarning: fileActivityWarning || undefined,
       };
     } catch (error) {
       return {
@@ -609,14 +664,27 @@ export const writeFileTrackedTool = createTool({
     path: z.string().describe('Sciezka wzgledem repo lub absolutna sciezka wewnatrz repo.'),
     content: z.string().describe('Nowa zawartosc pliku.'),
     summary: z.string().min(1).describe('Krotki opis zmiany w tym pliku.'),
+    subtaskId: z.string().optional(),
+    agentId: z.string().optional(),
+    threadId: z.string().optional(),
+    runId: z.string().optional(),
+    turnId: z.string().optional(),
+    lineStart: z.number().int().positive().optional(),
+    lineEnd: z.number().int().positive().optional(),
   }),
   outputSchema: z.object({
     success: z.boolean(),
     snapshot: snapshotOutputSchema.optional(),
     message: z.string(),
+    fileActivityWarning: z.string().optional(),
     error: z.string().optional(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'coding_write_file_tracked',
+    category: 'file',
+    risk: 'medium',
+    redactInputFields: ['content'],
+    execute: async (context) => {
     try {
       const db = await getDb();
       
@@ -630,6 +698,17 @@ export const writeFileTrackedTool = createTool({
 
       const workspacePath = await getWorkspacePathForWrite(context.taskId);
       const { absolutePath, relativePath } = normalizeRepoPath(context.path, workspacePath);
+      const fileActivityWarning = await getFileActivityWarning({
+        taskId: context.taskId,
+        subtaskId: context.subtaskId,
+        agentId: context.agentId,
+        threadId: context.threadId,
+        file: relativePath,
+        op: 'write',
+        lineStart: context.lineStart,
+        lineEnd: context.lineEnd,
+        summary: context.summary,
+      });
 
       const existingSnapshot = await db.collection<SnapshotDoc>('code_change_snapshots').findOne({
         taskId: context.taskId,
@@ -695,6 +774,17 @@ export const writeFileTrackedTool = createTool({
         },
       );
       await upsertArtifactFileChange(updatedSnapshot, after.hash, context.summary);
+      await recordFileActivity({
+        taskId: context.taskId,
+        subtaskId: context.subtaskId,
+        agentId: context.agentId,
+        threadId: context.threadId,
+        file: relativePath,
+        op: 'write',
+        lineStart: context.lineStart,
+        lineEnd: context.lineEnd,
+        summary: context.summary,
+      });
 
       let checkMessage = '';
       if (relativePath.endsWith('.ts') || relativePath.endsWith('.tsx')) {
@@ -716,7 +806,11 @@ export const writeFileTrackedTool = createTool({
       return {
         success: true,
         snapshot: toSnapshotOutput(updatedSnapshot),
-        message: `Plik ${relativePath} zostal pomyslnie zapisany i zablokowany w ledgerze.${checkMessage}`,
+        message: [
+          `Plik ${relativePath} zostal pomyslnie zapisany i zablokowany w ledgerze.${checkMessage}`,
+          fileActivityWarning,
+        ].filter(Boolean).join('\n\n'),
+        fileActivityWarning: fileActivityWarning || undefined,
       };
     } catch (error) {
       return {
@@ -725,5 +819,6 @@ export const writeFileTrackedTool = createTool({
         error: (error as Error).message,
       };
     }
-  },
+    },
+  }),
 });
