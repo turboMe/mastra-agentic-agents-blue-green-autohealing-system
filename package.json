@@ -27,7 +27,9 @@
     "check:automation-patterns": "bash scripts/with-node.sh npx tsx src/mastra/scripts/check-automation-patterns.ts",
     "check:automation-golden-path": "bash scripts/with-node.sh npx tsx src/mastra/scripts/check-automation-golden-path.ts",
     "check:automation": "npm run check:n8n-runtime && npm run check:automation-patterns && npm run check:automation-golden-path",
-    "e2e:webhook": "bash scripts/with-node.sh npx tsx src/mastra/scripts/e2e-webhook-validate.ts"
+    "e2e:webhook": "bash scripts/with-node.sh npx tsx src/mastra/scripts/e2e-webhook-validate.ts",
+    "audit:harness": "bash scripts/with-node.sh npx tsx src/mastra/scripts/audit-coding-generate.ts",
+    "replay:harness": "bash scripts/with-node.sh npx tsx src/mastra/scripts/replay-harness-run.ts"
   },
   "keywords": [],
   "author": "",

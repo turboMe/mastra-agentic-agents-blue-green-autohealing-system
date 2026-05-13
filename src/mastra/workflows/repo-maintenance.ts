@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import { getDb } from '../lib/mongo.js';
 import { getErrorCollector } from '../services/error-collector.js';
 import { AGENTIC_AGENTS_REPO } from '../workspaces/code-workspace.js';
-import { anthropicCacheOptions } from '../lib/anthropic-cache.js';
+
 import { generateCoding } from '../services/coding-harness.js';
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
@@ -368,7 +368,7 @@ const executeReviewAgent = createStep({
       phase: 'review',
       repoPath: AGENTIC_AGENTS_REPO,
       timeoutMs: 180_000,
-      generateOptions: anthropicCacheOptions(),
+
     });
 
     // Odczytujemy faktyczny werdykt z MongoDB (tam submitReviewTool go zapisał)
@@ -655,7 +655,7 @@ const decisionGate = createStep({
         phase: 'review',
         repoPath: AGENTIC_AGENTS_REPO,
         timeoutMs: 180_000,
-        generateOptions: anthropicCacheOptions(),
+
       });
 
       // Sprawdzamy ponownie verdict z Mongo

@@ -165,6 +165,17 @@ async function main() {
     { expireAfterSeconds: 0 },
   );
 
+  // ── pending user messages (Harness — soft interrupts) ───────────────────
+  console.log('💬 pending_user_messages...');
+  const pendingMessages = db.collection('pending_user_messages');
+  await pendingMessages.createIndex({ taskId: 1, status: 1, expiresAt: -1 });
+  await pendingMessages.createIndex({ threadId: 1, status: 1, expiresAt: -1 });
+  await pendingMessages.createIndex({ urgent: -1, createdAt: 1 });
+  await pendingMessages.createIndex(
+    { expiresAt: 1 },
+    { expireAfterSeconds: 0 },
+  );
+
   // ── rss_intelligence ──────────────────────────────────────────────────────
   console.log('📰 rss_intelligence.rss_articles / content_signals...');
   const rss = rssDb.collection('rss_articles');

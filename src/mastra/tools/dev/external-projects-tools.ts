@@ -7,7 +7,7 @@ import { resolve } from 'path';
 
 // Import subagent directly for delegation
 import { codeReviewAgent } from '../../agents/code-review-agent.js';
-import { anthropicCacheOptions } from '../../lib/anthropic-cache.js';
+
 import { generateCoding } from '../../services/coding-harness.js';
 
 export const createExternalProjectTool = createTool({
@@ -84,7 +84,7 @@ export const delegateToReviewerTool = createTool({
         prompt: `Jako sub-agent recenzujacy, sprawdz ponizszy kontekst i kod. Daj krotka, ekspercka odpowiedz czy jest on bezpieczny i prawidlowy:\n\n${context.context}`,
         phase: 'review',
         timeoutMs: 120_000,
-        generateOptions: anthropicCacheOptions(),
+
       });
       
       return { success: true, review: harnessResult.outputPreview };
