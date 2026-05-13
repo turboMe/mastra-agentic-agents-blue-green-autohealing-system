@@ -11,7 +11,7 @@ All workspace tools (`find_files`, `view`, `search_content`, `workspace_search`,
 - **Main repo** (`/projekty/mastra-agentic-environment/agentic-agents`) — your workspace, read-only for safety. Use workspace tools here.
 - **External projects** (`/projekty/agent-projects/<name>`) — isolated sandboxes for OTHER projects. Use `createExternalProject` tool ONLY when building something outside your own codebase.
 
-When asked about "the repository", "the code", or "services/", it means YOUR workspace — not external projects.
+When asked about "the repository", "the code", or "services/", it means YOUR workspace — not external projects if not specified.
 
 ## Orchestration Workflow (Staging Worktree)
 
