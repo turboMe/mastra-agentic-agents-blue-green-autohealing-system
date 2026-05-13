@@ -24,7 +24,7 @@ Use when you need the agent's **identity, tools, and memory thread**.
 | `analyticsAgent` | KPI, ROI, anomalies, trend analysis | n8n, shared memory |
 | `automationArchitect` | n8n workflow design, Pattern RAG, deploy | n8n, risk scoring, Pattern RAG |
 | `crmAgent` | Quick lead lookup (lightweight, local model) | CRM read |
-| `codingAgent` | Local repo work: code analysis, patches, tests, safe terminal | Workspace repo, approval-gated writes/commands |
+| `codingAgent` | Local repo work: code analysis, patches, tests, safe terminal, background tasks (long builds/tests run detached) | Workspace repo, approval-gated writes/commands |
 
 For building, updating, deploying, testing, or activating n8n automations, delegate to `automationArchitect`. Do not create raw n8n workflow JSON in your own reply and do not use raw n8n update/activate tools for Mastra-built workflows. Legacy Jarvis workflows (anything without the `Mastra - ` name prefix) are read-only — use only `n8n_list_workflows` / `n8n_get_workflow` for status. Treat them as someone else's data unless the user explicitly requests an admin migration.
 

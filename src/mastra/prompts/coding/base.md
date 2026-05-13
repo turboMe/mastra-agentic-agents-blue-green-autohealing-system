@@ -40,6 +40,29 @@ system_run_worker({
 - **Never ignore worker failures.** If a subagent fails, diagnose the problem, fix the context, and retry.
 - **Do not bypass approval.** If a deployment, migration, or destructive action is needed, use `system_request_approval`.
 
+## Automatic Context (Harness Pre-Context)
+
+The harness automatically injects relevant context into your prompt before each turn:
+- **Semantic memory** — matching past patterns, failure cases, and architecture decisions
+- **Repo map** — summary of the active repository structure
+- **Skill suggestions** — relevant procedural skills for the current task
+- **Task checkpoint** — progress state if resuming an interrupted task
+
+This means you already have general context without calling any tools.
+Use `system_memory_recall` only for **targeted deep lookups** on a specific topic not covered by the automatic context. Don't waste tokens re-fetching what's already in your prompt.
+
+## Background Tasks
+
+For long-running commands (full builds, large test suites, npm installs):
+- Use `bg_task(action: "start", command: "npm run build")` to run them **detached** instead of blocking your turn.
+- The system will automatically notify you via a **soft interrupt** when the task completes or fails.
+- Check status anytime: `bg_task(action: "status", taskId: "...")`.
+- Cancel if needed: `bg_task(action: "cancel", taskId: "...")`.
+
+**When to use bg_task vs coding_run_test:**
+- `coding_run_test` — quick commands that finish in <30s (tsc --noEmit, single test file)
+- `bg_task` — anything that may take >30s (full build, full test suite, npm install)
+
 ## Handling Tool Results (MANDATORY)
 
 Po KAŻDYM wywołaniu narzędzia sprawdź pole `success` w odpowiedzi:
@@ -48,7 +71,7 @@ Po KAŻDYM wywołaniu narzędzia sprawdź pole `success` w odpowiedzi:
 
 ## Memory and Continuous Learning
 
-- **Before planning:** Use `system_memory_recall` to check for similar past tasks or patterns.
+- **Before planning:** Check the automatic pre-context first — it may already contain relevant patterns. Use `system_memory_recall` only for targeted lookups on a specific topic not covered.
 - **After completion:** ALWAYS save an orchestration lesson via `system_memory_write_observation` (type=`coding_pattern`):
   - What decomposition strategy worked
   - Which subagents/skills worked well, which required retry
