@@ -431,6 +431,11 @@ export const worktreeDiffTool = createTool({
   description: 'Zwraca git diff z worktree dla danego zadania. Pokazuje dokładnie jakie zmiany zostały wprowadzone względem głównego brancha.',
   inputSchema: z.object({
     taskId: z.string(),
+    subtaskId: z.string().optional(),
+    agentId: z.string().optional(),
+    threadId: z.string().optional(),
+    runId: z.string().optional(),
+    turnId: z.string().optional(),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -438,7 +443,22 @@ export const worktreeDiffTool = createTool({
     message: z.string(),
     error: z.string().optional(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'coding_worktree_diff',
+    category: 'git',
+    risk: 'low',
+    outputPreviewMaxChars: 4000,
+    policy: (context, metadata) => ({
+      action: 'run_command',
+      command: 'git diff HEAD',
+      taskId: context.taskId,
+      subtaskId: context.subtaskId,
+      agentId: metadata.agentId,
+      threadId: context.threadId,
+      runId: metadata.runId,
+      turnId: metadata.turnId,
+    }),
+    execute: async (context) => {
     try {
       const db = await getDb();
       const artifact = await db.collection('code_task_artifacts').findOne({ taskId: context.taskId });
@@ -492,5 +512,6 @@ export const worktreeDiffTool = createTool({
     } catch (error: any) {
       return { success: false, message: 'Nie udalo sie pobrac diffa.', error: error.message };
     }
-  },
+    },
+  }),
 });

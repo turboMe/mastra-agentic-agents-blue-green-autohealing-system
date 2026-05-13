@@ -19,6 +19,7 @@ import { z } from 'zod';
 import Database from 'better-sqlite3';
 import { EMBEDDING_MODEL_ID, generateEmbedding, cosineSimilarity } from '../../lib/embedder.js';
 import { AGENTIC_AGENTS_REPO } from '../../workspaces/code-workspace.js';
+import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -274,7 +275,12 @@ export const codeSearchTool = createTool({
     totalChunks: z.number().optional(),
     error: z.string().optional(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'code_search',
+    category: 'search',
+    risk: 'low',
+    outputPreviewMaxChars: 4000,
+    execute: async (context) => {
     try {
       const targetRepo = context.repoPath || AGENTIC_AGENTS_REPO;
       const results = await searchCode(context.query, targetRepo, context.topK, context.scope);
@@ -296,7 +302,8 @@ export const codeSearchTool = createTool({
         error: `Code search error: ${(error as Error).message}`,
       };
     }
-  },
+    },
+  }),
 });
 
 // ── Tool: code.embed_stats ───────────────────────────────────────────────────

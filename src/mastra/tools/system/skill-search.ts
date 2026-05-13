@@ -7,6 +7,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getSkillRegistry } from '../../services/skill-registry.js';
+import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
 
 export const skillSearchTool = createTool({
   id: 'skill_search',
@@ -38,7 +39,12 @@ Example queries: "fix typescript error", "edit file safely", "run verification"`
     categories: z.record(z.string(), z.number()),
   }),
 
-  execute: async (ctx) => {
+  execute: withToolEnvelope({
+    toolId: 'skill_search',
+    category: 'search',
+    risk: 'low',
+    outputPreviewMaxChars: 4000,
+    execute: async (ctx) => {
     try {
       const registry = getSkillRegistry();
       const results = await registry.search(ctx.query, {
@@ -70,5 +76,6 @@ Example queries: "fix typescript error", "edit file safely", "run verification"`
         categories: {},
       };
     }
-  },
+    },
+  }),
 });

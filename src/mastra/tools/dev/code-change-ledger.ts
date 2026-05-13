@@ -251,7 +251,21 @@ export const recordBeforeChangeTool = createTool({
     fileActivityWarning: z.string().optional(),
     error: z.string().optional(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'coding_record_before_change',
+    category: 'file',
+    risk: 'low',
+    policy: (context, metadata) => ({
+      action: 'read_file',
+      target: context.path,
+      taskId: context.taskId,
+      subtaskId: context.subtaskId,
+      agentId: metadata.agentId,
+      threadId: context.threadId,
+      runId: metadata.runId,
+      turnId: metadata.turnId,
+    }),
+    execute: async (context) => {
     try {
       const db = await getDb();
       const workspacePath = await getWorkspacePath(context.taskId);
@@ -315,7 +329,8 @@ export const recordBeforeChangeTool = createTool({
         error: (error as Error).message,
       };
     }
-  },
+    },
+  }),
 });
 
 export const recordAfterChangeTool = createTool({
@@ -341,7 +356,21 @@ export const recordAfterChangeTool = createTool({
     fileActivityWarning: z.string().optional(),
     error: z.string().optional(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'coding_record_after_change',
+    category: 'file',
+    risk: 'medium',
+    policy: (context, metadata) => ({
+      action: 'write_file',
+      target: context.path,
+      taskId: context.taskId,
+      subtaskId: context.subtaskId,
+      agentId: metadata.agentId,
+      threadId: context.threadId,
+      runId: metadata.runId,
+      turnId: metadata.turnId,
+    }),
+    execute: async (context) => {
     try {
       const db = await getDb();
       const workspacePath = await getWorkspacePathForWrite(context.taskId);
@@ -422,7 +451,8 @@ export const recordAfterChangeTool = createTool({
         error: (error as Error).message,
       };
     }
-  },
+    },
+  }),
 });
 
 export const rejectFileChangeTool = createTool({

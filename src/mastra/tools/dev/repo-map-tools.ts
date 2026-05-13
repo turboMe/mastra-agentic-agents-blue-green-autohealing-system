@@ -16,6 +16,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getRepoIndexer, listIndexedRepos } from '../../services/repo-indexer.js';
 import { AGENTIC_AGENTS_REPO } from '../../workspaces/code-workspace.js';
+import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
 
 // ── Default repo path ────────────────────────────────────────────────────────
 // Used when repoPath is omitted — points to the agent's own codebase.
@@ -62,7 +63,12 @@ export const repoMapTool = createTool({
     indexDuration: z.string().optional(),
     error: z.string().optional(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'repo_map',
+    category: 'search',
+    risk: 'low',
+    outputPreviewMaxChars: 4000,
+    execute: async (context) => {
     try {
       const targetRepo = context.repoPath || DEFAULT_REPO;
       const indexer = getRepoIndexer(targetRepo);
@@ -93,7 +99,8 @@ export const repoMapTool = createTool({
         error: `Repo indexer error: ${(error as Error).message}`,
       };
     }
-  },
+    },
+  }),
 });
 
 // ── repo.stats — Index statistics ───────────────────────────────────────────

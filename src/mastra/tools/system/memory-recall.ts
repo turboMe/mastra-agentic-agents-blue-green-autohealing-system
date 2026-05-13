@@ -15,6 +15,7 @@ import { getDb } from '../../lib/mongo.js';
 import { EMBEDDING_MODEL_ID, generateEmbedding, cosineSimilarity } from '../../lib/embedder.js';
 import type { SystemKnowledge, KnowledgeType } from '../../services/memory-extractor.js';
 import { renewKnowledgeTTL } from '../../services/memory-extractor.js';
+import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
 
 const KNOWLEDGE_TYPES: KnowledgeType[] = [
   'failure_case', 'coding_pattern', 'autoheal_recipe',
@@ -69,7 +70,12 @@ Returns results ranked by semantic similarity. Recalled items get their TTL rene
     error: z.string().optional(),
   }),
 
-  execute: async (ctx) => {
+  execute: withToolEnvelope({
+    toolId: 'system_memory_recall',
+    category: 'memory',
+    risk: 'low',
+    outputPreviewMaxChars: 4000,
+    execute: async (ctx) => {
     try {
       const db = await getDb();
 
@@ -149,5 +155,6 @@ Returns results ranked by semantic similarity. Recalled items get their TTL rene
         error: (error as Error).message,
       };
     }
-  },
+    },
+  }),
 });
