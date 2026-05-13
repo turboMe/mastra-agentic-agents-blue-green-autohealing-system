@@ -18,26 +18,19 @@ import type { PendingMessage } from '../services/pending-message-queue.js';
 
 // ── Thread ID extraction ─────────────────────────────────────────────────────
 
-/**
- * Extract the threadId from the request context.
- * Mastra RequestContext stores threadId under 'mastra__threadId'.
- */
 function extractThreadId(args: ProcessInputArgs): string | undefined {
   const rc = args.requestContext;
   if (rc) {
     try {
-      // Mastra Studio uses RequestContext.get('mastra__threadId')
       const threadId = (rc as any).get?.('mastra__threadId');
       if (typeof threadId === 'string' && threadId.length > 0) return threadId;
 
-      // Fallback: direct property access (older API)
       const rcAny = rc as unknown as Record<string, unknown>;
       const threadAlt = rcAny.threadId ?? rcAny.thread ?? rcAny['mastra__threadId'];
       if (typeof threadAlt === 'string' && threadAlt.length > 0) return threadAlt;
-    } catch { /* safe — RC might not have .get() */ }
+    } catch { /* safe */ }
   }
 
-  // Fallback: try to extract from the last user message metadata
   const lastUserMsg = [...args.messages].reverse().find((m) => m.role === 'user');
   if (lastUserMsg && typeof (lastUserMsg as any).threadId === 'string' && (lastUserMsg as any).threadId.length > 0) {
     return (lastUserMsg as any).threadId;
@@ -58,54 +51,58 @@ export class PendingUpdatesProcessor extends BaseProcessor<'pending-updates'> {
     const { messages, systemMessages } = args;
     const threadId = extractThreadId(args);
 
+    console.log(`[PendingUpdatesProcessor] ▶ processInput called. threadId=${threadId ?? '(none)'}, messages=${messages.length}`);
+
     try {
       let pendingMessages: PendingMessage[];
 
       if (threadId) {
-        // Primary: scoped to this thread
+        console.log(`[PendingUpdatesProcessor] Using scoped query: threadId=${threadId}`);
         pendingMessages = await takePendingMessages({
           threadId,
           agentId: 'meta-agent',
           limit: 5,
         });
       } else {
-        // Fallback: Mastra Studio often has empty threadId in messages.
-        // Query for ALL async_delegation_result pending messages and consume them.
-        // This is safe because only meta-agent runs this processor.
+        // Fallback: query ALL undelivered pending messages broadly.
+        // This covers both async_delegation_result AND regular background_task messages.
+        console.log('[PendingUpdatesProcessor] No threadId — using fallback (global pending query)');
         const db = await getDb();
         const now = new Date();
         const docs = await db.collection<PendingMessage>('pending_user_messages')
           .find({
-            'metadata.type': 'async_delegation_result',
             status: 'pending',
+            source: 'background_task',
             expiresAt: { $gt: now },
           })
           .sort({ urgent: -1, createdAt: 1 })
           .limit(5)
           .toArray();
 
+        console.log(`[PendingUpdatesProcessor] Fallback query found ${docs.length} pending message(s)`);
+
         if (docs.length > 0) {
-          // Mark as consumed
+          const ids = docs.map((d) => d.id);
           await db.collection<PendingMessage>('pending_user_messages').updateMany(
-            { id: { $in: docs.map((d) => d.id) }, status: 'pending' },
-            { $set: { status: 'consumed', consumedAt: new Date(), consumedBy: 'meta-agent:pending-updates-processor' } },
+            { id: { $in: ids }, status: 'pending' },
+            { $set: { status: 'consumed' as const, consumedAt: new Date(), consumedBy: 'meta-agent:pending-updates-processor' } },
           );
+          console.log(`[PendingUpdatesProcessor] Marked ${ids.length} message(s) as consumed`);
         }
         pendingMessages = docs;
       }
 
       if (pendingMessages.length === 0) {
+        console.log('[PendingUpdatesProcessor] No pending messages found — passing through');
         return messages;
       }
 
       const updateBlock = formatPendingMessagesForPrompt(pendingMessages);
 
       console.log(
-        `[PendingUpdatesProcessor] Injected ${pendingMessages.length} pending update(s) for thread ${threadId ?? '(fallback)'}`,
+        `[PendingUpdatesProcessor] ✅ Injecting ${pendingMessages.length} pending update(s) into system messages`,
       );
 
-      // Inject updates as an additional system message so the agent sees them
-      // before processing the user's message
       const injectedSystemMessage = {
         role: 'system' as const,
         content: [
@@ -124,12 +121,12 @@ export class PendingUpdatesProcessor extends BaseProcessor<'pending-updates'> {
         systemMessages: [...systemMessages, injectedSystemMessage],
       };
     } catch (error) {
-      // Non-fatal — processor must not crash the agent
-      console.warn('[PendingUpdatesProcessor] Failed to check pending messages:', (error as Error).message);
+      console.error('[PendingUpdatesProcessor] ❌ ERROR:', (error as Error).message, (error as Error).stack);
       return messages;
     }
   }
 }
 
 export const pendingUpdatesProcessor = new PendingUpdatesProcessor();
+
 
