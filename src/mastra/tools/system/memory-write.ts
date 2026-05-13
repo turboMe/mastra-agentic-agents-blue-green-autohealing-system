@@ -12,7 +12,11 @@ import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { getDb } from '../../lib/mongo.js';
 import { EMBEDDING_MODEL_ID, generateEmbedding } from '../../lib/embedder.js';
-import type { KnowledgeType } from '../../services/memory-extractor.js';
+import {
+  buildSystemKnowledgeSearchText,
+  hashSystemKnowledgeSearchText,
+  type KnowledgeType,
+} from '../../services/memory-extractor.js';
 
 const KNOWLEDGE_TYPES: KnowledgeType[] = [
   'failure_case', 'coding_pattern', 'autoheal_recipe',
@@ -67,11 +71,18 @@ When to write:
       const db = await getDb();
       const now = new Date();
       const expiresAt = new Date(now.getTime() + KNOWLEDGE_TTL_DAYS * 24 * 3600 * 1000);
+      const storedContent = ctx.content.slice(0, 2000);
+      const searchText = buildSystemKnowledgeSearchText({
+        type: ctx.type,
+        title: ctx.title,
+        content: storedContent,
+      });
+      const searchTextHash = hashSystemKnowledgeSearchText(searchText);
 
       // Generate embedding for semantic search
       let embedding: number[] = [];
       try {
-        embedding = await generateEmbedding(ctx.title);
+        embedding = await generateEmbedding(searchText);
       } catch (err) {
         console.warn('[MemoryWrite] Embedding failed, saving without vector:', (err as Error).message);
       }
@@ -88,7 +99,9 @@ When to write:
           { knowledgeId: existing.knowledgeId },
           {
             $set: {
-              content: ctx.content.slice(0, 2000),
+              content: storedContent,
+              searchText,
+              searchTextHash,
               embedding,
               embeddingModel: embedding.length > 0 ? EMBEDDING_MODEL_ID : undefined,
               updatedAt: now,
@@ -111,7 +124,9 @@ When to write:
         knowledgeId,
         type: ctx.type,
         title: ctx.title,
-        content: ctx.content.slice(0, 2000),
+        content: storedContent,
+        searchText,
+        searchTextHash,
         embedding,
         embeddingModel: embedding.length > 0 ? EMBEDDING_MODEL_ID : undefined,
         sourceEventIds: [],

@@ -64,6 +64,13 @@ export async function ensureIndexes(): Promise<void> {
     db.collection('tasks').createIndex({ status: 1 }),
     db.collection('runs').createIndex({ taskId: 1 }),
     db.collection('logs').createIndex({ timestamp: -1 }),
+    db.collection('agent_runs').createIndex({ runId: 1 }, { unique: true }),
+    db.collection('agent_runs').createIndex({ taskId: 1, updatedAt: -1 }),
+    db.collection('agent_runs').createIndex({ threadId: 1, updatedAt: -1 }),
+    db.collection('agent_runs').createIndex({ status: 1, updatedAt: -1 }),
+    db.collection('agent_run_events').createIndex({ runId: 1, timestamp: 1 }),
+    db.collection('agent_run_events').createIndex({ taskId: 1, timestamp: -1 }),
+    db.collection('agent_run_events').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
     // Approvals
     db.collection('approvals').createIndex({ status: 1 }),
     db.collection('approvals').createIndex({ createdAt: -1 }),
@@ -86,6 +93,14 @@ export async function ensureIndexes(): Promise<void> {
     db.collection('signals').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
     db.collection('shared_memory').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
     db.collection('conversations').createIndex({ threadId: 1 }),
+    db.collection('pending_memory_context').createIndex({ threadId: 1, status: 1, computedAt: -1 }),
+    db.collection('pending_memory_context').createIndex({ taskId: 1, status: 1, computedAt: -1 }),
+    db.collection('pending_memory_context').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
+    db.collection('injected_memory_context').createIndex({ threadId: 1, memoryId: 1 }, { unique: true }),
+    db.collection('injected_memory_context').createIndex(
+      { injectedAt: 1 },
+      { expireAfterSeconds: 90 * 24 * 3600 },
+    ),
     // Chef
     db.collection('chef_projects').createIndex({ id: 1 }, { unique: true }),
     db.collection('chef_projects').createIndex({ status: 1 }),

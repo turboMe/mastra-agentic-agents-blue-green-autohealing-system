@@ -8,7 +8,11 @@
 import { closeDb, getDb } from '../lib/mongo.js';
 import { EMBEDDING_MODEL_ID, generateEmbedding } from '../lib/embedder.js';
 import { PATTERN_CATALOG, type StoredAutomationPattern } from '../tools/architect/pattern-catalog.js';
-import type { SystemKnowledge } from '../services/memory-extractor.js';
+import {
+  buildSystemKnowledgeSearchText,
+  hashSystemKnowledgeSearchText,
+  type SystemKnowledge,
+} from '../services/memory-extractor.js';
 
 const PATTERN_COLLECTION = 'automation_patterns';
 const KNOWLEDGE_COLLECTION = 'system_knowledge';
@@ -57,18 +61,21 @@ async function rebuildSystemKnowledge(): Promise<{ scanned: number; embedded: nu
   const col = db.collection<SystemKnowledge>(KNOWLEDGE_COLLECTION);
   const docs = await col
     .find({ title: { $type: 'string' }, expiresAt: { $gt: new Date() } })
-    .project({ knowledgeId: 1, title: 1, content: 1 })
-    .toArray() as unknown as Array<Pick<SystemKnowledge, 'knowledgeId' | 'title' | 'content'>>;
+    .project({ knowledgeId: 1, type: 1, title: 1, content: 1, tags: 1, sourceAgent: 1, projectId: 1 })
+    .toArray() as unknown as Array<Pick<SystemKnowledge, 'knowledgeId' | 'type' | 'title' | 'content' | 'tags' | 'sourceAgent' | 'projectId'>>;
 
   let embedded = 0;
 
   for (const doc of docs) {
-    const text = [doc.title, doc.content].filter(Boolean).join('\n').slice(0, 4000);
-    const embedding = await generateEmbedding(text);
+    const searchText = buildSystemKnowledgeSearchText(doc);
+    const searchTextHash = hashSystemKnowledgeSearchText(searchText);
+    const embedding = await generateEmbedding(searchText);
     await col.updateOne(
       { knowledgeId: doc.knowledgeId },
       {
         $set: {
+          searchText,
+          searchTextHash,
           embedding,
           embeddingModel: EMBEDDING_MODEL_ID,
           updatedAt: new Date(),

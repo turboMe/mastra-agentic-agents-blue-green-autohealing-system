@@ -18,7 +18,7 @@
  *   console.log(`Extracted ${extracted} knowledge items`);
  */
 
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { getDb } from '../lib/mongo.js';
 import { EMBEDDING_MODEL_ID, generateEmbedding } from '../lib/embedder.js';
 import type { AgentEvent, AgentEventType } from '../lib/agent-event-log.js';
@@ -44,6 +44,11 @@ export interface SystemKnowledge {
   type: KnowledgeType;
   title: string;
   content: string;
+  tags?: string[];
+  sourceAgent?: string;
+  projectId?: string;
+  searchText?: string;
+  searchTextHash?: string;
   embedding: number[];
   embeddingModel?: string;
   sourceEventIds: string[];
@@ -63,6 +68,32 @@ const MAX_EVENTS_PER_RUN = 500;
 const LAST_RUN_KEY = 'memory_extractor_last_run';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+export function buildSystemKnowledgeSearchText(input: {
+  type?: string;
+  title?: string;
+  content?: string;
+  tags?: string[];
+  sourceAgent?: string;
+  projectId?: string;
+}): string {
+  return [
+    input.type,
+    input.title,
+    input.content,
+    ...(input.tags ?? []),
+    input.sourceAgent,
+    input.projectId,
+  ]
+    .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
+    .map((part) => part.replace(/\s+/g, ' ').trim())
+    .join('\n')
+    .slice(0, 4000);
+}
+
+export function hashSystemKnowledgeSearchText(searchText: string): string {
+  return createHash('sha256').update(searchText).digest('hex');
+}
 
 function truncate(text: string, max = 1000): string {
   return text.length > max ? text.slice(0, max) + '…' : text;
@@ -93,10 +124,13 @@ async function saveKnowledge(
   const db = await getDb();
   const knowledgeId = randomUUID();
   const now = new Date();
+  const storedContent = truncate(content);
+  const searchText = buildSystemKnowledgeSearchText({ type, title, content: storedContent });
+  const searchTextHash = hashSystemKnowledgeSearchText(searchText);
 
   let embedding: number[] = [];
   try {
-    embedding = await generateEmbedding(title);
+    embedding = await generateEmbedding(searchText);
   } catch (err) {
     console.warn('[MemoryExtractor] Embedding failed, saving without vector:', (err as Error).message);
   }
@@ -113,7 +147,9 @@ async function saveKnowledge(
       { knowledgeId: existing.knowledgeId },
       {
         $set: {
-          content,
+          content: storedContent,
+          searchText,
+          searchTextHash,
           updatedAt: now,
           expiresAt: new Date(now.getTime() + KNOWLEDGE_TTL_DAYS * 24 * 3600 * 1000),
           embedding,
@@ -130,7 +166,9 @@ async function saveKnowledge(
     knowledgeId,
     type,
     title,
-    content: truncate(content),
+    content: storedContent,
+    searchText,
+    searchTextHash,
     embedding,
     embeddingModel: embedding.length > 0 ? EMBEDDING_MODEL_ID : undefined,
     sourceEventIds,

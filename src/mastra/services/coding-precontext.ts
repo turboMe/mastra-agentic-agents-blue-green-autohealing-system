@@ -6,12 +6,17 @@
  * call. Dynamic context is returned as markdown for user-prompt injection.
  */
 
-import { getDb } from '../lib/mongo.js';
 import { recallKnowledge, type RecallResult } from '../lib/failure-brain.js';
 import { isHarnessFeatureEnabled } from '../config/harness-flags.js';
 import { getSkillRegistry, type SkillSearchResult } from './skill-registry.js';
 import { assembleContext } from './context-assembler.js';
-import { tokenEstimate } from './harness-events.js';
+import { logHarnessEvent, tokenEstimate } from './harness-events.js';
+import {
+  filterPreviouslyInjectedMemoryIds,
+  recordInjectedMemoryContext,
+  takePendingMemoryContext,
+  type PendingMemoryContext,
+} from './semantic-memory-worker.js';
 
 export type CodingPrecontextInput = {
   taskId?: string;
@@ -38,19 +43,6 @@ export type CodingPrecontextResult = {
   suppressedReasons: string[];
 };
 
-type PendingMemoryContext = {
-  id?: string;
-  _id?: unknown;
-  threadId?: string;
-  taskId?: string;
-  agentId?: string;
-  prompt?: string;
-  displayPrompt?: string;
-  memoryIds?: string[];
-  count?: number;
-  tokenEstimate?: number;
-};
-
 const DEFAULT_MAX_TOKENS = 2048;
 
 export async function buildCodingPrecontext(
@@ -70,7 +62,8 @@ export async function buildCodingPrecontext(
   let checkpointIncluded = false;
 
   if (includeMemory) {
-    const pending = isHarnessFeatureEnabled('FEATURE_ASYNC_SEMANTIC_MEMORY', false)
+    const asyncMemoryEnabled = isHarnessFeatureEnabled('FEATURE_ASYNC_SEMANTIC_MEMORY', false);
+    const pending = asyncMemoryEnabled
       ? await tryPendingMemory(input, suppressedReasons)
       : null;
 
@@ -81,11 +74,20 @@ export async function buildCodingPrecontext(
       memoryCount = pending.count;
     } else {
       const recalled = await tryRecallMemory(input.userPrompt, suppressedReasons);
-      if (recalled.length > 0) {
+      const filtered = asyncMemoryEnabled
+        ? await filterRecallForInjection(input, recalled, suppressedReasons)
+        : recalled;
+      if (filtered.length > 0) {
         sections.push('### Relevant Memory');
-        sections.push(formatMemoryItems(recalled, 520));
+        sections.push(formatMemoryItems(filtered, 520));
         sections.push('');
-        memoryCount = recalled.length;
+        memoryCount = filtered.length;
+        if (asyncMemoryEnabled) {
+          await recordSyncFallbackInjection(input, filtered);
+        }
+      } else if (asyncMemoryEnabled && recalled.length > 0) {
+        suppressedReasons.push('memory_sync_fallback_all_duplicates');
+        await logMemorySuppressed(input, 'sync_fallback_all_duplicates', recalled.map((item) => item.knowledgeId));
       }
     }
   }
@@ -160,32 +162,31 @@ async function tryPendingMemory(
   if (!input.threadId && !input.taskId) return null;
 
   try {
-    const db = await getDb();
-    const identityClauses = [
-      ...(input.threadId ? [{ threadId: input.threadId }] : []),
-      ...(input.taskId ? [{ taskId: input.taskId }] : []),
-    ];
-    const query: Record<string, unknown> = {
-      status: 'pending',
-      expiresAt: { $gt: new Date() },
-      $or: identityClauses,
-    };
-    if (input.agentId) query.agentId = input.agentId;
-
-    const doc = await db
-      .collection<PendingMemoryContext>('pending_memory_context')
-      .find(query)
-      .sort({ computedAt: -1 })
-      .limit(1)
-      .next();
-
+    const doc = await takePendingMemoryContext({
+      threadId: input.threadId,
+      taskId: input.taskId,
+      agentId: input.agentId,
+    });
     const markdown = (doc?.displayPrompt ?? doc?.prompt ?? '').trim();
     if (!doc || !markdown) return null;
 
-    await db.collection('pending_memory_context').updateOne(
-      { _id: doc._id },
-      { $set: { status: 'consumed', consumedAt: new Date() } },
-    ).catch(() => undefined);
+    await logHarnessEvent({
+      type: 'semantic_memory_injected',
+      agentId: input.agentId ?? 'codingAgent',
+      threadId: input.threadId ?? input.taskId,
+      taskId: input.taskId,
+      subtaskId: input.subtaskId,
+      feature: 'async_semantic_memory',
+      status: 'success',
+      output: markdown,
+      data: {
+        source: 'pending',
+        pendingId: doc.id,
+        memoryIds: doc.memoryIds,
+        count: doc.count ?? doc.memoryIds?.length ?? 0,
+        tokenEstimate: tokenEstimate(markdown),
+      },
+    });
 
     return { markdown, count: doc.count ?? doc.memoryIds?.length ?? 0 };
   } catch (error) {
@@ -207,6 +208,80 @@ async function tryRecallMemory(
   } catch (error) {
     suppressedReasons.push(`memory_recall_unavailable:${(error as Error).message}`);
     return [];
+  }
+}
+
+async function filterRecallForInjection(
+  input: CodingPrecontextInput,
+  items: RecallResult[],
+  suppressedReasons: string[],
+): Promise<RecallResult[]> {
+  if (items.length === 0) return [];
+  if (!input.threadId && !input.taskId) return items;
+
+  try {
+    const freshIds = await filterPreviouslyInjectedMemoryIds(
+      { threadId: input.threadId, taskId: input.taskId },
+      items.map((item) => item.knowledgeId),
+    );
+    const fresh = new Set(freshIds);
+    return items.filter((item) => fresh.has(item.knowledgeId));
+  } catch (error) {
+    suppressedReasons.push(`memory_dedupe_unavailable:${(error as Error).message}`);
+    return items;
+  }
+}
+
+async function recordSyncFallbackInjection(
+  input: CodingPrecontextInput,
+  items: RecallResult[],
+): Promise<void> {
+  if (items.length === 0) return;
+  try {
+    await recordInjectedMemoryContext({
+      threadId: input.threadId ?? input.taskId,
+      taskId: input.taskId,
+      agentId: input.agentId,
+      memoryIds: items.map((item) => item.knowledgeId),
+      source: 'sync_fallback',
+    });
+    await logHarnessEvent({
+      type: 'semantic_memory_injected',
+      agentId: input.agentId ?? 'codingAgent',
+      threadId: input.threadId ?? input.taskId,
+      taskId: input.taskId,
+      subtaskId: input.subtaskId,
+      feature: 'async_semantic_memory',
+      status: 'success',
+      data: {
+        source: 'sync_fallback',
+        memoryIds: items.map((item) => item.knowledgeId),
+        count: items.length,
+      },
+    });
+  } catch {
+    // Best-effort telemetry/dedupe only.
+  }
+}
+
+async function logMemorySuppressed(
+  input: CodingPrecontextInput,
+  reason: string,
+  memoryIds: string[],
+): Promise<void> {
+  try {
+    await logHarnessEvent({
+      type: 'semantic_memory_suppressed',
+      agentId: input.agentId ?? 'codingAgent',
+      threadId: input.threadId ?? input.taskId,
+      taskId: input.taskId,
+      subtaskId: input.subtaskId,
+      feature: 'async_semantic_memory',
+      status: 'success',
+      data: { reason, memoryIds },
+    });
+  } catch {
+    // Non-critical.
   }
 }
 

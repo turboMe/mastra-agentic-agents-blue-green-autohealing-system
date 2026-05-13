@@ -60,6 +60,22 @@ async function main() {
   await maintenanceTasks.createIndex({ status: 1, updatedAt: -1 });
   await maintenanceTasks.createIndex({ source: 1, createdAt: -1 });
 
+  // ── harness run state ─────────────────────────────────────────────────────
+  console.log('🧭 agent_runs / agent_run_events...');
+  const agentRuns = db.collection('agent_runs');
+  await agentRuns.createIndex({ runId: 1 }, { unique: true });
+  await agentRuns.createIndex({ taskId: 1, updatedAt: -1 });
+  await agentRuns.createIndex({ threadId: 1, updatedAt: -1 });
+  await agentRuns.createIndex({ status: 1, updatedAt: -1 });
+
+  const agentRunEvents = db.collection('agent_run_events');
+  await agentRunEvents.createIndex({ runId: 1, timestamp: 1 });
+  await agentRunEvents.createIndex({ taskId: 1, timestamp: -1 });
+  await agentRunEvents.createIndex(
+    { expiresAt: 1 },
+    { expireAfterSeconds: 0 },
+  );
+
   // ── shared_memory ─────────────────────────────────────────────────────────
   console.log('🧠 shared_memory...');
   const mem = db.collection('shared_memory');
@@ -85,6 +101,23 @@ async function main() {
   await signals.createIndex(
     { expiresAt: 1 },
     { expireAfterSeconds: 0 },  // TTL
+  );
+
+  // ── harness async semantic memory ─────────────────────────────────────────
+  console.log('🧠 pending_memory_context / injected_memory_context...');
+  const pendingMemory = db.collection('pending_memory_context');
+  await pendingMemory.createIndex({ threadId: 1, status: 1, computedAt: -1 });
+  await pendingMemory.createIndex({ taskId: 1, status: 1, computedAt: -1 });
+  await pendingMemory.createIndex(
+    { expiresAt: 1 },
+    { expireAfterSeconds: 0 },
+  );
+
+  const injectedMemory = db.collection('injected_memory_context');
+  await injectedMemory.createIndex({ threadId: 1, memoryId: 1 }, { unique: true });
+  await injectedMemory.createIndex(
+    { injectedAt: 1 },
+    { expireAfterSeconds: 90 * 24 * 3600 },
   );
 
   // ── rss_intelligence ──────────────────────────────────────────────────────

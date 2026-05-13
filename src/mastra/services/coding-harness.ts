@@ -14,6 +14,8 @@ import type { Agent } from '@mastra/core/agent';
 import { isHarnessFeatureEnabled } from '../config/harness-flags.js';
 import { logHarnessEvent, tokenEstimate } from './harness-events.js';
 import { buildCodingPrecontext } from './coding-precontext.js';
+import { scheduleSemanticMemoryCheck } from './semantic-memory-worker.js';
+import { beginHarnessTurn, completeHarnessTurn, failHarnessTurn } from './harness-run-state.js';
 
 export type HarnessPhase =
   | 'diagnose'
@@ -67,6 +69,7 @@ export async function generateCoding<TResponse = unknown>(
 ): Promise<HarnessGenerateResult<TResponse>> {
   const runId = input.runId ?? input.taskId ?? randomUUID();
   const turnId = randomUUID();
+  const threadId = input.threadId ?? input.taskId;
   const harnessEnabled = isHarnessFeatureEnabled('FEATURE_MASTRA_HARNESS', true);
   const precontextEnabled = isHarnessFeatureEnabled('FEATURE_CODING_PRECONTEXT', false);
   const start = Date.now();
@@ -95,13 +98,29 @@ export async function generateCoding<TResponse = unknown>(
   const promptHash = hashText(finalPrompt);
   const promptTokensEstimate = tokenEstimate(finalPrompt);
 
+  if (harnessEnabled) {
+    await beginHarnessTurn({
+      runId,
+      turnId,
+      threadId,
+      taskId: input.taskId,
+      subtaskId: input.subtaskId,
+      agentId: input.agentId,
+      phase: input.phase,
+      repoPath: input.repoPath,
+      model: input.model,
+      promptHash,
+      contextHash,
+    });
+  }
+
   if (harnessEnabled && precontextEnabled && precontext) {
     await logHarnessEvent({
       type: 'precontext_injected',
       agentId: input.agentId,
       runId,
       turnId,
-      threadId: input.threadId,
+      threadId,
       taskId: input.taskId,
       subtaskId: input.subtaskId,
       feature: 'coding_precontext',
@@ -128,7 +147,7 @@ export async function generateCoding<TResponse = unknown>(
       agentId: input.agentId,
       runId,
       turnId,
-      threadId: input.threadId,
+      threadId,
       taskId: input.taskId,
       subtaskId: input.subtaskId,
       feature: 'mastra_harness',
@@ -161,7 +180,7 @@ export async function generateCoding<TResponse = unknown>(
         agentId: input.agentId,
         runId,
         turnId,
-        threadId: input.threadId,
+        threadId,
         taskId: input.taskId,
         subtaskId: input.subtaskId,
         feature: 'mastra_harness',
@@ -180,6 +199,26 @@ export async function generateCoding<TResponse = unknown>(
       });
       eventsWritten += 1;
     }
+
+    if (harnessEnabled) {
+      await completeHarnessTurn({
+        runId,
+        turnId,
+        threadId,
+        taskId: input.taskId,
+        subtaskId: input.subtaskId,
+        agentId: input.agentId,
+        phase: input.phase,
+        repoPath: input.repoPath,
+        model: input.model,
+        promptHash,
+        contextHash,
+        durationMs,
+        outputPreview,
+      });
+    }
+
+    schedulePostTurnMemory(input, runId, turnId, outputPreview, undefined);
 
     return {
       runId,
@@ -202,7 +241,7 @@ export async function generateCoding<TResponse = unknown>(
         agentId: input.agentId,
         runId,
         turnId,
-        threadId: input.threadId,
+        threadId,
         taskId: input.taskId,
         subtaskId: input.subtaskId,
         feature: 'mastra_harness',
@@ -221,6 +260,27 @@ export async function generateCoding<TResponse = unknown>(
       });
       eventsWritten += 1;
     }
+
+    if (harnessEnabled) {
+      await failHarnessTurn({
+        runId,
+        turnId,
+        threadId,
+        taskId: input.taskId,
+        subtaskId: input.subtaskId,
+        agentId: input.agentId,
+        phase: input.phase,
+        repoPath: input.repoPath,
+        model: input.model,
+        promptHash,
+        contextHash,
+        durationMs,
+        errorClass: err.name || 'Error',
+        errorMessage: err.message,
+      });
+    }
+
+    schedulePostTurnMemory(input, runId, turnId, undefined, err.message);
 
     throw error;
   }
@@ -287,4 +347,31 @@ function extractOutputPreview(response: unknown): string {
 function truncate(text: string | undefined, maxLen: number): string {
   if (!text) return '';
   return text.length > maxLen ? `${text.slice(0, maxLen)}...` : text;
+}
+
+function schedulePostTurnMemory(
+  input: HarnessGenerateInput,
+  runId: string,
+  turnId: string,
+  outputPreview?: string,
+  errorMessage?: string,
+): void {
+  const contextText = [
+    `phase: ${input.phase}`,
+    input.prompt,
+    input.targetFiles?.length ? `target files: ${input.targetFiles.join(', ')}` : '',
+    outputPreview ? `output: ${outputPreview}` : '',
+    errorMessage ? `error: ${errorMessage}` : '',
+  ].filter(Boolean).join('\n\n');
+
+  void scheduleSemanticMemoryCheck({
+    threadId: input.threadId ?? input.taskId,
+    taskId: input.taskId,
+    subtaskId: input.subtaskId,
+    agentId: input.agentId,
+    runId,
+    turnId,
+    model: input.model,
+    contextText,
+  });
 }

@@ -8,7 +8,11 @@
 
 import { getDb } from '../lib/mongo.js';
 import { EMBEDDING_MODEL_ID, generateEmbedding, cosineSimilarity } from '../lib/embedder.js';
-import { renewKnowledgeTTL } from '../services/memory-extractor.js';
+import {
+  buildSystemKnowledgeSearchText,
+  hashSystemKnowledgeSearchText,
+  renewKnowledgeTTL,
+} from '../services/memory-extractor.js';
 import type { SystemKnowledge, KnowledgeType } from '../services/memory-extractor.js';
 import { randomUUID } from 'crypto';
 
@@ -100,10 +104,13 @@ export async function writeKnowledge(
   const db = await getDb();
   const now = new Date();
   const expiresAt = new Date(now.getTime() + KNOWLEDGE_TTL_DAYS * 24 * 3600 * 1000);
+  const storedContent = content.slice(0, 2000);
+  const searchText = buildSystemKnowledgeSearchText({ type, title, content: storedContent });
+  const searchTextHash = hashSystemKnowledgeSearchText(searchText);
 
   let embedding: number[] = [];
   try {
-    embedding = await generateEmbedding(title);
+    embedding = await generateEmbedding(searchText);
   } catch {
     // Save without vector
   }
@@ -115,7 +122,9 @@ export async function writeKnowledge(
       { knowledgeId: existing.knowledgeId },
       {
         $set: {
-          content: content.slice(0, 2000),
+          content: storedContent,
+          searchText,
+          searchTextHash,
           embedding,
           embeddingModel: embedding.length > 0 ? EMBEDDING_MODEL_ID : undefined,
           updatedAt: now,
@@ -132,7 +141,9 @@ export async function writeKnowledge(
     knowledgeId,
     type,
     title,
-    content: content.slice(0, 2000),
+    content: storedContent,
+    searchText,
+    searchTextHash,
     embedding,
     embeddingModel: embedding.length > 0 ? EMBEDDING_MODEL_ID : undefined,
     sourceEventIds: [],
