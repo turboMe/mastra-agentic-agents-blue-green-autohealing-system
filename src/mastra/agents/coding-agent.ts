@@ -1,8 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 import { Memory } from '@mastra/memory';
 import { TokenLimiterProcessor } from '@mastra/core/processors';
-import { workflowModels } from '../config/workflow-models.js';
-import { infrastructure, resolveModelId } from '../config/model-manifest.js';
+import { agentModels, infrastructure, resolveModelId } from '../config/model-manifest.js';
 import { loadPrompt } from '../lib/prompt-loader.js';
 import { withAnthropicSystemCache } from '../lib/anthropic-cache.js';
 import {
@@ -48,7 +47,7 @@ export const codingAgent: Agent = new Agent({
   instructions: withAnthropicSystemCache(
     await loadPrompt('coding/base') + '\n\nRespond concisely and to the point, especially when asked about task status.',
   ),
-  model: workflowModels.coding.default,
+  model: resolveModelId(agentModels.codingAgent),
   workspace: codeWorkspace,
   defaultOptions: { maxSteps: 40 },
   defaultGenerateOptionsLegacy: { maxSteps: 40 },
