@@ -11,6 +11,7 @@ import { randomUUID } from 'crypto';
 import { isHarnessFeatureEnabled } from '../config/harness-flags.js';
 import { getDb } from '../lib/mongo.js';
 import { logHarnessEvent } from './harness-events.js';
+import { queuePendingMessage } from './pending-message-queue.js';
 
 export type FileActivityOp = 'read' | 'write' | 'edit' | 'patch' | 'delete' | 'test';
 
@@ -206,6 +207,19 @@ export async function getFileActivityWarning(input: FileActivityInput): Promise<
       status: 'success',
       output: warning,
       data: {
+        file,
+        op: input.op,
+        peerCount: peers.length,
+        peerIds: peers.map((peer) => peer.id),
+      },
+    });
+    await queuePendingMessage({
+      taskId: input.taskId,
+      threadId: input.threadId,
+      source: 'file_activity',
+      content: warning,
+      urgent: false,
+      metadata: {
         file,
         op: input.op,
         peerCount: peers.length,

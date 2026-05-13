@@ -37,6 +37,11 @@ import { assembleContext, formatAssembledContext } from './context-assembler.js'
 import { generateCoding } from './coding-harness.js';
 import { isHarnessFeatureEnabled } from '../config/harness-flags.js';
 import { AGENTIC_AGENTS_REPO, getWorkspacePath } from '../workspaces/code-workspace.js';
+import {
+  type PendingMessage,
+  formatPendingMessagesForPrompt,
+  takePendingMessages,
+} from './pending-message-queue.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -63,6 +68,7 @@ export interface SubtaskContext {
   taskId: string;
   previousResults: SubtaskResult[];
   retryContext?: SubtaskResult;
+  pendingMessages?: PendingMessage[];
 }
 
 // ── Quality Signals ──────────────────────────────────────────────────────────
@@ -133,11 +139,19 @@ export async function executeSubtask(
   }
 
   const repoPath = await resolveRepoPath(taskId);
+  const pendingMessages = context.pendingMessages ?? await takePendingMessages({
+    taskId,
+    agentId: 'codingAgent',
+    subtaskId: subtask.id,
+    limit: 5,
+  });
+  const interruptPrompt = formatPendingMessagesForPrompt(pendingMessages);
 
   // Build scope-constrained prompt with role + skill context + assembled context
-  const prompt = context.retryContext
+  const basePrompt = context.retryContext
     ? buildRetryPrompt(subtask, context.retryContext, taskId, context, role, loadedSkill)
     : await buildScopedPrompt(subtask, taskId, context, role, loadedSkill, repoPath);
+  const prompt = interruptPrompt ? `${interruptPrompt}\n\n${basePrompt}` : basePrompt;
 
   const agent = mastra.getAgent('codingAgent');
   const timeoutMs = COMPLEXITY_TIMEOUTS[subtask.estimatedComplexity ?? 'simple'] ?? 60_000;
@@ -403,10 +417,26 @@ export async function retryFailedSubtasks(
     // ── ATTEMPT 2: Retry with same model, enriched prompt ──
     console.warn(`[SubtaskExecutor] Retry ${result.subtaskId}: ${quality.reason}`);
 
+    const retryPendingMessages = await takePendingMessages({
+      taskId,
+      agentId: 'codingAgent',
+      subtaskId: result.subtaskId,
+      limit: 5,
+    });
+    if (retryPendingMessages.some((message) => message.urgent)) {
+      finalResults.push(buildInterruptedSubtaskResult(
+        subtask,
+        result.assignedModel,
+        formatPendingMessagesForPrompt(retryPendingMessages),
+        2,
+      ));
+      continue;
+    }
+
     const retryResult = await executeSubtask(
       subtask,
       taskId,
-      { ...context, retryContext: result },
+      { ...context, retryContext: result, pendingMessages: retryPendingMessages },
       mastra,
     );
     const retryQuality = await validateSubtaskQuality(subtask, retryResult);
@@ -457,8 +487,29 @@ export async function retryFailedSubtasks(
         `[SubtaskExecutor] Escalate ${result.subtaskId}: ${retryResult.assignedModel} → ${escalationModel.modelId}`,
       );
 
+      const escalationPendingMessages = await takePendingMessages({
+        taskId,
+        agentId: 'codingAgent',
+        subtaskId: result.subtaskId,
+        limit: 5,
+      });
+      if (escalationPendingMessages.some((message) => message.urgent)) {
+        finalResults.push(buildInterruptedSubtaskResult(
+          subtask,
+          escalationModel.modelId,
+          formatPendingMessagesForPrompt(escalationPendingMessages),
+          3,
+        ));
+        continue;
+      }
+
       subtask.assignedModel = escalationModel.modelId;
-      const escalatedResult = await executeSubtask(subtask, taskId, context, mastra);
+      const escalatedResult = await executeSubtask(
+        subtask,
+        taskId,
+        { ...context, pendingMessages: escalationPendingMessages },
+        mastra,
+      );
       const escalatedQuality = await validateSubtaskQuality(subtask, escalatedResult);
 
       escalatedResult.actualModel = escalationModel.modelId;
@@ -538,6 +589,30 @@ function getEscalationModel(
   }
 
   return null;
+}
+
+function buildInterruptedSubtaskResult(
+  subtask: RoutableSubtask,
+  assignedModel: string,
+  interruptSummary: string,
+  attempt: number,
+): SubtaskResult {
+  return {
+    subtaskId: subtask.id,
+    status: 'needs_human',
+    assignedModel,
+    filesChanged: [],
+    commandsRun: [],
+    diagnostics: interruptSummary,
+    errors: ['Urgent soft interrupt consumed before retry/escalation; remaining plan needs re-evaluation.'],
+    durationMs: 0,
+    qualityCheck: {
+      passed: false,
+      reason: 'Urgent soft interrupt consumed before retry/escalation',
+      attempt,
+      escalationHistory: [],
+    },
+  };
 }
 
 // ── Skill Loader ─────────────────────────────────────────────────────────────

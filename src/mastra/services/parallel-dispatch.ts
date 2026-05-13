@@ -22,6 +22,7 @@ import {
   executeSubtask,
   retryFailedSubtasks,
 } from './subtask-executor.js';
+import { formatPendingMessagesForPrompt, takePendingMessages } from './pending-message-queue.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -125,13 +126,30 @@ export async function dispatchSubtasks(
   const previousResults: SubtaskResult[] = [];
 
   // ── Sequential across groups ──
-  for (const group of routingResult.groups) {
+  for (const [groupIndex, group] of routingResult.groups.entries()) {
     const groupStart = Date.now();
 
     console.log(
       `[Dispatch] Group ${group.groupIndex}: ${group.subtasks.length} subtask(s), ` +
       `${group.totalVramMb}MB VRAM, est. ${(group.estimatedLatencyMs / 1000).toFixed(1)}s`,
     );
+
+    const pendingMessages = await takePendingMessages({
+      taskId,
+      agentId: 'codingAgent',
+      limit: 5,
+    });
+    const urgentInterrupt = pendingMessages.some((message) => message.urgent);
+    if (urgentInterrupt) {
+      const interruptSummary = formatPendingMessagesForPrompt(pendingMessages);
+      console.warn(
+        `[Dispatch] Urgent interrupt consumed before group ${group.groupIndex}; stopping remaining groups for replan.`,
+      );
+      for (const remainingGroup of routingResult.groups.slice(groupIndex)) {
+        groupResults.push(buildInterruptedGroupResult(remainingGroup, interruptSummary));
+      }
+      break;
+    }
 
     // Pre-flight VRAM check
     preFlightVramCheck(group);
@@ -140,6 +158,7 @@ export async function dispatchSubtasks(
     const context: SubtaskContext = {
       taskId,
       previousResults: [...previousResults],
+      pendingMessages,
     };
 
     // ── Parallel within group: Promise.allSettled ──
@@ -275,6 +294,35 @@ function deriveGroupStatus(results: SubtaskResult[]): 'success' | 'partial' | 'f
   if (allSuccess) return 'success';
   if (allFailed) return 'failed';
   return 'partial';
+}
+
+function buildInterruptedGroupResult(
+  group: RoutingResult['groups'][0],
+  interruptSummary: string,
+): GroupResult {
+  const subtaskResults: SubtaskResult[] = group.subtasks.map(({ subtask, model }) => ({
+    subtaskId: subtask.id,
+    status: 'needs_human',
+    assignedModel: subtask.assignedModel ?? model.modelId,
+    filesChanged: [],
+    commandsRun: [],
+    diagnostics: interruptSummary,
+    errors: ['Urgent soft interrupt consumed before this group; remaining plan needs re-evaluation.'],
+    durationMs: 0,
+    qualityCheck: {
+      passed: false,
+      reason: 'Urgent soft interrupt consumed before group execution',
+      attempt: 0,
+      escalationHistory: [],
+    },
+  }));
+
+  return {
+    groupIndex: group.groupIndex,
+    subtaskResults,
+    groupStatus: 'failed',
+    durationMs: 0,
+  };
 }
 
 function deriveOverallStatus(

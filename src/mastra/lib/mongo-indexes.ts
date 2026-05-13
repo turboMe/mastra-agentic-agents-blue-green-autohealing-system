@@ -59,6 +59,13 @@ export async function ensureIndexes(): Promise<void> {
     { injectedAt: 1 }, { expireAfterSeconds: 90 * 24 * 3600 },
   );
 
+  // ── Pending message queue indexes (Harness soft interrupts) ────────────
+  await db.collection('pending_user_messages').createIndex({ taskId: 1, status: 1, createdAt: 1 });
+  await db.collection('pending_user_messages').createIndex({ threadId: 1, status: 1, createdAt: 1 });
+  await db.collection('pending_user_messages').createIndex(
+    { expiresAt: 1 }, { expireAfterSeconds: 0 },
+  );
+
   // ── File activity ledger indexes (Harness Etap 3) ──────────────────────
   await db.collection('file_activity').createIndex({ file: 1, createdAt: -1 });
   await db.collection('file_activity').createIndex({ taskId: 1, file: 1, createdAt: -1 });
@@ -84,5 +91,5 @@ export async function ensureIndexes(): Promise<void> {
     { expiresAt: 1 }, { expireAfterSeconds: 0 },
   );
 
-  console.log('[MongoIndexes] TTL indexes ensured for: signals, shared_memory, auto_healing_tickets, agent_events, agent_run_events, system_knowledge, pending_memory_context, injected_memory_context, file_activity, tool_executions, harness_artifacts');
+  console.log('[MongoIndexes] TTL indexes ensured for: signals, shared_memory, auto_healing_tickets, agent_events, agent_run_events, system_knowledge, pending_memory_context, injected_memory_context, pending_user_messages, file_activity, tool_executions, harness_artifacts');
 }
