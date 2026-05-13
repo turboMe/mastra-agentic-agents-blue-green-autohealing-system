@@ -69,7 +69,11 @@ export const automationArchitect = new Agent({
 - **Repair notes**:
 `,
       },
-      generateTitle: true,
+      generateTitle: {
+        model: resolveModelId('gemma4-e4b'),
+        instructions:
+          'Generate a concise thread title in the user language. Return only the title text, max 60 characters.',
+      },
     },
   }),
   tools: {

@@ -63,6 +63,7 @@ const LANGUAGE_MAP: Record<string, string> = {
 const IGNORE_DIRS = new Set([
   'node_modules', '.git', 'dist', 'build', '.next', '.mastra',
   '.turbo', 'coverage', '__pycache__', '.cache', '.duckdb',
+  'chrome_profile_notebooklm',
 ]);
 
 const IGNORE_FILES = new Set([
@@ -276,50 +277,85 @@ export class RepoIndexer {
       return [];
     }
 
-    this.parser.setLanguage(this.languages[language]);
-    const tree = this.parser.parse(content);
     const tags: SymbolTag[] = [];
 
-    // Walk AST and extract definitions + references
-    const walkNode = (node: any): void => {
-      const type = node.type;
+    try {
+      this.parser.setLanguage(this.languages[language]);
+      const tree = this.parser.parse(content);
 
-      // ── Definitions ──
-      if (this.isDefinitionNode(type, language)) {
-        const nameNode = this.findNameNode(node);
-        if (nameNode) {
-          const sig = this.extractSignature(node, content);
-          tags.push({
-            filePath,
-            name: nameNode.text,
-            kind: 'def',
-            line: nameNode.startPosition.row,
-            signature: sig,
-          });
+      // Walk AST and extract definitions + references
+      const walkNode = (node: any): void => {
+        const type = node.type;
+
+        // ── Definitions ──
+        if (this.isDefinitionNode(type, language)) {
+          const nameNode = this.findNameNode(node);
+          if (nameNode) {
+            const sig = this.extractSignature(node, content);
+            tags.push({
+              filePath,
+              name: nameNode.text,
+              kind: 'def',
+              line: nameNode.startPosition.row,
+              signature: sig,
+            });
+          }
         }
-      }
 
-      // ── References (identifiers) ──
-      if (type === 'identifier' || type === 'property_identifier' || type === 'type_identifier') {
-        const name = node.text;
-        // Filter out common noise (keywords, short names, built-ins)
-        if (name.length >= 3 && !this.isBuiltIn(name)) {
-          tags.push({
-            filePath,
-            name,
-            kind: 'ref',
-            line: node.startPosition.row,
-          });
+        // ── References (identifiers) ──
+        if (type === 'identifier' || type === 'property_identifier' || type === 'type_identifier') {
+          const name = node.text;
+          // Filter out common noise (keywords, short names, built-ins)
+          if (name.length >= 3 && !this.isBuiltIn(name)) {
+            tags.push({
+              filePath,
+              name,
+              kind: 'ref',
+              line: node.startPosition.row,
+            });
+          }
         }
-      }
 
-      // Recurse children
-      for (let i = 0; i < node.childCount; i++) {
-        walkNode(node.child(i));
-      }
-    };
+        // Recurse children
+        for (let i = 0; i < node.childCount; i++) {
+          walkNode(node.child(i));
+        }
+      };
 
-    walkNode(tree.rootNode);
+      walkNode(tree.rootNode);
+      return tags;
+    } catch {
+      return this.extractSymbolsFallback(filePath, content);
+    }
+  }
+
+  private extractSymbolsFallback(filePath: string, content: string): SymbolTag[] {
+    const tags: SymbolTag[] = [];
+    const patterns = [
+      /\bexport\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/,
+      /\b(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/,
+      /\bexport\s+const\s+([A-Za-z_$][\w$]*)/,
+      /\bconst\s+([A-Za-z_$][\w$]*)\s*=/,
+      /\bexport\s+(?:class|interface|type|enum)\s+([A-Za-z_$][\w$]*)/,
+      /\b(?:class|interface|type|enum)\s+([A-Za-z_$][\w$]*)/,
+    ];
+
+    content.split('\n').forEach((line, index) => {
+      for (const pattern of patterns) {
+        const match = line.match(pattern);
+        const name = match?.[1];
+        if (!name || this.isBuiltIn(name)) continue;
+        tags.push({
+          filePath,
+          name,
+          kind: 'def',
+          line: index,
+          signature: line.trim().slice(0, 200),
+        });
+        break;
+      }
+    });
+
     return tags;
   }
 

@@ -104,13 +104,32 @@ const automationSpecSchema = z
   })
   .passthrough();
 
+function parseJsonObjectInput(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  const raw = fenced ? fenced[1].trim() : trimmed;
+
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : value;
+  } catch {
+    return value;
+  }
+}
+
+const automationSpecInputSchema = z.preprocess(parseJsonObjectInput, automationSpecSchema);
+
 export const composeWorkflowTool = createTool({
   id: 'architect_compose_workflow',
   description:
     'Buduje JSON workflow n8n z wybranego patternu i specyfikacji. Po zbudowaniu MUSISZ wywolac architect.risk_score na wyniku zanim deployujesz.',
   inputSchema: z.object({
     patternId: z.string().describe('ID patternu z katalogu (np. "webhook-validate-respond")'),
-    spec: automationSpecSchema,
+    spec: automationSpecInputSchema,
     workflowName: z
       .string()
       .optional()
