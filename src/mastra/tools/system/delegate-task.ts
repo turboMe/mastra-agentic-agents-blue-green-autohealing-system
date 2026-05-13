@@ -8,23 +8,28 @@ import { randomUUID } from 'crypto';
 import { logAgentEvent } from '../../lib/agent-event-log.js';
 import { generateCoding } from '../../services/coding-harness.js';
 import { AGENTIC_AGENTS_REPO } from '../../workspaces/code-workspace.js';
-import { marketingAgent } from '../../agents/marketing-agent.js';
-import { salesAgent } from '../../agents/sales-agent.js';
-import { analyticsAgent } from '../../agents/analytics-agent.js';
-import { automationArchitect } from '../../agents/automation-architect.js';
-import { crmAgent } from '../../agents/crm-agent.js';
-import { codingAgent } from '../../agents/coding-agent.js';
 
-const AGENTS_MAP = {
-  marketingAgent,
-  salesAgent,
-  analyticsAgent,
-  automationArchitect,
-  crmAgent,
-  codingAgent,
+// Lazy-loaded to avoid circular: delegate-task → index → meta-agent → delegate-task
+let _mastra: any = null;
+async function getMastra() {
+  if (!_mastra) {
+    const mod = await import('../../index.js');
+    _mastra = mod.mastra;
+  }
+  return _mastra;
+}
+
+// Agent IDs as registered in mastra.agents — must match the `id` field in each Agent() constructor
+const AGENT_IDS: Record<string, string> = {
+  marketingAgent: 'marketing-agent',
+  salesAgent: 'sales-agent',
+  analyticsAgent: 'analytics-agent',
+  automationArchitect: 'automation-architect',
+  crmAgent: 'crm-agent',
+  codingAgent: 'coding-agent',
 } as const;
 
-type AgentKey = keyof typeof AGENTS_MAP;
+type AgentKey = keyof typeof AGENT_IDS;
 
 export const delegateTaskTool = createTool({
   id: 'system_delegate_task',
@@ -61,14 +66,25 @@ CAN be called multiple times in parallel when tasks are independent.`,
     error: z.string().optional(),
   }),
   execute: async (context) => {
-    const agent = AGENTS_MAP[context.targetAgent as AgentKey];
+    const agentId = AGENT_IDS[context.targetAgent as AgentKey];
 
-    if (!agent) {
+    if (!agentId) {
       return {
         success: false,
         result: `Agent "${context.targetAgent}" nie istnieje.`,
         agentUsed: context.targetAgent,
-        error: `Dostępni agenci: ${Object.keys(AGENTS_MAP).join(', ')}`,
+        error: `Dostępni agenci: ${Object.keys(AGENT_IDS).join(', ')}`,
+      };
+    }
+
+    const m = await getMastra();
+    const agent = m.getAgent(agentId);
+    if (!agent) {
+      return {
+        success: false,
+        result: `Agent "${agentId}" not found in Mastra registry.`,
+        agentUsed: context.targetAgent,
+        error: `Agent registered but not resolved. Check mastra.agents config.`,
       };
     }
 
