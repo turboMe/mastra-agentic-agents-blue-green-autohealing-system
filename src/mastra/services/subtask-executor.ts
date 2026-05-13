@@ -17,7 +17,6 @@
 import { randomUUID } from 'crypto';
 
 import type { Mastra } from '@mastra/core/mastra';
-import type { Agent } from '@mastra/core/agent';
 import {
   type ModelCapability,
   type TaskComplexity,
@@ -35,7 +34,9 @@ import { getCircuitBreaker } from './circuit-breaker.js';
 import { getBudgetTracker } from './budget-tracker.js';
 import { appendToCheckpoint } from './context-checkpoint.js';
 import { assembleContext, formatAssembledContext } from './context-assembler.js';
-import { cacheOptionsForModel } from '../lib/anthropic-cache.js';
+import { generateCoding } from './coding-harness.js';
+import { isHarnessFeatureEnabled } from '../config/harness-flags.js';
+import { AGENTIC_AGENTS_REPO, getWorkspacePath } from '../workspaces/code-workspace.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -131,20 +132,38 @@ export async function executeSubtask(
     console.log(`[SubtaskExecutor] ${subtask.id}: role=${role.roleId}, no skill matched`);
   }
 
+  const repoPath = await resolveRepoPath(taskId);
+
   // Build scope-constrained prompt with role + skill context + assembled context
   const prompt = context.retryContext
     ? buildRetryPrompt(subtask, context.retryContext, taskId, context, role, loadedSkill)
-    : await buildScopedPrompt(subtask, taskId, context, role, loadedSkill);
+    : await buildScopedPrompt(subtask, taskId, context, role, loadedSkill, repoPath);
 
   const agent = mastra.getAgent('codingAgent');
   const timeoutMs = COMPLEXITY_TIMEOUTS[subtask.estimatedComplexity ?? 'simple'] ?? 60_000;
 
   try {
-    // Execute with timeout
-    const response = await Promise.race([
-      agent.generate(prompt, { model: modelId, ...cacheOptionsForModel(modelId) } as any),
-      createTimeout(timeoutMs, `Subtask ${subtask.id} timed out after ${timeoutMs / 1000}s`),
-    ]);
+    const harnessResult = await generateCoding({
+      agent,
+      agentId: 'codingAgent',
+      prompt,
+      taskId,
+      subtaskId: subtask.id,
+      model: modelId,
+      phase: context.retryContext ? 'retry' : 'subtask',
+      timeoutMs,
+      repoPath,
+      targetFiles: subtask.targetFiles,
+      cachePolicy: 'static-only',
+      contextPolicy: {
+        includeMemory: true,
+        includeSkills: true,
+        includeRepoMap: true,
+        includeCheckpoint: true,
+        maxTokens: 2048,
+      },
+    });
+    const response = harnessResult.response;
 
     // Collect results from artifact in Mongo
     const collectedResult = await collectSubtaskResult(taskId, subtask.id);
@@ -551,6 +570,15 @@ async function findBestSkill(
   return null;
 }
 
+async function resolveRepoPath(taskId: string): Promise<string> {
+  try {
+    return await getWorkspacePath(taskId);
+  } catch (err) {
+    console.warn('[SubtaskExecutor] Workspace path lookup failed:', (err as Error).message);
+    return AGENTIC_AGENTS_REPO;
+  }
+}
+
 // ── Prompt Builders ──────────────────────────────────────────────────────────
 
 /**
@@ -563,6 +591,7 @@ async function buildScopedPrompt(
   context: SubtaskContext,
   role: SubAgentRole,
   skill: Skill | null,
+  repoPath: string,
 ): Promise<string> {
   const sections: string[] = [
     `## Role: ${role.name}`,
@@ -570,22 +599,25 @@ async function buildScopedPrompt(
     '',
   ];
 
-  // ── Phase 5: Auto-assemble rich context (repo-map + semantic search + checkpoint) ──
-  try {
-    const assembled = await assembleContext({
-      description: (subtask as any).description ?? subtask.id,
-      targetFiles: subtask.targetFiles,
-      taskId,
-      tokenBudget: 3072,
-      mentionedIdents: subtask.targetFiles.map((f) => f.split('/').pop()?.replace(/\.[^.]+$/, '') ?? ''),
-    });
-    const assembledText = formatAssembledContext(assembled);
-    if (assembledText.length > 0) {
-      sections.push(assembledText);
+  // ── Phase 5 fallback: when harness pre-context is off, keep legacy assembly ──
+  if (!isHarnessFeatureEnabled('FEATURE_CODING_PRECONTEXT', false)) {
+    try {
+      const assembled = await assembleContext({
+        description: (subtask as any).description ?? subtask.id,
+        repoPath,
+        targetFiles: subtask.targetFiles,
+        taskId,
+        tokenBudget: 3072,
+        mentionedIdents: subtask.targetFiles.map((f) => f.split('/').pop()?.replace(/\.[^.]+$/, '') ?? ''),
+      });
+      const assembledText = formatAssembledContext(assembled);
+      if (assembledText.length > 0) {
+        sections.push(assembledText);
+      }
+    } catch (err) {
+      // Non-critical — continue without assembled context
+      console.warn('[SubtaskExecutor] Context assembly failed:', (err as Error).message);
     }
-  } catch (err) {
-    // Non-critical — continue without assembled context
-    console.warn('[SubtaskExecutor] Context assembly failed:', (err as Error).message);
   }
 
   // Inject skill procedure if available
@@ -702,12 +734,6 @@ function buildRetryPrompt(
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function createTimeout(ms: number, message: string): Promise<never> {
-  return new Promise((_, reject) => {
-    setTimeout(() => reject(new Error(message)), ms);
-  });
-}
 
 /**
  * Extract diagnostics summary from agent response.

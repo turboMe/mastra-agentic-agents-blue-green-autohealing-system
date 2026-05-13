@@ -31,14 +31,22 @@ export interface AssembledContext {
 export interface AssembleOptions {
   /** Task description for contextual ranking */
   description: string;
+  /** Absolute repository root used by repo-indexer and code-search cache */
+  repoPath: string;
   /** Files being targeted by this subtask */
   targetFiles: string[];
   /** Task ID for checkpoint lookup */
-  taskId: string;
+  taskId?: string;
   /** Total token budget for assembled context (default: 4096) */
   tokenBudget?: number;
   /** Mentioned identifiers to boost in repo map */
   mentionedIdents?: string[];
+  /** Include AST/PageRank repo map (default: true) */
+  includeRepoMap?: boolean;
+  /** Include semantic code locations (default: true) */
+  includeRelevantCode?: boolean;
+  /** Include checkpoint state when taskId is present (default: true) */
+  includeCheckpoint?: boolean;
 }
 
 // ── Token Estimation ─────────────────────────────────────────────────────────
@@ -59,45 +67,64 @@ function truncateToTokens(text: string, maxTokens: number): string {
 export async function assembleContext(options: AssembleOptions): Promise<AssembledContext> {
   const {
     description,
+    repoPath,
     targetFiles,
     taskId,
     tokenBudget = 4096,
     mentionedIdents = [],
+    includeRepoMap = true,
+    includeRelevantCode = true,
+    includeCheckpoint = true,
   } = options;
 
-  // Token allocation
-  const repoMapBudget = Math.floor(tokenBudget * 0.45);
-  const relevantCodeBudget = Math.floor(tokenBudget * 0.35);
-  const checkpointBudget = Math.floor(tokenBudget * 0.20);
+  // Token allocation follows the original weights, normalized to enabled sources.
+  const sourceWeights = [
+    { key: 'repoMap', enabled: includeRepoMap, weight: 0.45 },
+    { key: 'relevantCode', enabled: includeRelevantCode, weight: 0.35 },
+    { key: 'checkpoint', enabled: includeCheckpoint && !!taskId, weight: 0.20 },
+  ];
+  const totalWeight = sourceWeights
+    .filter((source) => source.enabled)
+    .reduce((sum, source) => sum + source.weight, 0);
+  const budgetFor = (key: string) => {
+    const source = sourceWeights.find((item) => item.key === key);
+    if (!source?.enabled || totalWeight <= 0) return 0;
+    return Math.floor(tokenBudget * (source.weight / totalWeight));
+  };
+  const repoMapBudget = budgetFor('repoMap');
+  const relevantCodeBudget = budgetFor('relevantCode');
+  const checkpointBudget = budgetFor('checkpoint');
 
   // ── 1. Repo Map (structural awareness) ──
   let repoMap = '';
-  try {
-    const indexer = getRepoIndexer();
-    // Ensure index is fresh (incremental)
-    await indexer.index();
-    repoMap = indexer.getRepoMap({
-      query: description,
-      focusFiles: targetFiles,
-      mentionedIdents,
-      maxTokens: repoMapBudget,
-    });
-  } catch (err) {
-    repoMap = `(repo map unavailable: ${(err as Error).message})`;
+  if (includeRepoMap && repoMapBudget > 0) {
+    try {
+      const indexer = getRepoIndexer(repoPath);
+      // Ensure index is fresh (incremental)
+      await indexer.index();
+      repoMap = indexer.getRepoMap({
+        query: description,
+        focusFiles: targetFiles,
+        mentionedIdents,
+        maxTokens: repoMapBudget,
+      });
+    } catch (err) {
+      repoMap = `(repo map unavailable: ${(err as Error).message})`;
+    }
   }
 
   // ── 2. Relevant Code (semantic search) ──
   // NOTE: Semantic search uses the embedder configured in model-manifest.ts.
   // We attempt it but gracefully degrade if embedder is offline.
   let relevantCode = '';
-  try {
+  if (includeRelevantCode && relevantCodeBudget > 0) {
+    try {
     // Dynamic import to avoid hard dependency on embedder availability
     const { EMBEDDING_MODEL_ID, generateEmbedding, cosineSimilarity } = await import('../lib/embedder.js');
     const Database = (await import('better-sqlite3')).default;
     const { resolve } = await import('path');
 
-    const rootPath = '/projekty/mastra-agentic-environment/agentic-agents';
-    const dbPath = resolve(rootPath, '.mastra', 'repo-index.db');
+    const dbPath = resolve(repoPath, '.mastra', 'repo-index.db');
 
     let db: any;
     try {
@@ -152,20 +179,23 @@ export async function assembleContext(options: AssembleOptions): Promise<Assembl
 
       db.close();
     }
-  } catch {
-    // Embedder offline or DB not ready — graceful degradation
-    relevantCode = '';
+    } catch {
+      // Embedder offline or DB not ready — graceful degradation
+      relevantCode = '';
+    }
   }
 
   // ── 3. Checkpoint State (session continuity) ──
   let checkpoint = '';
-  try {
-    const cp = await loadCheckpoint(taskId);
-    if (cp) {
-      checkpoint = formatCheckpointForPrompt(cp);
+  if (includeCheckpoint && taskId) {
+    try {
+      const cp = await loadCheckpoint(taskId);
+      if (cp) {
+        checkpoint = formatCheckpointForPrompt(cp);
+      }
+    } catch {
+      // Checkpoint unavailable — non-critical
     }
-  } catch {
-    // Checkpoint unavailable — non-critical
   }
 
   // ── Truncate to budget ──

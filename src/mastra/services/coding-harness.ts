@@ -1,0 +1,290 @@
+/**
+ * Mastra Coding Harness.
+ *
+ * Stable generateCoding() gateway for coding LLM calls.
+ *
+ * Base behavior preserves agent.generate(). Optional dynamic pre-context is
+ * injected into the user prompt only when FEATURE_CODING_PRECONTEXT is enabled;
+ * static agent instructions remain cache-friendly.
+ */
+
+import { createHash, randomUUID } from 'crypto';
+
+import type { Agent } from '@mastra/core/agent';
+import { isHarnessFeatureEnabled } from '../config/harness-flags.js';
+import { logHarnessEvent, tokenEstimate } from './harness-events.js';
+import { buildCodingPrecontext } from './coding-precontext.js';
+
+export type HarnessPhase =
+  | 'diagnose'
+  | 'plan'
+  | 'subtask'
+  | 'retry'
+  | 'review'
+  | 'merge'
+  | 'cleanup'
+  | 'chat';
+
+export type HarnessGenerateInput = {
+  agent: Agent;
+  agentId: string;
+  prompt: string;
+  taskId?: string;
+  subtaskId?: string;
+  threadId?: string;
+  runId?: string;
+  repoPath?: string;
+  targetFiles?: string[];
+  model?: string;
+  phase: HarnessPhase;
+  timeoutMs?: number;
+  cachePolicy?: 'static-only' | 'disabled';
+  contextPolicy?: {
+    includeMemory?: boolean;
+    includeSkills?: boolean;
+    includeRepoMap?: boolean;
+    includeCheckpoint?: boolean;
+    maxTokens?: number;
+  };
+  generateOptions?: Record<string, unknown>;
+};
+
+export type HarnessGenerateResult<TResponse = unknown> = {
+  runId: string;
+  turnId: string;
+  response: TResponse;
+  promptHash: string;
+  contextHash?: string;
+  outputPreview: string;
+  outputArtifactId?: string;
+  durationMs: number;
+  model?: string;
+  eventsWritten: number;
+};
+
+export async function generateCoding<TResponse = unknown>(
+  input: HarnessGenerateInput,
+): Promise<HarnessGenerateResult<TResponse>> {
+  const runId = input.runId ?? input.taskId ?? randomUUID();
+  const turnId = randomUUID();
+  const harnessEnabled = isHarnessFeatureEnabled('FEATURE_MASTRA_HARNESS', true);
+  const precontextEnabled = isHarnessFeatureEnabled('FEATURE_CODING_PRECONTEXT', false);
+  const start = Date.now();
+  let eventsWritten = 0;
+  const precontext = precontextEnabled
+    ? await buildCodingPrecontext({
+        taskId: input.taskId,
+        subtaskId: input.subtaskId,
+        agentId: input.agentId,
+        threadId: input.threadId,
+        userPrompt: input.prompt,
+        repoPath: input.repoPath,
+        targetFiles: input.targetFiles,
+        maxTokens: input.contextPolicy?.maxTokens ?? 2048,
+        includeMemory: input.contextPolicy?.includeMemory,
+        includeSkills: input.contextPolicy?.includeSkills,
+        includeRepoMap: input.contextPolicy?.includeRepoMap,
+        includeCheckpoint: input.contextPolicy?.includeCheckpoint,
+      })
+    : null;
+  const finalPrompt = precontext?.markdown
+    ? `${precontext.markdown}\n\n---\n\n${input.prompt}`
+    : input.prompt;
+  const contextHash = precontext?.markdown ? hashText(precontext.markdown) : undefined;
+  const originalPromptHash = hashText(input.prompt);
+  const promptHash = hashText(finalPrompt);
+  const promptTokensEstimate = tokenEstimate(finalPrompt);
+
+  if (harnessEnabled && precontextEnabled && precontext) {
+    await logHarnessEvent({
+      type: 'precontext_injected',
+      agentId: input.agentId,
+      runId,
+      turnId,
+      threadId: input.threadId,
+      taskId: input.taskId,
+      subtaskId: input.subtaskId,
+      feature: 'coding_precontext',
+      model: input.model,
+      status: 'success',
+      output: precontext.markdown,
+      data: {
+        injected: precontext.markdown.length > 0,
+        tokenEstimate: precontext.tokenEstimate,
+        memoryCount: precontext.memoryCount,
+        skillCount: precontext.skillCount,
+        repoMapIncluded: precontext.repoMapIncluded,
+        checkpointIncluded: precontext.checkpointIncluded,
+        suppressedReasons: precontext.suppressedReasons,
+        contextHash,
+      },
+    });
+    eventsWritten += 1;
+  }
+
+  if (harnessEnabled) {
+    await logHarnessEvent({
+      type: 'llm_call_started',
+      agentId: input.agentId,
+      runId,
+      turnId,
+      threadId: input.threadId,
+      taskId: input.taskId,
+      subtaskId: input.subtaskId,
+      feature: 'mastra_harness',
+      model: input.model,
+      status: 'pending',
+      data: {
+        phase: input.phase,
+        repoPath: input.repoPath,
+        targetFiles: input.targetFiles,
+        promptHash,
+        originalPromptHash,
+        contextHash,
+        promptTokensEstimate,
+        cachePolicy: input.cachePolicy ?? 'static-only',
+        contextPolicy: input.contextPolicy,
+        precontextApplied: !!precontext?.markdown,
+      },
+    });
+    eventsWritten += 1;
+  }
+
+  try {
+    const response = await callAgentGenerate<TResponse>({ ...input, prompt: finalPrompt });
+    const durationMs = Date.now() - start;
+    const outputPreview = extractOutputPreview(response);
+
+    if (harnessEnabled) {
+      await logHarnessEvent({
+        type: 'llm_call_completed',
+        agentId: input.agentId,
+        runId,
+        turnId,
+        threadId: input.threadId,
+        taskId: input.taskId,
+        subtaskId: input.subtaskId,
+        feature: 'mastra_harness',
+        model: input.model,
+        status: 'success',
+        durationMs,
+        output: outputPreview,
+        data: {
+          phase: input.phase,
+          promptHash,
+          originalPromptHash,
+          contextHash,
+          outputTokensEstimate: tokenEstimate(outputPreview),
+          precontextApplied: !!precontext?.markdown,
+        },
+      });
+      eventsWritten += 1;
+    }
+
+    return {
+      runId,
+      turnId,
+      response,
+      promptHash,
+      contextHash,
+      outputPreview,
+      durationMs,
+      model: input.model,
+      eventsWritten,
+    };
+  } catch (error) {
+    const durationMs = Date.now() - start;
+    const err = error as Error;
+
+    if (harnessEnabled) {
+      await logHarnessEvent({
+        type: 'llm_call_failed',
+        agentId: input.agentId,
+        runId,
+        turnId,
+        threadId: input.threadId,
+        taskId: input.taskId,
+        subtaskId: input.subtaskId,
+        feature: 'mastra_harness',
+        model: input.model,
+        status: 'error',
+        durationMs,
+        errorMessage: err.message,
+        data: {
+          phase: input.phase,
+          promptHash,
+          originalPromptHash,
+          contextHash,
+          errorClass: err.name || 'Error',
+          precontextApplied: !!precontext?.markdown,
+        },
+      });
+      eventsWritten += 1;
+    }
+
+    throw error;
+  }
+}
+
+async function callAgentGenerate<TResponse>(input: HarnessGenerateInput): Promise<TResponse> {
+  const generateOptions: Record<string, unknown> = {
+    ...(input.generateOptions ?? {}),
+  };
+
+  if (input.model) {
+    generateOptions.model = input.model;
+  }
+
+  const call = Object.keys(generateOptions).length > 0
+    ? input.agent.generate(input.prompt, generateOptions as any)
+    : input.agent.generate(input.prompt);
+
+  return withTimeout(
+    call as Promise<TResponse>,
+    input.timeoutMs,
+    `Harness LLM call timed out after ${(input.timeoutMs ?? 0) / 1000}s`,
+  );
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs?: number,
+  message?: string,
+): Promise<T> {
+  if (!timeoutMs || timeoutMs <= 0) return promise;
+
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(message ?? 'Harness LLM call timed out')), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+function hashText(text: string): string {
+  return createHash('sha256').update(text).digest('hex');
+}
+
+function extractOutputPreview(response: unknown): string {
+  try {
+    if (typeof response === 'string') return truncate(response, 1000);
+    if (response && typeof response === 'object') {
+      const record = response as Record<string, unknown>;
+      if (typeof record.text === 'string') return truncate(record.text, 1000);
+      if (typeof record.output === 'string') return truncate(record.output, 1000);
+    }
+    return truncate(JSON.stringify(response), 1000);
+  } catch {
+    return '';
+  }
+}
+
+function truncate(text: string | undefined, maxLen: number): string {
+  if (!text) return '';
+  return text.length > maxLen ? `${text.slice(0, maxLen)}...` : text;
+}
