@@ -5,6 +5,7 @@ import { getDb } from '../lib/mongo.js';
 import { getErrorCollector } from '../services/error-collector.js';
 import { AGENTIC_AGENTS_REPO } from '../workspaces/code-workspace.js';
 import { anthropicCacheOptions } from '../lib/anthropic-cache.js';
+import { generateCoding } from '../services/coding-harness.js';
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -66,7 +67,15 @@ const diagnoseAndPlan = createStep({
       `Po zakończeniu diagnostyki zaktualizuj artifact (\`coding_update_artifact\`) z pełnym polem \`diagnosticPlan\` i ustaw status na \`planning\`.`,
     ].join('\n');
 
-    await agent.generate(prompt);
+    await generateCoding({
+      agent,
+      agentId: 'codingAgent',
+      prompt,
+      taskId,
+      phase: 'diagnose',
+      repoPath: AGENTIC_AGENTS_REPO,
+      timeoutMs: 300_000,
+    });
 
     // ── Post-diagnosis: Smart Router assigns models & parallel groups ──
     try {
@@ -133,10 +142,15 @@ const executePatch = createStep({
         console.log(formatRoutingResult(routingResult));
 
         // 2. Init worktree
-        await agent.generate(
-          `Użyj coding_init_worktree z taskId="${taskId}" aby przygotować staging worktree. ` +
-          `Odpowiedz krótko kiedy gotowe.`,
-        );
+        await generateCoding({
+          agent,
+          agentId: 'codingAgent',
+          prompt: `Użyj coding_init_worktree z taskId="${taskId}" aby przygotować staging worktree. Odpowiedz krótko kiedy gotowe.`,
+          taskId,
+          phase: 'subtask',
+          repoPath: AGENTIC_AGENTS_REPO,
+          timeoutMs: 120_000,
+        });
 
         // 3. PARALLEL DISPATCH — heart of Etap 8
         const dispatchResult = await dispatchSubtasks(taskId, routingResult, mastra!);
@@ -266,7 +280,15 @@ const executePatch = createStep({
       `UWAGA: nie wywołuj narzędzia apply_patch samodzielnie! Oczekujesz na codeReviewAgent.`,
     ].join('\n');
 
-    await agent.generate(prompt);
+    await generateCoding({
+      agent,
+      agentId: 'codingAgent',
+      prompt,
+      taskId,
+      phase: 'subtask',
+      repoPath: AGENTIC_AGENTS_REPO,
+      timeoutMs: 600_000,
+    });
 
     // Backup: auto-generate diff if agent didn't
     const updatedArtifact = await db.collection('code_task_artifacts').findOne({ taskId });
@@ -338,7 +360,16 @@ const executeReviewAgent = createStep({
     Na końcu użyj submitReviewTool i prześlij verdict (approve/needs_changes) wraz z uzasadnieniem.
     Jeśli diff wygląda poprawnie i spełnia wymagania zadania, daj approve.`;
 
-    const response = await agent.generate(prompt, anthropicCacheOptions());
+    const response = await generateCoding({
+      agent,
+      agentId: 'codeReviewAgent',
+      prompt,
+      taskId: inputData.taskId,
+      phase: 'review',
+      repoPath: AGENTIC_AGENTS_REPO,
+      timeoutMs: 180_000,
+      generateOptions: anthropicCacheOptions(),
+    });
 
     // Odczytujemy faktyczny werdykt z MongoDB (tam submitReviewTool go zapisał)
     const updatedArtifact = await db.collection('code_task_artifacts').findOne({ taskId: inputData.taskId });
@@ -348,7 +379,7 @@ const executeReviewAgent = createStep({
     return {
       taskId: inputData.taskId,
       verdict: finalVerdict as 'approve' | 'needs_changes' | 'block',
-      comments: 'text' in response ? (response.text as string) : 'No text response',
+      comments: response.outputPreview || 'No text response',
       iteration: inputData.iteration,
     };
   },
@@ -403,9 +434,15 @@ const decisionGate = createStep({
             // Commit changes in worktree before push
             const agent = mastra?.getAgent('codingAgent');
             if (agent) {
-              await agent.generate(
-                `W worktree zadania ${taskId}: wykonaj git add . && git commit -m "agent(patch): ${taskId}" jeśli są niezacommitowane zmiany. Odpowiedz krótko.`,
-              );
+              await generateCoding({
+                agent,
+                agentId: 'codingAgent',
+                prompt: `W worktree zadania ${taskId}: wykonaj git add . && git commit -m "agent(patch): ${taskId}" jeśli są niezacommitowane zmiany. Odpowiedz krótko.`,
+                taskId,
+                phase: 'merge',
+                repoPath: AGENTIC_AGENTS_REPO,
+                timeoutMs: 60_000,
+              });
             }
 
             // Push branch to remote
@@ -502,9 +539,15 @@ const decisionGate = createStep({
                 // Cleanup local worktree
                 const cleanupAgent = mastra?.getAgent('codingAgent');
                 if (cleanupAgent) {
-                  await cleanupAgent.generate(
-                    `Użyj coding_remove_worktree z taskId="${taskId}" aby posprzątać zasoby worktree.`,
-                  );
+                  await generateCoding({
+                    agent: cleanupAgent,
+                    agentId: 'codingAgent',
+                    prompt: `Użyj coding_remove_worktree z taskId="${taskId}" aby posprzątać zasoby worktree.`,
+                    taskId,
+                    phase: 'cleanup',
+                    repoPath: AGENTIC_AGENTS_REPO,
+                    timeoutMs: 60_000,
+                  });
                 }
 
                 return {
@@ -550,7 +593,15 @@ const decisionGate = createStep({
         const agent = mastra?.getAgent('codingAgent');
         if (!agent) throw new Error('codingAgent not found for merge');
 
-        await agent.generate(`Użyj narzędzia coding_apply_patch z taskId="${taskId}" aby scalić zatwierdzone zmiany do głównego repozytorium. Następnie użyj coding_remove_worktree z taskId="${taskId}" aby posprzątać zasoby worktree.`);
+        await generateCoding({
+          agent,
+          agentId: 'codingAgent',
+          prompt: `Użyj narzędzia coding_apply_patch z taskId="${taskId}" aby scalić zatwierdzone zmiany do głównego repozytorium. Następnie użyj coding_remove_worktree z taskId="${taskId}" aby posprzątać zasoby worktree.`,
+          taskId,
+          phase: 'merge',
+          repoPath: AGENTIC_AGENTS_REPO,
+          timeoutMs: 120_000,
+        });
 
         return {
           taskId,
@@ -580,9 +631,15 @@ const decisionGate = createStep({
       const agent = mastra?.getAgent('codingAgent');
       if (!agent) throw new Error('codingAgent not found for rework');
 
-      await agent.generate(`Zadanie ${taskId} wymaga poprawek. Komentarz codeReviewAgent (iteracja ${iteration}):
-      ${comments}
-      Popraw kod w worktree zgodnie z uwagami. Gdy skończysz poprawki, zaktualizuj artefakt (coding_update_artifact) i ustaw status na waiting_approval.`);
+      await generateCoding({
+        agent,
+        agentId: 'codingAgent',
+        prompt: `Zadanie ${taskId} wymaga poprawek. Komentarz codeReviewAgent (iteracja ${iteration}):\n${comments}\nPopraw kod w worktree zgodnie z uwagami. Gdy skończysz poprawki, zaktualizuj artefakt (coding_update_artifact) i ustaw status na waiting_approval.`,
+        taskId,
+        phase: 'retry',
+        repoPath: AGENTIC_AGENTS_REPO,
+        timeoutMs: 300_000,
+      });
 
       // Teraz ponownie uruchamiamy review
       const reviewAgent = mastra?.getAgent('codeReviewAgent');
@@ -590,12 +647,16 @@ const decisionGate = createStep({
 
       const nextIteration = iteration + 1;
 
-      await reviewAgent.generate(
-        `Zadanie ${taskId} zostało poprawione (iteracja ${nextIteration}/${MAX_REVIEW_ITERATIONS}).
-      Pobierz artefakt i przeprowadź ponowne Code Review.
-      Użyj submitReviewTool aby zaktualizować werdykt.`,
-        anthropicCacheOptions(),
-      );
+      await generateCoding({
+        agent: reviewAgent,
+        agentId: 'codeReviewAgent',
+        prompt: `Zadanie ${taskId} zostało poprawione (iteracja ${nextIteration}/${MAX_REVIEW_ITERATIONS}). Pobierz artefakt i przeprowadź ponowne Code Review. Użyj submitReviewTool aby zaktualizować werdykt.`,
+        taskId,
+        phase: 'review',
+        repoPath: AGENTIC_AGENTS_REPO,
+        timeoutMs: 180_000,
+        generateOptions: anthropicCacheOptions(),
+      });
 
       // Sprawdzamy ponownie verdict z Mongo
       const db = await getDb();
@@ -616,7 +677,15 @@ const decisionGate = createStep({
         if (resumeData.confirmMerge) {
           const mergeAgent = mastra?.getAgent('codingAgent');
           if (mergeAgent) {
-            await mergeAgent.generate(`Użyj narzędzia coding_apply_patch z taskId="${taskId}" i następnie coding_remove_worktree z taskId="${taskId}".`);
+            await generateCoding({
+              agent: mergeAgent,
+              agentId: 'codingAgent',
+              prompt: `Użyj narzędzia coding_apply_patch z taskId="${taskId}" i następnie coding_remove_worktree z taskId="${taskId}".`,
+              taskId,
+              phase: 'merge',
+              repoPath: AGENTIC_AGENTS_REPO,
+              timeoutMs: 120_000,
+            });
           }
           return {
             taskId,

@@ -6,6 +6,8 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { logAgentEvent } from '../../lib/agent-event-log.js';
+import { generateCoding } from '../../services/coding-harness.js';
+import { AGENTIC_AGENTS_REPO } from '../../workspaces/code-workspace.js';
 import { marketingAgent } from '../../agents/marketing-agent.js';
 import { salesAgent } from '../../agents/sales-agent.js';
 import { analyticsAgent } from '../../agents/analytics-agent.js';
@@ -75,7 +77,38 @@ CAN be called multiple times in parallel when tasks are independent.`,
       const delegationThreadId = context.threadId || `delegation-${randomUUID()}`;
       const delegationResourceId = context.resourceId || 'meta-agent';
 
-      const response = await agent.generate(
+      // ── Route codingAgent through harness for telemetry + precontext ──
+      if (context.targetAgent === 'codingAgent') {
+        const harnessResult = await generateCoding({
+          agent,
+          agentId: 'codingAgent',
+          prompt: context.taskDescription,
+          threadId: delegationThreadId,
+          phase: 'chat',
+          repoPath: AGENTIC_AGENTS_REPO,
+          timeoutMs: 300_000,
+        });
+
+        const responseText = harnessResult.outputPreview ?? '';
+
+        logAgentEvent({
+          type: 'delegation',
+          agentId: context.targetAgent,
+          status: 'success',
+          input: context.taskDescription.slice(0, 500),
+          output: responseText.slice(0, 500),
+          durationMs: Date.now() - start,
+        });
+
+        return {
+          success: true,
+          result: responseText,
+          agentUsed: context.targetAgent,
+        };
+      }
+
+      // ── All other agents: direct generate ──
+      const response = await agent.generate( // @harness-exempt — non-coding agents don't use generateCoding
         context.taskDescription,
         {
           memory: {
