@@ -288,6 +288,7 @@ export async function generateCoding<TResponse = unknown>(
 
 async function callAgentGenerate<TResponse>(input: HarnessGenerateInput): Promise<TResponse> {
   const generateOptions: Record<string, unknown> = {
+    maxSteps: 40, // Must be explicit — passing any generateOptions overrides agent defaults
     ...(input.generateOptions ?? {}),
   };
 
