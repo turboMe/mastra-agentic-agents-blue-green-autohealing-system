@@ -295,6 +295,14 @@ async function callAgentGenerate<TResponse>(input: HarnessGenerateInput): Promis
     generateOptions.model = input.model;
   }
 
+  // Pass threadId to Mastra Memory so OM/conversation history works through harness
+  if (input.threadId) {
+    generateOptions.memory = {
+      thread: input.threadId,
+      resource: input.agentId ?? 'harness',
+    };
+  }
+
   const call = Object.keys(generateOptions).length > 0
     ? input.agent.generate(input.prompt, generateOptions as any)
     : input.agent.generate(input.prompt);
