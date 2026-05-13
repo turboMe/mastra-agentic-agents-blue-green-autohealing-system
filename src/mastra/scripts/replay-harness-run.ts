@@ -101,6 +101,21 @@ type HarnessArtifactDoc = {
   metadata?: Record<string, unknown>;
 };
 
+type BackgroundTaskDoc = {
+  taskId: string;
+  ownerTaskId?: string;
+  agentId: string;
+  command: string;
+  cwd: string;
+  status: string;
+  pid?: number;
+  exitCode?: number;
+  error?: string;
+  wake: boolean;
+  startedAt: Date;
+  completedAt?: Date;
+};
+
 type ReplaySnapshot = {
   runId: string;
   run?: AgentRunDoc;
@@ -108,6 +123,7 @@ type ReplaySnapshot = {
   agentEvents: AgentEventDoc[];
   tools: ToolExecutionDoc[];
   artifacts: HarnessArtifactDoc[];
+  backgroundTasks: BackgroundTaskDoc[];
 };
 
 const args = process.argv.slice(2);
@@ -138,7 +154,7 @@ async function loadReplaySnapshot(targetRunId: string): Promise<ReplaySnapshot> 
     ? { $or: [{ runId: targetRunId }, { runId: taskId }, { taskId }] }
     : { runId: targetRunId };
 
-  const [events, agentEvents, tools, artifacts] = await Promise.all([
+  const [events, agentEvents, tools, artifacts, backgroundTasks] = await Promise.all([
     db.collection<RunEventDoc>('agent_run_events')
       .find({ runId: targetRunId })
       .sort({ timestamp: 1 })
@@ -158,6 +174,11 @@ async function loadReplaySnapshot(targetRunId: string): Promise<ReplaySnapshot> 
       .sort({ createdAt: 1 })
       .limit(200)
       .toArray(),
+    db.collection<BackgroundTaskDoc>('background_tasks')
+      .find(taskId ? { ownerTaskId: taskId } : { ownerTaskId: targetRunId })
+      .sort({ startedAt: 1 })
+      .limit(50)
+      .toArray(),
   ]);
 
   return {
@@ -167,6 +188,7 @@ async function loadReplaySnapshot(targetRunId: string): Promise<ReplaySnapshot> 
     agentEvents: dedupeBy(agentEvents, (event) => event.eventId),
     tools: dedupeBy(tools, (tool) => tool.id),
     artifacts: dedupeBy(artifacts, (artifact) => artifact.id),
+    backgroundTasks,
   };
 }
 
@@ -174,6 +196,7 @@ function printReplay(snapshot: ReplaySnapshot): void {
   printRunSummary(snapshot);
   printModelCalls(snapshot);
   printTools(snapshot);
+  printBackgroundTasks(snapshot);
   printMemory(snapshot);
   printWarnings(snapshot);
   printArtifacts(snapshot);
@@ -240,6 +263,25 @@ function printTools(snapshot: ReplaySnapshot): void {
     if (tool.errorMessage) console.log(indent(`error: ${safe(tool.errorMessage, 220)}`, 2));
     const policy = summarizePolicy(tool.policyDecision);
     if (policy) console.log(indent(policy, 2));
+  }
+}
+
+function printBackgroundTasks(snapshot: ReplaySnapshot): void {
+  section('Background Tasks');
+  if (snapshot.backgroundTasks.length === 0) {
+    console.log('No background tasks found.');
+    return;
+  }
+
+  for (const task of snapshot.backgroundTasks) {
+    const duration = task.completedAt && task.startedAt
+      ? ` ${formatDuration(new Date(task.completedAt).getTime() - new Date(task.startedAt).getTime())}`
+      : '';
+    const exit = task.exitCode !== undefined ? ` exit=${task.exitCode}` : '';
+    const wake = task.wake ? ' wake=true' : '';
+    console.log(`- ${task.taskId} [${task.status}]${duration}${exit}${wake}`);
+    console.log(indent(`cmd: ${safe(task.command, 180)}`, 2));
+    if (task.error) console.log(indent(`error: ${safe(task.error, 220)}`, 2));
   }
 }
 

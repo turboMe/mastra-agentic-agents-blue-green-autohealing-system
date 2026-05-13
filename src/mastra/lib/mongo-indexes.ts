@@ -91,5 +91,13 @@ export async function ensureIndexes(): Promise<void> {
     { expiresAt: 1 }, { expireAfterSeconds: 0 },
   );
 
-  console.log('[MongoIndexes] TTL indexes ensured for: signals, shared_memory, auto_healing_tickets, agent_events, agent_run_events, system_knowledge, pending_memory_context, injected_memory_context, pending_user_messages, file_activity, tool_executions, harness_artifacts');
+  // ── Background tasks indexes (Harness Etap 6) ─────────────────────────────
+  await db.collection('background_tasks').createIndex({ taskId: 1 }, { unique: true });
+  await db.collection('background_tasks').createIndex({ ownerTaskId: 1, startedAt: -1 });
+  await db.collection('background_tasks').createIndex({ status: 1, startedAt: -1 });
+  await db.collection('background_tasks').createIndex(
+    { expiresAt: 1 }, { expireAfterSeconds: 0 },
+  );
+
+  console.log('[MongoIndexes] TTL indexes ensured for: signals, shared_memory, auto_healing_tickets, agent_events, agent_run_events, system_knowledge, pending_memory_context, injected_memory_context, pending_user_messages, file_activity, tool_executions, harness_artifacts, background_tasks');
 }

@@ -7,6 +7,7 @@ import { getDb } from '../../lib/mongo.js';
 import { AGENTIC_AGENTS_REPO } from '../../workspaces/code-workspace.js';
 import { copyFile, stat, readFile, readdir } from 'fs/promises';
 import { getFileActivityWarning, recordFileActivity } from '../../services/file-activity.js';
+import { compactHarnessOutput } from '../../services/harness-output-compactor.js';
 import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
 
 const execAsync = promisify(exec);
@@ -440,6 +441,10 @@ export const worktreeDiffTool = createTool({
   outputSchema: z.object({
     success: z.boolean(),
     diff: z.string().optional(),
+    outputArtifactId: z.string().optional(),
+    outputTruncated: z.boolean().optional(),
+    originalBytes: z.number().optional(),
+    previewBytes: z.number().optional(),
     message: z.string(),
     error: z.string().optional(),
   }),
@@ -499,15 +504,32 @@ export const worktreeDiffTool = createTool({
         }
       }
 
-      // Limit 8000 znaków
-      const truncated = fullDiff.length > 8000
-        ? fullDiff.slice(0, 8000) + '\n... (diff skrocony)'
-        : fullDiff;
+      const compaction = await compactHarnessOutput({
+        text: fullDiff || '(brak zmian)',
+        kind: 'diff',
+        taskId: context.taskId,
+        subtaskId: context.subtaskId,
+        agentId: context.agentId ?? 'codingAgent',
+        threadId: context.threadId,
+        runId: context.runId,
+        turnId: context.turnId,
+        toolId: 'coding_worktree_diff',
+        previewBytes: 8000,
+        metadata: {
+          worktreePath: artifact.worktreePath,
+        },
+      });
 
       return {
         success: true,
-        diff: truncated || '(brak zmian)',
-        message: truncated ? `Diff pobrany (${truncated.length} znaków).` : 'Brak zmian w worktree.',
+        diff: compaction.preview,
+        outputArtifactId: compaction.fullTextArtifactId,
+        outputTruncated: compaction.truncated,
+        originalBytes: compaction.originalBytes,
+        previewBytes: compaction.previewBytes,
+        message: fullDiff
+          ? `Diff pobrany (${compaction.previewBytes} bajtow preview z ${compaction.originalBytes}).`
+          : 'Brak zmian w worktree.',
       };
     } catch (error: any) {
       return { success: false, message: 'Nie udalo sie pobrac diffa.', error: error.message };

@@ -8,6 +8,7 @@ import { getWorkspacePath } from '../../workspaces/code-workspace.js';
 import { recordFileActivity } from '../../services/file-activity.js';
 import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
 import { compactHarnessOutput } from '../../services/harness-output-compactor.js';
+import { startBackgroundTask } from '../../services/background-task-manager.js';
 
 const execAsync = promisify(exec);
 
@@ -346,6 +347,8 @@ export const runTestCommandTool = createTool({
     taskId: z.string(),
     command: z.string().describe('Komenda do uruchomienia, np. npx tsc --noEmit'),
     summary: z.string().describe('Krotki cel testu, np. Weryfikacja skladni'),
+    background: z.boolean().optional().default(false).describe('Uruchom w tle jako durable background task. Zwraca bgTaskId natychmiast.'),
+    wake: z.boolean().optional().default(true).describe('Jesli background=true, powiadom agenta pending message po zakonczeniu.'),
     subtaskId: z.string().optional(),
     agentId: z.string().optional(),
     threadId: z.string().optional(),
@@ -361,6 +364,7 @@ export const runTestCommandTool = createTool({
     outputTruncated: z.boolean().optional(),
     originalBytes: z.number().optional(),
     previewBytes: z.number().optional(),
+    bgTaskId: z.string().optional(),
     message: z.string(),
     error: z.string().optional(),
   }),
@@ -389,6 +393,43 @@ export const runTestCommandTool = createTool({
           taskId: context.taskId,
           output: '',
           message: `Artifact ${context.taskId} nie istnieje.`,
+        };
+      }
+
+      // ── Background mode ──
+      if (context.background) {
+        const command = context.command.trim();
+        const ALLOWED_PREFIXES = [
+          'npx tsc', 'npx vitest', 'npx jest', 'npx eslint',
+          'npm test', 'npm run test', 'npm run lint', 'npm run build',
+          'node --check', 'cat ', 'head ', 'tail ', 'wc ',
+        ];
+        const isAllowed = ALLOWED_PREFIXES.some((p) => command.startsWith(p));
+        if (!isAllowed) {
+          return {
+            success: false,
+            taskId: context.taskId,
+            output: '',
+            message: `Command not in allowlist. Allowed prefixes: ${ALLOWED_PREFIXES.join(', ')}`,
+          };
+        }
+
+        const workspacePath = await getWorkspacePath(context.taskId);
+        const bgRecord = await startBackgroundTask({
+          command,
+          cwd: workspacePath,
+          ownerTaskId: context.taskId,
+          agentId: context.agentId ?? 'codingAgent',
+          wake: context.wake ?? true,
+          notify: false,
+        });
+
+        return {
+          success: true,
+          taskId: context.taskId,
+          output: '',
+          bgTaskId: bgRecord.taskId,
+          message: `Test started in background: ${bgRecord.taskId}. Use bg_task(action='status', taskId='${bgRecord.taskId}') to check progress.${context.wake ? ' You will be notified on completion.' : ''}`,
         };
       }
 

@@ -154,6 +154,17 @@ async function main() {
     { expireAfterSeconds: 0 },
   );
 
+  // ── background tasks (Harness Etap 6) ─────────────────────────────────────
+  console.log('⏳ background_tasks...');
+  const backgroundTasks = db.collection('background_tasks');
+  await backgroundTasks.createIndex({ taskId: 1 }, { unique: true });
+  await backgroundTasks.createIndex({ ownerTaskId: 1, startedAt: -1 });
+  await backgroundTasks.createIndex({ status: 1, startedAt: -1 });
+  await backgroundTasks.createIndex(
+    { expiresAt: 1 },
+    { expireAfterSeconds: 0 },
+  );
+
   // ── rss_intelligence ──────────────────────────────────────────────────────
   console.log('📰 rss_intelligence.rss_articles / content_signals...');
   const rss = rssDb.collection('rss_articles');

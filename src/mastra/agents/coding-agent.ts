@@ -39,6 +39,8 @@ import { skillLoadTool } from '../tools/system/skill-load.js';
 import { skillReportTool } from '../tools/system/skill-report.js';
 import { repoMapTool, repoStatsTool, repoReindexTool } from '../tools/dev/repo-map-tools.js';
 import { codeSearchTool, codeEmbedStatsTool } from '../tools/dev/code-search-tools.js';
+import { codeOutlineTool } from '../tools/dev/code-outline-tool.js';
+import { bgTaskTool } from '../tools/dev/background-task-tool.js';
 
 export const codingAgent: Agent = new Agent({
   id: 'coding-agent',
@@ -82,9 +84,12 @@ export const codingAgent: Agent = new Agent({
     repoMapTool,
     repoStatsTool,
     repoReindexTool,
+    codeOutlineTool,
     // Semantic Code Search (Phase 5 — Embedding-based)
     codeSearchTool,
     codeEmbedStatsTool,
+    // Background Tasks (Sprint 5 — Harness Etap 6)
+    bgTaskTool,
   },
   memory: new Memory({
     options: {

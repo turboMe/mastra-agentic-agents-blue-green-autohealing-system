@@ -117,6 +117,11 @@ export async function ensureIndexes(): Promise<void> {
     db.collection('harness_artifacts').createIndex({ taskId: 1, createdAt: -1 }),
     db.collection('harness_artifacts').createIndex({ kind: 1, createdAt: -1 }),
     db.collection('harness_artifacts').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
+    // Background tasks
+    db.collection('background_tasks').createIndex({ taskId: 1 }, { unique: true }),
+    db.collection('background_tasks').createIndex({ ownerTaskId: 1, startedAt: -1 }),
+    db.collection('background_tasks').createIndex({ status: 1, startedAt: -1 }),
+    db.collection('background_tasks').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
     // Chef
     db.collection('chef_projects').createIndex({ id: 1 }, { unique: true }),
     db.collection('chef_projects').createIndex({ status: 1 }),

@@ -13,7 +13,7 @@
 
 import { createHash } from 'crypto';
 import { readFile, readdir, stat } from 'fs/promises';
-import { resolve, relative, extname, join } from 'path';
+import { resolve, relative, extname, join, sep } from 'path';
 import Database from 'better-sqlite3';
 import { MultiDirectedGraph } from 'graphology';
 import pagerank from 'graphology-metrics/centrality/pagerank.js';
@@ -25,7 +25,26 @@ export interface SymbolTag {
   name: string;
   kind: 'def' | 'ref';
   line: number;
+  endLine?: number;
+  kindDetail?: string;
+  parentSymbol?: string;
   signature?: string;
+}
+
+export interface FileOutlineSymbol {
+  name: string;
+  kind: string;
+  signature: string;
+  startLine: number;
+  endLine: number;
+  parentSymbol?: string;
+}
+
+export interface FileOutline {
+  file: string;
+  language: string;
+  totalLines: number;
+  symbols: FileOutlineSymbol[];
 }
 
 export interface RepoMapOptions {
@@ -146,6 +165,9 @@ export class RepoIndexer {
         name TEXT NOT NULL,
         kind TEXT NOT NULL,
         line INTEGER NOT NULL DEFAULT -1,
+        end_line INTEGER NOT NULL DEFAULT -1,
+        kind_detail TEXT DEFAULT '',
+        parent_symbol TEXT DEFAULT '',
         signature TEXT DEFAULT '',
         UNIQUE(file_path, name, kind, line)
       );
@@ -153,6 +175,27 @@ export class RepoIndexer {
       CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
       CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(file_path);
     `);
+
+    const symbolColumns = this.db.prepare('PRAGMA table_info(symbols)').all() as Array<{ name: string }>;
+    const columnNames = new Set(symbolColumns.map((col) => col.name));
+    let requiresSymbolReindex = false;
+
+    if (!columnNames.has('end_line')) {
+      this.db.exec('ALTER TABLE symbols ADD COLUMN end_line INTEGER NOT NULL DEFAULT -1');
+      requiresSymbolReindex = true;
+    }
+    if (!columnNames.has('kind_detail')) {
+      this.db.exec("ALTER TABLE symbols ADD COLUMN kind_detail TEXT DEFAULT ''");
+      requiresSymbolReindex = true;
+    }
+    if (!columnNames.has('parent_symbol')) {
+      this.db.exec("ALTER TABLE symbols ADD COLUMN parent_symbol TEXT DEFAULT ''");
+      requiresSymbolReindex = true;
+    }
+
+    if (requiresSymbolReindex) {
+      this.db.exec('DELETE FROM symbols; DELETE FROM files;');
+    }
   }
 
   // ── Tree-sitter Lazy Init ────────────────────────────────────────────────
@@ -284,21 +327,28 @@ export class RepoIndexer {
       const tree = this.parser.parse(content);
 
       // Walk AST and extract definitions + references
-      const walkNode = (node: any): void => {
+      const walkNode = (node: any, parentSymbol?: string): void => {
         const type = node.type;
+        let nextParentSymbol = parentSymbol;
 
         // ── Definitions ──
-        if (this.isDefinitionNode(type, language)) {
+        const kindDetail = this.definitionKindDetail(node, language);
+        if (kindDetail) {
           const nameNode = this.findNameNode(node);
           if (nameNode) {
             const sig = this.extractSignature(node, content);
+            const name = nameNode.text;
             tags.push({
               filePath,
-              name: nameNode.text,
+              name,
               kind: 'def',
-              line: nameNode.startPosition.row,
+              line: node.startPosition.row,
+              endLine: node.endPosition.row,
+              kindDetail,
+              parentSymbol,
               signature: sig,
             });
+            nextParentSymbol = name;
           }
         }
 
@@ -318,7 +368,7 @@ export class RepoIndexer {
 
         // Recurse children
         for (let i = 0; i < node.childCount; i++) {
-          walkNode(node.child(i));
+          walkNode(node.child(i), nextParentSymbol);
         }
       };
 
@@ -332,17 +382,23 @@ export class RepoIndexer {
   private extractSymbolsFallback(filePath: string, content: string): SymbolTag[] {
     const tags: SymbolTag[] = [];
     const patterns = [
-      /\bexport\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/,
-      /\b(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/,
-      /\bexport\s+const\s+([A-Za-z_$][\w$]*)/,
-      /\bconst\s+([A-Za-z_$][\w$]*)\s*=/,
-      /\bexport\s+(?:class|interface|type|enum)\s+([A-Za-z_$][\w$]*)/,
-      /\b(?:class|interface|type|enum)\s+([A-Za-z_$][\w$]*)/,
+      { regex: /\bexport\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/, kindDetail: 'function' },
+      { regex: /\b(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/, kindDetail: 'function' },
+      { regex: /\bexport\s+const\s+([A-Za-z_$][\w$]*)/, kindDetail: 'variable' },
+      { regex: /\bconst\s+([A-Za-z_$][\w$]*)\s*=/, kindDetail: 'variable' },
+      { regex: /\bexport\s+class\s+([A-Za-z_$][\w$]*)/, kindDetail: 'class' },
+      { regex: /\bclass\s+([A-Za-z_$][\w$]*)/, kindDetail: 'class' },
+      { regex: /\bexport\s+interface\s+([A-Za-z_$][\w$]*)/, kindDetail: 'interface' },
+      { regex: /\binterface\s+([A-Za-z_$][\w$]*)/, kindDetail: 'interface' },
+      { regex: /\bexport\s+type\s+([A-Za-z_$][\w$]*)/, kindDetail: 'type' },
+      { regex: /\btype\s+([A-Za-z_$][\w$]*)/, kindDetail: 'type' },
+      { regex: /\bexport\s+enum\s+([A-Za-z_$][\w$]*)/, kindDetail: 'enum' },
+      { regex: /\benum\s+([A-Za-z_$][\w$]*)/, kindDetail: 'enum' },
     ];
 
     content.split('\n').forEach((line, index) => {
       for (const pattern of patterns) {
-        const match = line.match(pattern);
+        const match = line.match(pattern.regex);
         const name = match?.[1];
         if (!name || this.isBuiltIn(name)) continue;
         tags.push({
@@ -350,6 +406,8 @@ export class RepoIndexer {
           name,
           kind: 'def',
           line: index,
+          endLine: index,
+          kindDetail: pattern.kindDetail,
           signature: line.trim().slice(0, 200),
         });
         break;
@@ -359,20 +417,34 @@ export class RepoIndexer {
     return tags;
   }
 
-  private isDefinitionNode(type: string, _language: string): boolean {
-    return [
-      'function_declaration',
-      'function_signature',
-      'method_definition',
-      'class_declaration',
-      'interface_declaration',
-      'type_alias_declaration',
-      'enum_declaration',
-      'variable_declarator',
-      'export_statement',
-      'lexical_declaration',
-      'arrow_function',
-    ].includes(type);
+  private definitionKindDetail(node: any, _language: string): string | undefined {
+    switch (node.type) {
+      case 'function_declaration':
+        return 'function';
+      case 'function_signature':
+        return 'function_signature';
+      case 'method_definition':
+        return 'method';
+      case 'class_declaration':
+        return 'class';
+      case 'interface_declaration':
+        return 'interface';
+      case 'type_alias_declaration':
+        return 'type';
+      case 'enum_declaration':
+        return 'enum';
+      case 'variable_declarator': {
+        const value = node.childForFieldName('value');
+        if (!value) return 'variable';
+        if (value.type === 'arrow_function' || value.type === 'function' || value.type === 'function_declaration') {
+          return 'function';
+        }
+        if (value.type === 'class' || value.type === 'class_declaration') return 'class';
+        return 'variable';
+      }
+      default:
+        return undefined;
+    }
   }
 
   private findNameNode(node: any): any {
@@ -429,8 +501,9 @@ export class RepoIndexer {
 
     const deleteSymbols = this.db.prepare('DELETE FROM symbols WHERE file_path = ?');
     const insertSymbol = this.db.prepare(`
-      INSERT OR IGNORE INTO symbols (file_path, name, kind, line, signature)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO symbols
+        (file_path, name, kind, line, end_line, kind_detail, parent_symbol, signature)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const transaction = this.db.transaction(() => {
@@ -443,7 +516,16 @@ export class RepoIndexer {
         const key = `${tag.name}:${tag.kind}:${tag.line}`;
         if (seen.has(key)) continue;
         seen.add(key);
-        insertSymbol.run(filePath, tag.name, tag.kind, tag.line, tag.signature ?? '');
+        insertSymbol.run(
+          filePath,
+          tag.name,
+          tag.kind,
+          tag.line,
+          tag.endLine ?? tag.line,
+          tag.kindDetail ?? '',
+          tag.parentSymbol ?? '',
+          tag.signature ?? '',
+        );
       }
     });
 
@@ -688,6 +770,48 @@ export class RepoIndexer {
     }
 
     return lines.join('\n');
+  }
+
+  // ── File Outline ─────────────────────────────────────────────────────────
+
+  async getFileOutline(filePath: string, maxSymbols = 200): Promise<FileOutline> {
+    await this.ensureParser();
+
+    const relPath = this.normalizeRepoFilePath(filePath);
+    const absPath = resolve(this.rootPath, relPath);
+    const content = await readFile(absPath, 'utf-8');
+    const language = LANGUAGE_MAP[extname(relPath)] ?? '';
+    const totalLines = content.split('\n').length;
+
+    const tags = await this.extractSymbols(relPath, language);
+    const symbols = tags
+      .filter((tag) => tag.kind === 'def')
+      .sort((a, b) => a.line - b.line || a.name.localeCompare(b.name))
+      .slice(0, Math.max(1, maxSymbols))
+      .map((tag) => ({
+        name: tag.name,
+        kind: tag.kindDetail || 'definition',
+        signature: tag.signature ?? tag.name,
+        startLine: tag.line + 1,
+        endLine: Math.max(tag.line, tag.endLine ?? tag.line) + 1,
+        parentSymbol: tag.parentSymbol,
+      }));
+
+    return {
+      file: relPath,
+      language,
+      totalLines,
+      symbols,
+    };
+  }
+
+  private normalizeRepoFilePath(filePath: string): string {
+    const root = resolve(this.rootPath);
+    const absPath = resolve(root, filePath);
+    if (absPath !== root && !absPath.startsWith(root + sep)) {
+      throw new Error(`File is outside repository: ${filePath}`);
+    }
+    return relative(root, absPath);
   }
 
   // ── Stats ─────────────────────────────────────────────────────────────────
