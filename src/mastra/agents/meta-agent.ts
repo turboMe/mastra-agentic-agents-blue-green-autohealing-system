@@ -89,6 +89,7 @@ import { agentPerformanceReportTool } from '../tools/system/agent-performance-re
 import { combinePrompts } from '../lib/prompt-loader.js';
 import { withAnthropicSystemCache } from '../lib/anthropic-cache.js';
 import { sharedMemoryOutputProcessor } from '../processors/shared-memory-output.js';
+import { pendingUpdatesProcessor } from '../processors/pending-updates.js';
 
 async function buildInstructions(): Promise<string> {
   // base v3: full orchestrator rules — parallel calling, worker briefs, retry loop, creativity.
@@ -179,6 +180,9 @@ export const metaAgent: Agent = new Agent({
   // Agent calls search_tools(query) → ToolSearchProcessor returns top matches.
   // Drastically reduces prompt size per turn while keeping full tool coverage.
   inputProcessors: [
+    // Check for async delegation results & background task completions
+    pendingUpdatesProcessor,
+    // Discoverable tool pool via semantic search
     new ToolSearchProcessor({
       tools: {
         // CRM (write paths — discovered on demand)

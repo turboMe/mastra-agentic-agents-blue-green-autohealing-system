@@ -98,6 +98,10 @@ export async function ensureIndexes(): Promise<void> {
   await db.collection('background_tasks').createIndex(
     { expiresAt: 1 }, { expireAfterSeconds: 0 },
   );
+  // ── Async delegation indexes (Harness async delegation layer) ───────────
+  await db.collection('async_delegations').createIndex({ delegationId: 1 }, { unique: true });
+  await db.collection('async_delegations').createIndex({ callerThreadId: 1, status: 1, startedAt: -1 });
+  await db.collection('async_delegations').createIndex({ status: 1, startedAt: -1 });
 
-  console.log('[MongoIndexes] TTL indexes ensured for: signals, shared_memory, auto_healing_tickets, agent_events, agent_run_events, system_knowledge, pending_memory_context, injected_memory_context, pending_user_messages, file_activity, tool_executions, harness_artifacts, background_tasks');
+  console.log('[MongoIndexes] TTL indexes ensured for: signals, shared_memory, auto_healing_tickets, agent_events, agent_run_events, system_knowledge, pending_memory_context, injected_memory_context, pending_user_messages, file_activity, tool_executions, harness_artifacts, background_tasks, async_delegations');
 }

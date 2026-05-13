@@ -185,9 +185,9 @@ export const agentModels = {
 
 export const workflowAssignments = {
   coding: {
-    default: 'qwen3-coder-30b' as ModelKey,  // diagnose-and-plan
+    default: 'gemini-2.5-flash' as ModelKey,  // diagnose-and-plan
     patch: 'qwen3-coder-30b' as ModelKey,  // execute-patch fallback
-    review: 'nemotron-nano-free' as ModelKey,  // code review (Haiku: tani + dobry do walidacji)
+    review: 'gemini-2.5-flash' as ModelKey,  // code review (Haiku: tani + dobry do walidacji)
     selfHealingPlanner: 'gpt-5.3-mini' as ModelKey,
     selfHealingReview: 'nemotron-super-free' as ModelKey,
     jsonRepair: 'gpt-4.1-mini' as ModelKey,

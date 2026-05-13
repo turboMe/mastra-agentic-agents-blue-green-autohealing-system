@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { randomUUID } from 'crypto';
 import { logAgentEvent } from '../../lib/agent-event-log.js';
 import { generateCoding } from '../../services/coding-harness.js';
+import { startAsyncDelegation } from '../../services/async-delegation.js';
 import { AGENTIC_AGENTS_REPO } from '../../workspaces/code-workspace.js';
 
 // Lazy-loaded to avoid circular: delegate-task → index → meta-agent → delegate-task
@@ -59,6 +60,13 @@ CAN be called multiple times in parallel when tasks are independent.`,
     taskDescription: z.string().min(20).describe('Full task brief IN ENGLISH: GOAL + CONTEXT + OUTPUT FORMAT + CONSTRAINTS. The more explicit, the better the result from the sub-agent.'),
     threadId: z.string().optional().describe('ThreadId z Mastra Memory — przekaż gdy chcesz zachować ciągłość rozmowy z sub-agentem'),
     resourceId: z.string().optional().describe('ResourceId (np. userId) do segregacji pamięci'),
+    async: z.boolean().optional().default(false).describe(
+      'If true, delegate in background and return immediately. Use for long-running tasks like builds, tests, or scrapers. ' +
+      'The result will be delivered automatically on the next user interaction. Only supported for codingAgent.',
+    ),
+    callerThreadId: z.string().optional().describe(
+      'Your own threadId — required when async=true so the result can be delivered back to you.',
+    ),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -96,6 +104,28 @@ CAN be called multiple times in parallel when tasks are independent.`,
 
       // ── Route codingAgent through harness for telemetry + precontext ──
       if (context.targetAgent === 'codingAgent') {
+        // ── Async delegation: fire-and-forget for long-running tasks ──
+        if (context.async) {
+          const callerThread = context.callerThreadId || context.threadId || `meta-${randomUUID()}`;
+          const { delegationId } = await startAsyncDelegation({
+            agent,
+            agentId: 'codingAgent',
+            prompt: context.taskDescription,
+            callerThreadId: callerThread,
+            repoPath: AGENTIC_AGENTS_REPO,
+            timeoutMs: 300_000,
+          });
+
+          return {
+            success: true,
+            result: `Async delegation started. delegationId: ${delegationId}. ` +
+              `The coding agent is working in the background. ` +
+              `Results will be delivered automatically on the next user interaction.`,
+            agentUsed: context.targetAgent,
+          };
+        }
+
+        // ── Synchronous delegation (default): blocking await ──
         const harnessResult = await generateCoding({
           agent,
           agentId: 'codingAgent',
