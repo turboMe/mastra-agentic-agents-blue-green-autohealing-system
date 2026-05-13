@@ -127,12 +127,25 @@ type ReplaySnapshot = {
 };
 
 const args = process.argv.slice(2);
-const runId = args.find((arg) => !arg.startsWith('--'));
+const runIdArg = args.find((arg) => !arg.startsWith('--'));
 const asJson = args.includes('--json');
+const useLast = args.includes('--last');
+
+async function resolveRunId(): Promise<string | undefined> {
+  if (runIdArg) return runIdArg;
+  if (!useLast) return undefined;
+
+  const db = await getDb();
+  const latest = await db.collection<AgentRunDoc>('agent_runs')
+    .findOne({}, { sort: { updatedAt: -1 }, projection: { runId: 1 } });
+  return latest?.runId;
+}
 
 async function main(): Promise<void> {
+  const runId = await resolveRunId();
   if (!runId) {
     console.error('Usage: npx tsx src/mastra/scripts/replay-harness-run.ts <runId> [--json]');
+    console.error('       npx tsx src/mastra/scripts/replay-harness-run.ts --last [--json]');
     process.exitCode = 1;
     return;
   }
