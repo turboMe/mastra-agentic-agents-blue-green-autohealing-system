@@ -19,6 +19,7 @@ import { beginHarnessTurn, completeHarnessTurn, failHarnessTurn } from './harnes
 import { isWorkspaceTool, logPostHocToolExecution } from './harness-tool-envelope.js';
 
 export type HarnessPhase =
+  // ── Coding phases ──
   | 'diagnose'
   | 'plan'
   | 'subtask'
@@ -26,6 +27,15 @@ export type HarnessPhase =
   | 'review'
   | 'merge'
   | 'cleanup'
+  // ── Automation phases ──
+  | 'discover'   // pattern search, runtime check
+  | 'compose'    // build workflow JSON
+  | 'validate'   // validate + risk score
+  | 'deploy'     // deploy inactive
+  | 'test'       // mock/real test
+  | 'repair'     // repair loop
+  | 'activate'   // activate workflow
+  // ── Shared ──
   | 'chat';
 
 export type HarnessGenerateInput = {

@@ -61,8 +61,8 @@ CAN be called multiple times in parallel when tasks are independent.`,
     threadId: z.string().optional().describe('ThreadId z Mastra Memory — przekaż gdy chcesz zachować ciągłość rozmowy z sub-agentem'),
     resourceId: z.string().optional().describe('ResourceId (np. userId) do segregacji pamięci'),
     async: z.boolean().optional().default(false).describe(
-      'If true, delegate in background and return immediately. Use for long-running tasks like builds, tests, or scrapers. ' +
-      'The result will be delivered automatically on the next user interaction. Only supported for codingAgent.',
+      'If true, delegate in background and return immediately. Use for long-running tasks like builds, tests, deploys, or scrapers. ' +
+      'The result will be delivered automatically on the next user interaction. Supported for codingAgent and automationArchitect.',
     ),
     callerThreadId: z.string().optional().describe(
       'Your own threadId — required when async=true so the result can be delivered back to you.',
@@ -154,8 +154,72 @@ CAN be called multiple times in parallel when tasks are independent.`,
         };
       }
 
+      // ── Route automationArchitect through harness for telemetry + memory ──
+      if (context.targetAgent === 'automationArchitect') {
+        // ── Async delegation: fire-and-forget for long-running automation builds ──
+        if (context.async) {
+          const callerThread = context.callerThreadId || context.threadId || `meta-${randomUUID()}`;
+          const { delegationId } = await startAsyncDelegation({
+            agent,
+            agentId: 'automationArchitect',
+            prompt: context.taskDescription,
+            callerThreadId: callerThread,
+            timeoutMs: 300_000,
+          });
+
+          return {
+            success: true,
+            result: `Async automation delegation started. delegationId: ${delegationId}. ` +
+              `The automation architect is working in the background. ` +
+              `Results will be delivered automatically on the next user interaction.`,
+            agentUsed: context.targetAgent,
+          };
+        }
+
+        // ── Synchronous delegation: blocking await through harness ──
+        const harnessResult = await generateCoding({
+          agent,
+          agentId: 'automationArchitect',
+          prompt: context.taskDescription,
+          threadId: delegationThreadId,
+          phase: 'chat',
+          timeoutMs: 300_000,
+        });
+
+        const responseText = harnessResult.outputPreview ?? '';
+        const automationContractOk = isAutomationArchitectContractComplete(responseText);
+
+        logAgentEvent({
+          type: 'delegation',
+          agentId: context.targetAgent,
+          status: automationContractOk ? 'success' : 'error',
+          input: context.taskDescription.slice(0, 500),
+          output: responseText.slice(0, 500),
+          durationMs: Date.now() - start,
+          ...(automationContractOk
+            ? {}
+            : { errorMessage: 'automation_contract_missing', metadata: { contract: 'automation_golden_path' } }),
+        });
+
+        if (!automationContractOk) {
+          return {
+            success: false,
+            result: responseText,
+            agentUsed: context.targetAgent,
+            error:
+              'automation_contract_missing: automationArchitect must return a terminal status and automationId/workflowId when deploy/test succeeds.',
+          };
+        }
+
+        return {
+          success: true,
+          result: responseText,
+          agentUsed: context.targetAgent,
+        };
+      }
+
       // ── All other agents: direct generate ──
-      const response = await agent.generate( // @harness-exempt — non-coding agents don't use generateCoding
+      const response = await agent.generate( // @harness-exempt — non-coding/non-automation agents don't use harness
         context.taskDescription,
         {
           memory: {
@@ -166,30 +230,15 @@ CAN be called multiple times in parallel when tasks are independent.`,
       );
 
       const responseText = response.text ?? '';
-      const automationContractOk =
-        context.targetAgent !== 'automationArchitect' || isAutomationArchitectContractComplete(responseText);
 
       logAgentEvent({
         type: 'delegation',
         agentId: context.targetAgent,
-        status: automationContractOk ? 'success' : 'error',
+        status: 'success',
         input: context.taskDescription.slice(0, 500),
         output: responseText.slice(0, 500),
         durationMs: Date.now() - start,
-        ...(automationContractOk
-          ? {}
-          : { errorMessage: 'automation_contract_missing', metadata: { contract: 'automation_golden_path' } }),
       });
-
-      if (!automationContractOk) {
-        return {
-          success: false,
-          result: responseText,
-          agentUsed: context.targetAgent,
-          error:
-            'automation_contract_missing: automationArchitect must return a terminal status and automationId/workflowId when deploy/test succeeds.',
-        };
-      }
 
       return {
         success: true,

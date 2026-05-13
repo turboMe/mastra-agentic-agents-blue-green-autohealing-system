@@ -1,6 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 import { agentModels, infrastructure, resolveModelId } from '../config/model-manifest.js';
 import { Memory } from '@mastra/memory';
+import { TokenLimiterProcessor } from '@mastra/core/processors';
 import {
   n8nTriggerWebhookTool,
   n8nHealthTool,
@@ -21,11 +22,19 @@ import { testWorkflowTool } from '../tools/architect/testing/test-workflow.js';
 import { repairWorkflowTool } from '../tools/architect/testing/repair-workflow.js';
 import { executeAutomationRequestTool } from '../tools/architect/execute-request.js';
 import { loadPrompt } from '../lib/prompt-loader.js';
+import { withAnthropicSystemCache } from '../lib/anthropic-cache.js';
+// System knowledge (harness upgrade — Sprint A)
+import { memoryRecallTool } from '../tools/system/memory-recall.js';
+import { memoryWriteTool } from '../tools/system/memory-write.js';
+// Skill Registry — systemwide (harness upgrade — Sprint A)
+import { skillSearchTool } from '../tools/system/skill-search.js';
+import { skillLoadTool } from '../tools/system/skill-load.js';
+import { skillReportTool } from '../tools/system/skill-report.js';
 
 export const automationArchitect = new Agent({
   id: 'automation-architect',
   name: 'Automation Architect',
-  instructions: await loadPrompt('automation/base'),
+  instructions: withAnthropicSystemCache(await loadPrompt('automation/base')),
   // gemini-2.5-pro: best reasoning for n8n JSON synthesis. Flash sometimes
   // emits Python-style booleans (`True`/`False`) and bails to empty text on
   // tool errors, so it's a poor fallback for this agent.
@@ -33,6 +42,10 @@ export const automationArchitect = new Agent({
   // with no payload) that Gemini Pro produces in long tool-call chains.
   model: resolveModelId(agentModels.automationArchitect),
   maxRetries: 3,
+  defaultOptions: { maxSteps: 40 },
+  defaultGenerateOptionsLegacy: { maxSteps: 40 },
+  defaultStreamOptionsLegacy: { maxSteps: 40 },
+  defaultNetworkOptions: { maxSteps: 40 },
   memory: new Memory({
     options: {
       lastMessages: 30,
@@ -104,5 +117,18 @@ export const automationArchitect = new Agent({
     repairWorkflowTool,
     // Human approval gate
     requestApprovalTool,
+    // System knowledge (harness upgrade — Sprint A)
+    memoryRecallTool,
+    memoryWriteTool,
+    // Skill Registry — systemwide (harness upgrade — Sprint A)
+    skillSearchTool,
+    skillLoadTool,
+    skillReportTool,
   },
+  // Context window protection (prevents overflow in long Golden Path sessions)
+  inputProcessors: [
+    new TokenLimiterProcessor({
+      limit: 120_000,  // Effective limit for Gemini 2.5 Pro
+    }),
+  ],
 });
