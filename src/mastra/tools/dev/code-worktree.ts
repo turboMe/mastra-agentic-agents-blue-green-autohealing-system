@@ -175,6 +175,8 @@ export const applyWorktreePatchTool = createTool({
     subtaskId: z.string().optional(),
     agentId: z.string().optional(),
     threadId: z.string().optional(),
+    runId: z.string().optional(),
+    turnId: z.string().optional(),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -183,7 +185,21 @@ export const applyWorktreePatchTool = createTool({
     stdout: z.string().optional(),
     fileActivityWarnings: z.array(z.string()).optional(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'coding_apply_patch',
+    category: 'git',
+    risk: 'high',
+    policy: (context, metadata) => ({
+      action: 'apply_patch',
+      target: context.taskId,
+      taskId: context.taskId,
+      subtaskId: context.subtaskId,
+      agentId: metadata.agentId,
+      threadId: context.threadId,
+      runId: metadata.runId,
+      turnId: metadata.turnId,
+    }),
+    execute: async (context) => {
     try {
       const db = await getDb();
       const artifact = await db.collection('code_task_artifacts').findOne({ taskId: context.taskId });
@@ -270,7 +286,8 @@ export const applyWorktreePatchTool = createTool({
         error: error.message || String(error),
       };
     }
-  },
+    },
+  }),
 });
 
 // ── Narzędzia do przeglądania worktree (dla codeReviewAgent) ──────────────────
@@ -345,6 +362,16 @@ export const readWorktreeFileTool = createTool({
     toolId: 'coding_read_worktree_file',
     category: 'file',
     risk: 'low',
+    policy: (context, metadata) => ({
+      action: 'read_file',
+      target: context.filePath,
+      taskId: context.taskId,
+      subtaskId: context.subtaskId,
+      agentId: metadata.agentId,
+      threadId: context.threadId,
+      runId: metadata.runId,
+      turnId: metadata.turnId,
+    }),
     execute: async (context) => {
     try {
       const db = await getDb();

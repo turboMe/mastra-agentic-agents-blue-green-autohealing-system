@@ -4,6 +4,8 @@ import { isHarnessFeatureEnabled } from '../config/harness-flags.js';
 import { getDb } from '../lib/mongo.js';
 import { redactSecrets } from '../lib/secrets-redactor.js';
 import { logHarnessEvent } from './harness-events.js';
+import { evaluateAndLogHarnessPolicy } from './harness-policy.js';
+import type { HarnessPolicyDecision, HarnessPolicyRequest } from './harness-policy.js';
 
 export type ToolEnvelopeCategory =
   | 'file'
@@ -33,6 +35,7 @@ export type ToolExecutionDoc = ToolEnvelopeMetadata & {
   category: ToolEnvelopeCategory;
   risk: ToolEnvelopeRisk;
   status: ToolExecutionStatus;
+  policyDecision?: ToolExecutionPolicySummary | ToolExecutionPolicySummary[];
   inputPreview?: string;
   outputPreview?: string;
   outputArtifactId?: string;
@@ -45,6 +48,20 @@ export type ToolExecutionDoc = ToolEnvelopeMetadata & {
   expiresAt: Date;
 };
 
+export type ToolExecutionPolicySummary = Pick<
+  HarnessPolicyDecision,
+  | 'id'
+  | 'allow'
+  | 'effectiveAllow'
+  | 'requiresApproval'
+  | 'severity'
+  | 'reason'
+  | 'approvalType'
+  | 'matchedRule'
+  | 'enforcementMode'
+  | 'enforced'
+>;
+
 type ToolEnvelopeConfig<TInput, TOutput> = {
   toolId: string;
   category: ToolEnvelopeCategory;
@@ -54,6 +71,14 @@ type ToolEnvelopeConfig<TInput, TOutput> = {
   inputPreviewMaxChars?: number;
   outputPreviewMaxChars?: number;
   metadata?: (input: TInput) => ToolEnvelopeMetadata;
+  policy?: (
+    input: TInput,
+    metadata: ToolEnvelopeMetadata & { agentId: string; runId?: string },
+  ) =>
+    | HarnessPolicyRequest
+    | HarnessPolicyRequest[]
+    | undefined
+    | Promise<HarnessPolicyRequest | HarnessPolicyRequest[] | undefined>;
   execute: (input: TInput) => Promise<TOutput>;
 };
 
@@ -80,6 +105,7 @@ export function withToolEnvelope<TInput, TOutput>(
       redactFields: config.redactInputFields,
       maxChars: config.inputPreviewMaxChars ?? DEFAULT_PREVIEW_CHARS,
     });
+    const policyDecision = await evaluateToolPolicy(config, input, { ...metadata, agentId, runId });
 
     await recordToolStarted({
       id: executionId,
@@ -87,10 +113,16 @@ export function withToolEnvelope<TInput, TOutput>(
       toolId: config.toolId,
       category: config.category,
       risk: config.risk,
+      policyDecision,
       inputPreview,
     });
 
     try {
+      if (hasEnforcedPolicyBlock(policyDecision)) {
+        const blocked = firstBlockedPolicyDecision(policyDecision);
+        throw new Error(blocked?.reason ?? `Policy blocked tool execution: ${config.toolId}`);
+      }
+
       const output = await config.execute(input);
       const durationMs = Date.now() - startedAt;
       const outputPreview = buildToolPreview(output, {
@@ -117,6 +149,7 @@ export function withToolEnvelope<TInput, TOutput>(
         category: config.category,
         risk: config.risk,
         status,
+        policyDecision,
         inputPreview,
         outputPreview,
         outputArtifactId,
@@ -129,7 +162,8 @@ export function withToolEnvelope<TInput, TOutput>(
     } catch (error) {
       const durationMs = Date.now() - startedAt;
       const err = error as Error;
-      const errorClass = classifyThrownToolError(err);
+      const policyBlocked = hasEnforcedPolicyBlock(policyDecision);
+      const errorClass = policyBlocked ? 'policy_blocked' : classifyThrownToolError(err);
 
       await recordToolFinished({
         id: executionId,
@@ -137,7 +171,8 @@ export function withToolEnvelope<TInput, TOutput>(
         toolId: config.toolId,
         category: config.category,
         risk: config.risk,
-        status: errorClass === 'policy_blocked' || errorClass === 'approval_required' ? 'blocked' : 'failed',
+        status: policyBlocked || errorClass === 'approval_required' ? 'blocked' : 'failed',
+        policyDecision,
         inputPreview,
         durationMs,
         errorClass,
@@ -147,6 +182,66 @@ export function withToolEnvelope<TInput, TOutput>(
       throw error;
     }
   };
+}
+
+async function evaluateToolPolicy<TInput, TOutput>(
+  config: ToolEnvelopeConfig<TInput, TOutput>,
+  input: TInput,
+  metadata: ToolEnvelopeMetadata & { agentId: string; runId?: string },
+): Promise<ToolExecutionPolicySummary | ToolExecutionPolicySummary[] | undefined> {
+  if (!config.policy) return undefined;
+
+  const requestOrRequests = await config.policy(input, metadata);
+  if (!requestOrRequests) return undefined;
+
+  const requests = Array.isArray(requestOrRequests) ? requestOrRequests : [requestOrRequests];
+  const decisions = await Promise.all(
+    requests.map((request) =>
+      evaluateAndLogHarnessPolicy({
+        ...request,
+        agentId: request.agentId ?? metadata.agentId,
+        runId: request.runId ?? metadata.runId,
+        turnId: request.turnId ?? metadata.turnId,
+        threadId: request.threadId ?? metadata.threadId,
+        taskId: request.taskId ?? metadata.taskId,
+        subtaskId: request.subtaskId ?? metadata.subtaskId,
+        toolId: request.toolId ?? config.toolId,
+        riskHint: request.riskHint ?? config.risk,
+      }),
+    ),
+  );
+
+  const summaries = decisions.map(toPolicySummary);
+  return summaries.length === 1 ? summaries[0] : summaries;
+}
+
+function toPolicySummary(decision: HarnessPolicyDecision): ToolExecutionPolicySummary {
+  return {
+    id: decision.id,
+    allow: decision.allow,
+    effectiveAllow: decision.effectiveAllow,
+    requiresApproval: decision.requiresApproval,
+    severity: decision.severity,
+    reason: decision.reason,
+    approvalType: decision.approvalType,
+    matchedRule: decision.matchedRule,
+    enforcementMode: decision.enforcementMode,
+    enforced: decision.enforced,
+  };
+}
+
+function hasEnforcedPolicyBlock(
+  decision: ToolExecutionPolicySummary | ToolExecutionPolicySummary[] | undefined,
+): boolean {
+  return Boolean(firstBlockedPolicyDecision(decision));
+}
+
+function firstBlockedPolicyDecision(
+  decision: ToolExecutionPolicySummary | ToolExecutionPolicySummary[] | undefined,
+): ToolExecutionPolicySummary | undefined {
+  if (!decision) return undefined;
+  const decisions = Array.isArray(decision) ? decision : [decision];
+  return decisions.find((entry) => !entry.effectiveAllow);
 }
 
 export function buildToolPreview(
@@ -276,6 +371,7 @@ async function recordToolStarted(input: {
   toolId: string;
   category: ToolEnvelopeCategory;
   risk: ToolEnvelopeRisk;
+  policyDecision?: ToolExecutionPolicySummary | ToolExecutionPolicySummary[];
   inputPreview?: string;
 }): Promise<void> {
   const now = new Date();
@@ -286,6 +382,7 @@ async function recordToolStarted(input: {
     category: input.category,
     risk: input.risk,
     status: 'started',
+    policyDecision: input.policyDecision,
     inputPreview: input.inputPreview,
     createdAt: now,
     expiresAt: new Date(now.getTime() + DEFAULT_TTL_DAYS * 24 * 3600 * 1000),
@@ -308,6 +405,7 @@ async function recordToolStarted(input: {
       executionId: input.id,
       category: input.category,
       risk: input.risk,
+      policyDecision: input.policyDecision,
     },
   });
 }
@@ -319,6 +417,7 @@ async function recordToolFinished(input: {
   category: ToolEnvelopeCategory;
   risk: ToolEnvelopeRisk;
   status: ToolExecutionStatus;
+  policyDecision?: ToolExecutionPolicySummary | ToolExecutionPolicySummary[];
   inputPreview?: string;
   outputPreview?: string;
   outputArtifactId?: string;
@@ -334,6 +433,7 @@ async function recordToolFinished(input: {
     category: input.category,
     risk: input.risk,
     status: input.status,
+    policyDecision: input.policyDecision,
     inputPreview: input.inputPreview,
     outputPreview: input.outputPreview,
     outputArtifactId: input.outputArtifactId,
@@ -362,6 +462,7 @@ async function recordToolFinished(input: {
       category: input.category,
       risk: input.risk,
       toolStatus: input.status,
+      policyDecision: input.policyDecision,
       errorClass: input.errorClass,
       outputArtifactId: input.outputArtifactId,
     },
@@ -384,6 +485,7 @@ async function updateToolExecution(input: {
   category: ToolEnvelopeCategory;
   risk: ToolEnvelopeRisk;
   status: ToolExecutionStatus;
+  policyDecision?: ToolExecutionPolicySummary | ToolExecutionPolicySummary[];
   inputPreview?: string;
   outputPreview?: string;
   outputArtifactId?: string;
@@ -396,6 +498,7 @@ async function updateToolExecution(input: {
     const db = await getDb();
     const set: Partial<ToolExecutionDoc> = {
       status: input.status,
+      policyDecision: input.policyDecision,
       outputPreview: input.outputPreview,
       outputArtifactId: input.outputArtifactId,
       durationMs: input.durationMs,

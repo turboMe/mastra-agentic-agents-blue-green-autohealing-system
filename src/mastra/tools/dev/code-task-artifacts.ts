@@ -368,6 +368,16 @@ export const runTestCommandTool = createTool({
     toolId: 'coding_run_test',
     category: 'shell',
     risk: 'medium',
+    policy: (context, metadata) => ({
+      action: 'run_command',
+      command: context.command,
+      taskId: context.taskId,
+      subtaskId: context.subtaskId,
+      agentId: metadata.agentId,
+      threadId: context.threadId,
+      runId: metadata.runId,
+      turnId: metadata.turnId,
+    }),
     execute: async (context) => {
     try {
       const db = await getDb();

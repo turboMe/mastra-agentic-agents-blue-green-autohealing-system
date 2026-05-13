@@ -684,6 +684,16 @@ export const writeFileTrackedTool = createTool({
     category: 'file',
     risk: 'medium',
     redactInputFields: ['content'],
+    policy: (context, metadata) => ({
+      action: 'write_file',
+      target: context.path,
+      taskId: context.taskId,
+      subtaskId: context.subtaskId,
+      agentId: metadata.agentId,
+      threadId: context.threadId,
+      runId: metadata.runId,
+      turnId: metadata.turnId,
+    }),
     execute: async (context) => {
     try {
       const db = await getDb();
