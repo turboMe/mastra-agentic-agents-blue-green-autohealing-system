@@ -16,6 +16,7 @@ import { logHarnessEvent, tokenEstimate } from './harness-events.js';
 import { buildCodingPrecontext } from './coding-precontext.js';
 import { scheduleSemanticMemoryCheck } from './semantic-memory-worker.js';
 import { beginHarnessTurn, completeHarnessTurn, failHarnessTurn } from './harness-run-state.js';
+import { isWorkspaceTool, logPostHocToolExecution } from './harness-tool-envelope.js';
 
 export type HarnessPhase =
   | 'diagnose'
@@ -170,7 +171,7 @@ export async function generateCoding<TResponse = unknown>(
   }
 
   try {
-    const response = await callAgentGenerate<TResponse>({ ...input, prompt: finalPrompt });
+    const response = await callAgentGenerate<TResponse>({ ...input, prompt: finalPrompt }, { runId, turnId, threadId });
     const durationMs = Date.now() - start;
 
     // ── Diagnostic: trace response structure ──
@@ -313,7 +314,10 @@ export async function generateCoding<TResponse = unknown>(
   }
 }
 
-async function callAgentGenerate<TResponse>(input: HarnessGenerateInput): Promise<TResponse> {
+async function callAgentGenerate<TResponse>(
+  input: HarnessGenerateInput,
+  harnessContext?: { runId: string; turnId: string; threadId?: string },
+): Promise<TResponse> {
   const generateOptions: Record<string, unknown> = {
     maxSteps: 40, // Must be explicit — passing any generateOptions overrides agent defaults
     ...(input.generateOptions ?? {}),
@@ -328,6 +332,35 @@ async function callAgentGenerate<TResponse>(input: HarnessGenerateInput): Promis
     generateOptions.memory = {
       thread: input.threadId,
       resource: input.agentId ?? 'harness',
+    };
+  }
+
+  // ── onStepFinish: log workspace tools that bypass withToolEnvelope ──
+  if (harnessContext && isHarnessFeatureEnabled('FEATURE_TOOL_ENVELOPE', true)) {
+    const ctx = harnessContext;
+    generateOptions.onStepFinish = async (stepResult: Record<string, unknown>) => {
+      const toolCalls = Array.isArray(stepResult.toolCalls) ? stepResult.toolCalls as Array<Record<string, unknown>> : [];
+      const toolResults = Array.isArray(stepResult.toolResults) ? stepResult.toolResults as Array<Record<string, unknown>> : [];
+
+      for (const tc of toolCalls) {
+        const toolName = String(tc.toolName ?? tc.name ?? '');
+        if (!toolName || !isWorkspaceTool(toolName)) continue;
+
+        const matchingResult = toolResults.find((tr) => tr.toolCallId === tc.toolCallId);
+        await logPostHocToolExecution({
+          toolCallId: String(tc.toolCallId ?? ''),
+          toolId: toolName,
+          args: tc.args,
+          result: matchingResult?.result,
+          isError: matchingResult?.isError === true,
+          agentId: input.agentId,
+          runId: ctx.runId,
+          turnId: ctx.turnId,
+          threadId: ctx.threadId,
+          taskId: input.taskId,
+          subtaskId: input.subtaskId,
+        });
+      }
     };
   }
 

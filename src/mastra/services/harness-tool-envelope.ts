@@ -536,3 +536,125 @@ function stringValue(value: unknown): string | undefined {
 function truncate(text: string, maxChars: number): string {
   return text.length > maxChars ? `${text.slice(0, maxChars)}...` : text;
 }
+
+// ── Post-hoc workspace tool logging ──────────────────────────────────────
+// Workspace tools from @mastra/core bypass withToolEnvelope. This function
+// logs them after execution via the onStepFinish hook in coding-harness.
+
+const WORKSPACE_TOOL_META: Record<string, { category: ToolEnvelopeCategory; risk: ToolEnvelopeRisk }> = {
+  view: { category: 'file', risk: 'low' },
+  write_file: { category: 'file', risk: 'medium' },
+  find_files: { category: 'file', risk: 'low' },
+  search_content: { category: 'search', risk: 'low' },
+  workspace_search: { category: 'search', risk: 'low' },
+  index_content: { category: 'search', risk: 'low' },
+  lsp_inspect: { category: 'other', risk: 'low' },
+  execute_command: { category: 'shell', risk: 'medium' },
+  mastra_workspace_read_file: { category: 'file', risk: 'low' },
+  mastra_workspace_write_file: { category: 'file', risk: 'medium' },
+  mastra_workspace_list_files: { category: 'file', risk: 'low' },
+  mastra_workspace_grep: { category: 'search', risk: 'low' },
+  mastra_workspace_execute_command: { category: 'shell', risk: 'medium' },
+  mastra_workspace_search: { category: 'search', risk: 'low' },
+};
+
+type PolicyAction = import('./harness-policy.js').HarnessPolicyAction;
+
+function mapToolToPolicyAction(toolId: string): PolicyAction | undefined {
+  if (toolId === 'view' || toolId === 'mastra_workspace_read_file') return 'read_file';
+  if (toolId === 'write_file' || toolId === 'mastra_workspace_write_file') return 'write_file';
+  if (toolId === 'execute_command' || toolId === 'mastra_workspace_execute_command') return 'run_command';
+  return undefined;
+}
+
+export function isWorkspaceTool(toolName: string): boolean {
+  return toolName in WORKSPACE_TOOL_META;
+}
+
+export async function logPostHocToolExecution(input: {
+  toolCallId: string;
+  toolId: string;
+  args: unknown;
+  result: unknown;
+  isError?: boolean;
+  agentId: string;
+  runId?: string;
+  turnId?: string;
+  threadId?: string;
+  taskId?: string;
+  subtaskId?: string;
+}): Promise<void> {
+  if (!isHarnessFeatureEnabled('FEATURE_TOOL_ENVELOPE', true)) return;
+
+  const executionId = randomUUID();
+  const now = new Date();
+  const meta = WORKSPACE_TOOL_META[input.toolId] ?? { category: 'other' as const, risk: 'low' as const };
+  const inputPreview = buildToolPreview(input.args, { maxChars: DEFAULT_PREVIEW_CHARS });
+  const outputPreview = buildToolPreview(input.result, { maxChars: DEFAULT_PREVIEW_CHARS });
+  const status: ToolExecutionStatus = input.isError ? 'failed' : 'completed';
+
+  // Policy evaluation (post-hoc / log-only — tool already executed)
+  let policyDecision: ToolExecutionPolicySummary | undefined;
+  const policyAction = mapToolToPolicyAction(input.toolId);
+  if (policyAction) {
+    const args = (input.args && typeof input.args === 'object') ? input.args as Record<string, unknown> : {};
+    const decision = await evaluateAndLogHarnessPolicy({
+      agentId: input.agentId,
+      runId: input.runId,
+      turnId: input.turnId,
+      threadId: input.threadId,
+      taskId: input.taskId,
+      subtaskId: input.subtaskId,
+      toolId: input.toolId,
+      action: policyAction,
+      target: stringValue(args.path) ?? stringValue(args.filePath),
+      command: stringValue(args.command),
+      riskHint: meta.risk,
+    });
+    policyDecision = toPolicySummary(decision);
+  }
+
+  const doc: ToolExecutionDoc = {
+    id: executionId,
+    agentId: input.agentId,
+    runId: input.runId,
+    turnId: input.turnId,
+    threadId: input.threadId,
+    taskId: input.taskId,
+    subtaskId: input.subtaskId,
+    toolId: input.toolId,
+    category: meta.category,
+    risk: meta.risk,
+    status,
+    policyDecision,
+    inputPreview,
+    outputPreview,
+    createdAt: now,
+    completedAt: now,
+    expiresAt: new Date(now.getTime() + DEFAULT_TTL_DAYS * 24 * 3600 * 1000),
+  };
+
+  await insertToolExecution(doc);
+  await logHarnessEvent({
+    type: status === 'completed' ? 'tool_call_completed' : 'tool_call_failed',
+    agentId: input.agentId,
+    runId: input.runId,
+    turnId: input.turnId,
+    threadId: input.threadId,
+    taskId: input.taskId,
+    subtaskId: input.subtaskId,
+    feature: 'tool_envelope',
+    toolId: input.toolId,
+    status: status === 'completed' ? 'success' : 'error',
+    input: inputPreview,
+    output: outputPreview,
+    data: {
+      executionId,
+      category: meta.category,
+      risk: meta.risk,
+      toolStatus: status,
+      policyDecision,
+      postHoc: true,
+    },
+  });
+}
