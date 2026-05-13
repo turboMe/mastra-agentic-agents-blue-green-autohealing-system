@@ -304,9 +304,9 @@ async function callAgentGenerate<TResponse>(input: HarnessGenerateInput): Promis
     };
   }
 
-  const call = Object.keys(generateOptions).length > 0
-    ? input.agent.generate(input.prompt, generateOptions as any)
-    : input.agent.generate(input.prompt);
+  console.log(`[Harness] callAgentGenerate: maxSteps=${generateOptions.maxSteps}, model=${generateOptions.model ?? 'agent-default'}, memory=${!!generateOptions.memory}, keys=${Object.keys(generateOptions).join(',')}`);
+
+  const call = input.agent.generate(input.prompt, generateOptions as any);
 
   return withTimeout(
     call as Promise<TResponse>,
@@ -344,7 +344,29 @@ function extractOutputPreview(response: unknown): string {
     if (typeof response === 'string') return truncate(response, 1000);
     if (response && typeof response === 'object') {
       const record = response as Record<string, unknown>;
-      if (typeof record.text === 'string') return truncate(record.text, 1000);
+
+      // Primary: agent's final text response
+      if (typeof record.text === 'string' && record.text.length > 0) {
+        return truncate(record.text, 1000);
+      }
+
+      // Fallback: extract from steps (multi-step tool-calling flows)
+      if (Array.isArray(record.steps) && record.steps.length > 0) {
+        // Get text from the last step (final agent response after tools)
+        const lastStep = record.steps[record.steps.length - 1] as Record<string, unknown>;
+        if (typeof lastStep?.text === 'string' && lastStep.text.length > 0) {
+          return truncate(lastStep.text, 1000);
+        }
+      }
+
+      // Fallback: toolResults summary
+      if (Array.isArray(record.toolResults) && record.toolResults.length > 0) {
+        const summary = (record.toolResults as Array<Record<string, unknown>>)
+          .map((tr) => `[${tr.toolName}] ${JSON.stringify(tr.result ?? '').slice(0, 200)}`)
+          .join('\n');
+        return truncate(summary, 1000);
+      }
+
       if (typeof record.output === 'string') return truncate(record.output, 1000);
     }
     return truncate(JSON.stringify(response), 1000);
