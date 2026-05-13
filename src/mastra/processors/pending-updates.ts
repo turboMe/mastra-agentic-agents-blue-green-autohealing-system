@@ -12,28 +12,41 @@
 import type { ProcessInputArgs, ProcessInputResult } from '@mastra/core/processors';
 import { BaseProcessor } from '@mastra/core/processors';
 import { takePendingMessages, formatPendingMessagesForPrompt } from '../services/pending-message-queue.js';
+import { getDb } from '../lib/mongo.js';
+
+import type { PendingMessage } from '../services/pending-message-queue.js';
+
+// ── Thread ID extraction ─────────────────────────────────────────────────────
 
 /**
  * Extract the threadId from the request context.
- * Mastra passes memory thread info through requestContext.
+ * Mastra RequestContext stores threadId under 'mastra__threadId'.
  */
 function extractThreadId(args: ProcessInputArgs): string | undefined {
-  // Try to get threadId from requestContext (Mastra Studio passes it)
   const rc = args.requestContext;
   if (rc) {
-    const rcAny = rc as unknown as Record<string, unknown>;
-    const threadId = rcAny.threadId ?? rcAny.thread;
-    if (typeof threadId === 'string') return threadId;
+    try {
+      // Mastra Studio uses RequestContext.get('mastra__threadId')
+      const threadId = (rc as any).get?.('mastra__threadId');
+      if (typeof threadId === 'string' && threadId.length > 0) return threadId;
+
+      // Fallback: direct property access (older API)
+      const rcAny = rc as unknown as Record<string, unknown>;
+      const threadAlt = rcAny.threadId ?? rcAny.thread ?? rcAny['mastra__threadId'];
+      if (typeof threadAlt === 'string' && threadAlt.length > 0) return threadAlt;
+    } catch { /* safe — RC might not have .get() */ }
   }
 
   // Fallback: try to extract from the last user message metadata
   const lastUserMsg = [...args.messages].reverse().find((m) => m.role === 'user');
-  if (lastUserMsg && typeof lastUserMsg.threadId === 'string') {
-    return lastUserMsg.threadId;
+  if (lastUserMsg && typeof (lastUserMsg as any).threadId === 'string' && (lastUserMsg as any).threadId.length > 0) {
+    return (lastUserMsg as any).threadId;
   }
 
   return undefined;
 }
+
+// ── Processor ────────────────────────────────────────────────────────────────
 
 export class PendingUpdatesProcessor extends BaseProcessor<'pending-updates'> {
   readonly id = 'pending-updates' as const;
@@ -42,20 +55,44 @@ export class PendingUpdatesProcessor extends BaseProcessor<'pending-updates'> {
     'Checks for async delegation results and background task notifications before each meta-agent turn.';
 
   async processInput(args: ProcessInputArgs): Promise<ProcessInputResult> {
-    const { messages, messageList, systemMessages } = args;
+    const { messages, systemMessages } = args;
     const threadId = extractThreadId(args);
 
-    if (!threadId) {
-      // No threadId — can't scope the query, skip
-      return messages;
-    }
-
     try {
-      const pendingMessages = await takePendingMessages({
-        threadId,
-        agentId: 'meta-agent',
-        limit: 5,
-      });
+      let pendingMessages: PendingMessage[];
+
+      if (threadId) {
+        // Primary: scoped to this thread
+        pendingMessages = await takePendingMessages({
+          threadId,
+          agentId: 'meta-agent',
+          limit: 5,
+        });
+      } else {
+        // Fallback: Mastra Studio often has empty threadId in messages.
+        // Query for ALL async_delegation_result pending messages and consume them.
+        // This is safe because only meta-agent runs this processor.
+        const db = await getDb();
+        const now = new Date();
+        const docs = await db.collection<PendingMessage>('pending_user_messages')
+          .find({
+            'metadata.type': 'async_delegation_result',
+            status: 'pending',
+            expiresAt: { $gt: now },
+          })
+          .sort({ urgent: -1, createdAt: 1 })
+          .limit(5)
+          .toArray();
+
+        if (docs.length > 0) {
+          // Mark as consumed
+          await db.collection<PendingMessage>('pending_user_messages').updateMany(
+            { id: { $in: docs.map((d) => d.id) }, status: 'pending' },
+            { $set: { status: 'consumed', consumedAt: new Date(), consumedBy: 'meta-agent:pending-updates-processor' } },
+          );
+        }
+        pendingMessages = docs;
+      }
 
       if (pendingMessages.length === 0) {
         return messages;
@@ -64,7 +101,7 @@ export class PendingUpdatesProcessor extends BaseProcessor<'pending-updates'> {
       const updateBlock = formatPendingMessagesForPrompt(pendingMessages);
 
       console.log(
-        `[PendingUpdatesProcessor] Injected ${pendingMessages.length} pending update(s) for thread ${threadId}`,
+        `[PendingUpdatesProcessor] Injected ${pendingMessages.length} pending update(s) for thread ${threadId ?? '(fallback)'}`,
       );
 
       // Inject updates as an additional system message so the agent sees them
@@ -72,12 +109,13 @@ export class PendingUpdatesProcessor extends BaseProcessor<'pending-updates'> {
       const injectedSystemMessage = {
         role: 'system' as const,
         content: [
-          '## Background Updates Available',
-          'The following updates arrived since your last response. Acknowledge them naturally in your reply:',
+          '## ⚡ Background Updates Available',
+          'IMPORTANT: The following background task results arrived since your last response.',
+          'You MUST acknowledge them at the beginning of your reply before addressing the user\'s question.',
           '',
           updateBlock,
           '',
-          'After acknowledging, proceed to address the user\'s current message.',
+          'After reporting these updates, proceed to address the user\'s current message.',
         ].join('\n'),
       };
 
@@ -94,3 +132,4 @@ export class PendingUpdatesProcessor extends BaseProcessor<'pending-updates'> {
 }
 
 export const pendingUpdatesProcessor = new PendingUpdatesProcessor();
+
