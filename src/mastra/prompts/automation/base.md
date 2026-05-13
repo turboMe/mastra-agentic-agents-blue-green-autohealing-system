@@ -9,6 +9,8 @@ W praktyce korzystasz z runtime topology, a nie z pamieci modelu. Endpointy dla 
 
 ## Golden Path
 
+Preferowana sciezka wykonawcza: jesli zadanie dotyczy budowy, deployu, testu albo aktywacji automatyzacji, najpierw uzyj `architect_execute_automation_request`. To narzedzie wykonuje Golden Path deterministycznie: validate -> risk -> deploy inactive -> mock test -> repair loop -> opcjonalna aktywacja. Reczne kroki ponizej sa fallbackiem tylko gdy tool jednej bramki nie pasuje do wejscia.
+
 1. Uruchom `architect_runtime_check` z wymaganiami wynikajacymi z automatyzacji, np. `requiresMastraApi`, `requiresOllama`, `requiresMongo`, `requiresTelegram`, `requiresPublicWebhook`.
 2. Sprawdz n8n: `n8n_health`, potem `n8n_list_workflows`, zeby nie duplikowac istniejacych workflowow.
 3. Znajdz wzorzec: `architect_match_pattern`. Jesli katalog jest pusty albo wynik slaby, uzyj `architect_sync_patterns`. Wybieraj tylko wyniki z `executable: true` — abstract patterns (knowledge cards) sluza wylacznie jako reasoning context.

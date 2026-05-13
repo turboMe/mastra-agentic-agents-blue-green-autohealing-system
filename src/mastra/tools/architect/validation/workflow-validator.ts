@@ -2,6 +2,15 @@ import { ValidationFinding, ValidationResult, MissingCredential, MissingConfig }
 import { KNOWN_NODE_TYPES, TRIGGER_TYPES, FORBIDDEN_NODE_TYPES } from './node-registry.js';
 import { getRuntimeTopology } from '../../../config/runtime-topology.js';
 
+const DANGEROUS_CODE_PATTERNS: Array<{ pattern: RegExp; message: string }> = [
+  { pattern: /\$helpers\.executeCommand(?:Sync)?\s*\(/, message: 'Uses $helpers.executeCommand* in code/function node' },
+  { pattern: /\beval\s*\(/, message: 'Uses eval() - risk of injection' },
+  { pattern: /\bnew\s+Function\s*\(/, message: 'Uses new Function() - risk of injection' },
+  { pattern: /require\s*\(\s*['"]child_process['"]\s*\)/, message: 'Uses child_process in code/function node' },
+  { pattern: /require\s*\(\s*['"]fs['"]\s*\)/, message: 'Uses fs module in code/function node' },
+  { pattern: /\bprocess\.env\s*\[/, message: 'Uses dynamic process.env access in code/function node' },
+];
+
 /**
  * Strip enclosing single/double quotes and trim whitespace from a string.
  * Used to recover from LLM mistakes like "'Set Vars'" → "Set Vars".
@@ -238,23 +247,15 @@ export function validateWorkflow(
         }
       }
 
-      // Security: eval/Function
-      if (node.type === 'n8n-nodes-base.code' && node.parameters.jsCode) {
-        if (/\beval\s*\(/.test(node.parameters.jsCode)) {
-          securityIssues.push({ nodeName: node.name, message: 'Uses eval() - risk of injection', severity: 'security' });
-        }
-        if (/\bnew\s+Function\s*\(/.test(node.parameters.jsCode)) {
-          securityIssues.push({
-            nodeName: node.name,
-            message: 'Uses new Function() - risk of injection',
-            severity: 'security',
-          });
-        }
-        if (/require\s*\(\s*['"]child_process['"]\s*\)/.test(node.parameters.jsCode)) {
-          securityIssues.push({ nodeName: node.name, message: 'Uses child_process in code node', severity: 'security' });
-        }
-        if (/require\s*\(\s*['"]fs['"]\s*\)/.test(node.parameters.jsCode)) {
-          securityIssues.push({ nodeName: node.name, message: 'Uses fs module in code node', severity: 'security' });
+      // Security: code/function nodes can hide executable snippets under
+      // jsCode, functionCode, code, or other string parameters.
+      if (isCodeLikeNode(node.type)) {
+        for (const code of collectStringValues(node.parameters)) {
+          for (const { pattern, message } of DANGEROUS_CODE_PATTERNS) {
+            if (pattern.test(code)) {
+              securityIssues.push({ nodeName: node.name, message, severity: 'security' });
+            }
+          }
         }
       }
     }
@@ -275,6 +276,16 @@ export function validateWorkflow(
         required: true,
         setupHint: `Brakuje credentiala (${credentialRequirement.credentialTypes.join(' lub ')}) dla ${node.type}`,
       });
+    } else if (credentialRequirement) {
+      for (const credentialType of credentialRequirement.credentialTypes) {
+        if (typeof node.credentials?.[credentialType] === 'string') {
+          warnings.push({
+            nodeName: node.name,
+            message: `Credential ${credentialType} uses legacy string shape; prefer { id, name }.`,
+            severity: 'warning',
+          });
+        }
+      }
     }
 
     if (node.type === 'n8n-nodes-base.telegram' && node.parameters?.chatId === '') {
@@ -338,6 +349,10 @@ export function validateWorkflow(
     nodeCount: nodes.length,
     connectionCount,
   };
+}
+
+function isCodeLikeNode(type: string | undefined): boolean {
+  return type === 'n8n-nodes-base.code' || type === 'n8n-nodes-base.function';
 }
 
 function collectStringValues(value: unknown): string[] {

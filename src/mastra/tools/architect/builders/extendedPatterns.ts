@@ -815,9 +815,17 @@ export function buildTelegramAutomationRequestToAgentForge(spec: AutomationSpec)
  * Pattern 9: RSS -> Ollama Classifier -> Telegram
  */
 export function buildRssOllamaClassifierToTelegram(spec: AutomationSpec): any {
+  const rssUrl = getInputString(spec, ['rssUrl', 'rss', 'feedUrl', 'url'], 'https://blog.n8n.io/rss/');
   return {
     nodes: [
-      { parameters: { url: '={{ $json.url }}' }, id: 'rss_trigger', name: 'RSS Trigger', type: 'n8n-nodes-base.rssFeedTrigger', typeVersion: 1, position: [100, 300] },
+      {
+        parameters: { feedUrl: rssUrl },
+        id: 'rss_trigger',
+        name: 'RSS Trigger',
+        type: 'n8n-nodes-base.rssFeedReadTrigger',
+        typeVersion: 1,
+        position: [100, 300]
+      },
       ollamaChatNode('Classify Article', 400, 300, 'Classify this article.'),
       { parameters: { conditions: { string: [{ value1: '={{ $json.classification }}', value2: 'relevant' }] } }, id: 'if_relevant', name: 'If Relevant', type: 'n8n-nodes-base.if', typeVersion: 1, position: [650, 300] },
       telegramSendNode('Telegram Alert', 900, 200)

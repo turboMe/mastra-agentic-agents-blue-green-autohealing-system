@@ -116,7 +116,7 @@ export const repairWorkflowTool = createTool({
   },
 });
 
-function applyRepairs(
+export function applyRepairs(
   workflow: any,
   findings: { severity: string; nodeName?: string; message: string; suggestedFix?: string }[],
 ): RepairResult {

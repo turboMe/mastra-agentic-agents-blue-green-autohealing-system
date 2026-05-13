@@ -19,6 +19,7 @@ import { resolveCredentialsTool } from '../tools/architect/credentials/credentia
 import { validateWorkflowTool } from '../tools/architect/validation/validation-tool.js';
 import { testWorkflowTool } from '../tools/architect/testing/test-workflow.js';
 import { repairWorkflowTool } from '../tools/architect/testing/repair-workflow.js';
+import { executeAutomationRequestTool } from '../tools/architect/execute-request.js';
 import { loadPrompt } from '../lib/prompt-loader.js';
 
 export const automationArchitect = new Agent({
@@ -77,6 +78,8 @@ export const automationArchitect = new Agent({
     },
   }),
   tools: {
+    // One-call deterministic Golden Path
+    executeAutomationRequestTool,
     // n8n management
     n8nHealthTool,
     n8nListWorkflowsTool,

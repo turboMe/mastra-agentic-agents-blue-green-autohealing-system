@@ -27,6 +27,15 @@ export function generateMockPayload(workflow: any): { triggerType: string; paylo
           `Otworz workflow w n8n UI i kliknij "Execute Workflow" zeby przetestowac manualnie.`,
         ],
       };
+    case 'n8n-nodes-base.rssFeedReadTrigger':
+      return {
+        triggerType: trigger.type,
+        payload: {},
+        instructions: [
+          `RSS trigger polls feedUrl=${trigger.parameters?.feedUrl ?? '<missing>'}.`,
+          `Otworz workflow w n8n UI i kliknij "Execute Workflow" albo poczekaj na polling triggera.`,
+        ],
+      };
     case 'n8n-nodes-base.telegramTrigger':
       return {
         triggerType: trigger.type,

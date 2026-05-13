@@ -85,18 +85,35 @@ CAN be called multiple times in parallel when tasks are independent.`,
         },
       );
 
+      const responseText = response.text ?? '';
+      const automationContractOk =
+        context.targetAgent !== 'automationArchitect' || isAutomationArchitectContractComplete(responseText);
+
       logAgentEvent({
         type: 'delegation',
         agentId: context.targetAgent,
-        status: 'success',
+        status: automationContractOk ? 'success' : 'error',
         input: context.taskDescription.slice(0, 500),
-        output: response.text.slice(0, 500),
+        output: responseText.slice(0, 500),
         durationMs: Date.now() - start,
+        ...(automationContractOk
+          ? {}
+          : { errorMessage: 'automation_contract_missing', metadata: { contract: 'automation_golden_path' } }),
       });
+
+      if (!automationContractOk) {
+        return {
+          success: false,
+          result: responseText,
+          agentUsed: context.targetAgent,
+          error:
+            'automation_contract_missing: automationArchitect must return a terminal status and automationId/workflowId when deploy/test succeeds.',
+        };
+      }
 
       return {
         success: true,
-        result: response.text,
+        result: responseText,
         agentUsed: context.targetAgent,
       };
     } catch (error) {
@@ -117,3 +134,14 @@ CAN be called multiple times in parallel when tasks are independent.`,
     }
   },
 });
+
+function isAutomationArchitectContractComplete(text: string): boolean {
+  const lower = text.toLowerCase();
+  const hasTerminalStatus = /\b(blocked|draft_created|tested|active|manual_review_required)\b/i.test(text);
+  if (!hasTerminalStatus) return false;
+
+  const blocked = /\b(blocked|manual_review_required)\b/i.test(text);
+  if (blocked) return true;
+
+  return lower.includes('automationid') && lower.includes('workflowid');
+}

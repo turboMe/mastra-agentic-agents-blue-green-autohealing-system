@@ -27,6 +27,10 @@ const HIGH_RISK_PATTERNS = [
   { pattern: /[A-Za-z0-9]{32,}/, label: 'possible hardcoded key (long string)' },
 ];
 
+const CRITICAL_CODE_PATTERNS = [
+  { pattern: /\$helpers\.executeCommand(?:Sync)?\s*\(/, label: '$helpers.executeCommand* in code/function node' },
+];
+
 const MEDIUM_RISK_PATTERNS = [
   { pattern: /\$json\..*\$\$/, label: 'unsanitized user input in expression' },
   { pattern: /http:\/\/(?!localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i, label: 'plain HTTP to external host' },
@@ -131,6 +135,12 @@ export function analyzeWorkflow(workflowJson: unknown): { score: number; finding
     // Scan code nodes for dangerous patterns
     if (nodeType.includes('code') || nodeType.includes('function')) {
       const code = JSON.stringify(node.parameters ?? '');
+      for (const { pattern, label } of CRITICAL_CODE_PATTERNS) {
+        if (pattern.test(code)) {
+          findings.push({ severity: 'critical', code: 'CODE_EXECUTION_HELPER', message: `${label} detected`, location: nodeName });
+          score += 80;
+        }
+      }
       for (const { pattern, label } of HIGH_RISK_PATTERNS) {
         if (pattern.test(code)) {
           findings.push({ severity: 'high', code: 'CODE_RISK', message: `${label} detected in code node`, location: nodeName });
