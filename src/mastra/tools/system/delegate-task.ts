@@ -19,14 +19,15 @@ async function getMastra() {
   return _mastra;
 }
 
-// Agent IDs as registered in mastra.agents — must match the `id` field in each Agent() constructor
+// Mastra registry keys — must match the property names in `new Mastra({ agents: { ... } })`
+// getAgent() looks up by property key, NOT by agent.id
 const AGENT_IDS: Record<string, string> = {
-  marketingAgent: 'marketing-agent',
-  salesAgent: 'sales-agent',
-  analyticsAgent: 'analytics-agent',
-  automationArchitect: 'automation-architect',
-  crmAgent: 'crm-agent',
-  codingAgent: 'coding-agent',
+  marketingAgent: 'marketingAgent',
+  salesAgent: 'salesAgent',
+  analyticsAgent: 'analyticsAgent',
+  automationArchitect: 'automationArchitect',
+  crmAgent: 'crmAgent',
+  codingAgent: 'codingAgent',
 } as const;
 
 type AgentKey = keyof typeof AGENT_IDS;
