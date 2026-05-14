@@ -83,7 +83,7 @@ export class PendingUpdatesProcessor extends BaseProcessor<'pending-updates'> {
         const docs = await db.collection<PendingMessage>('pending_user_messages')
           .find({
             status: 'pending',
-            source: 'background_task',
+            source: { $in: ['background_task', 'automation_job'] },
             $or: [
               { targetAgentId: agentId },
               { targetAgentId: { $exists: false } },
@@ -147,4 +147,3 @@ export const pendingUpdatesProcessor = new PendingUpdatesProcessor();
 export const automationPendingUpdatesProcessor = new PendingUpdatesProcessor({
   agentId: 'automationArchitect',
 });
-

@@ -25,6 +25,13 @@ import { validateWorkflowTool } from '../tools/architect/validation/validation-t
 import { testWorkflowTool } from '../tools/architect/testing/test-workflow.js';
 import { repairWorkflowTool } from '../tools/architect/testing/repair-workflow.js';
 import { executeAutomationRequestTool } from '../tools/architect/execute-request.js';
+import {
+  cancelAutomationJobTool,
+  getAutomationJobTool,
+  listAutomationJobsTool,
+  markStaleAutomationJobsTool,
+  startAutomationJobTool,
+} from '../tools/architect/automation-jobs.js';
 import { loadPrompt } from '../lib/prompt-loader.js';
 import { withAnthropicSystemCache } from '../lib/anthropic-cache.js';
 // System knowledge (harness upgrade — Sprint A)
@@ -35,6 +42,7 @@ import { skillSearchTool } from '../tools/system/skill-search.js';
 import { skillLoadTool } from '../tools/system/skill-load.js';
 import { skillReportTool } from '../tools/system/skill-report.js';
 import { automationPendingUpdatesProcessor } from '../processors/pending-updates.js';
+import { automationDecisionOutputProcessor } from '../processors/automation-decision-output.js';
 
 export const automationArchitect = new Agent({
   id: 'automation-architect',
@@ -98,6 +106,12 @@ export const automationArchitect = new Agent({
   tools: {
     // One-call deterministic Golden Path
     executeAutomationRequestTool,
+    // Native durable Golden Path jobs
+    startAutomationJobTool,
+    getAutomationJobTool,
+    listAutomationJobsTool,
+    cancelAutomationJobTool,
+    markStaleAutomationJobsTool,
     // n8n management
     n8nHealthTool,
     n8nListWorkflowsTool,
@@ -149,4 +163,5 @@ export const automationArchitect = new Agent({
       limit: 120_000,  // Effective limit for Gemini 2.5 Pro
     }),
   ],
+  outputProcessors: [automationDecisionOutputProcessor],
 });

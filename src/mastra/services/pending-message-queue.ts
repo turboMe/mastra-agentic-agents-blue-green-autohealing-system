@@ -12,14 +12,14 @@ import { getDb } from '../lib/mongo.js';
 import { redactSecrets } from '../lib/secrets-redactor.js';
 import { logHarnessEvent } from './harness-events.js';
 
-export type PendingMessageSource = 'user' | 'system' | 'file_activity' | 'background_task';
+export type PendingMessageSource = 'user' | 'system' | 'file_activity' | 'background_task' | 'automation_job';
 export type PendingMessageStatus = 'pending' | 'consumed' | 'cancelled' | 'stale';
 
 export type PendingMessage = {
   id: string;
   taskId?: string;
   threadId?: string;
-  targetAgentId?: string;
+  targetAgentId?: string | null;
   source: PendingMessageSource;
   content: string;
   urgent: boolean;
@@ -34,7 +34,7 @@ export type PendingMessage = {
 export type QueuePendingMessageInput = {
   taskId?: string;
   threadId?: string;
-  targetAgentId?: string;
+  targetAgentId?: string | null;
   source: PendingMessageSource;
   content: string;
   urgent?: boolean;

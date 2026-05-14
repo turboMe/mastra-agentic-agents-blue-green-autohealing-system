@@ -170,7 +170,7 @@ export const agentModels = {
   crmAgent: 'gemma4-26b' as ModelKey,
   analyticsAgent: 'qwen3-coder-30b' as ModelKey,
   weatherAgent: 'gemma4-26b' as ModelKey,
-  automationArchitect: 'qwen3-coder-30b' as ModelKey,
+  automationArchitect: 'gemini-2.5-flash' as ModelKey,
   marketingAgent: 'gemma4-26b' as ModelKey,
   knowledgeAgent: 'gemma4-26b' as ModelKey,   // NotebookLM ops — fast function calling for 35 MCP tools
   researcherAgent: 'nemotron-super-free' as ModelKey,  // PSEV web research — browser + Tavily deep scraping
@@ -188,7 +188,7 @@ export const workflowAssignments = {
     default: 'gemini-2.5-flash' as ModelKey,  // diagnose-and-plan
     patch: 'qwen3-coder-30b' as ModelKey,  // execute-patch fallback
     review: 'gemini-2.5-flash' as ModelKey,  // code review (Haiku: tani + dobry do walidacji)
-    selfHealingPlanner: 'gpt-5.3-mini' as ModelKey,
+    selfHealingPlanner: 'gpt-5.4-mini' as ModelKey,
     selfHealingReview: 'nemotron-super-free' as ModelKey,
     jsonRepair: 'gpt-4.1-mini' as ModelKey,
   },
@@ -247,7 +247,7 @@ export const infrastructure = {
 
   /** N8n workflow generation defaults (used by automation-architect builders) */
   n8n: {
-    defaultModel: 'gemini-2.5-pro' as ModelKey,
-    reasoningModel: 'gemini-2.5-pro' as ModelKey,
+    defaultModel: 'gemini-2.5-flash' as ModelKey,
+    reasoningModel: 'gemini-2.5-flash' as ModelKey,
   },
 } as const;

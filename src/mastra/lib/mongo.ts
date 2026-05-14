@@ -122,6 +122,13 @@ export async function ensureIndexes(): Promise<void> {
     db.collection('background_tasks').createIndex({ ownerTaskId: 1, startedAt: -1 }),
     db.collection('background_tasks').createIndex({ status: 1, startedAt: -1 }),
     db.collection('background_tasks').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
+    // Native automation jobs
+    db.collection('automation_jobs').createIndex({ jobId: 1 }, { unique: true }),
+    db.collection('automation_jobs').createIndex({ automationId: 1, startedAt: -1 }),
+    db.collection('automation_jobs').createIndex({ targetAgentId: 1, status: 1, startedAt: -1 }),
+    db.collection('automation_jobs').createIndex({ returnToAgentId: 1, status: 1, startedAt: -1 }),
+    db.collection('automation_jobs').createIndex({ status: 1, lastHeartbeatAt: -1 }),
+    db.collection('automation_jobs').createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
     // Chef
     db.collection('chef_projects').createIndex({ id: 1 }, { unique: true }),
     db.collection('chef_projects').createIndex({ status: 1 }),

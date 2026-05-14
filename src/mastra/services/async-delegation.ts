@@ -18,6 +18,7 @@ import type { Agent } from '@mastra/core/agent';
 import { getDb } from '../lib/mongo.js';
 import { logAgentEvent } from '../lib/agent-event-log.js';
 import { generateCoding } from './coding-harness.js';
+import { generateAutomation } from './automation-harness.js';
 import { queuePendingMessage } from './pending-message-queue.js';
 import { AGENTIC_AGENTS_REPO } from '../workspaces/code-workspace.js';
 
@@ -35,6 +36,12 @@ export type DelegationRecord = {
   callerThreadId: string;
   /** Agent that should consume the pending result */
   callerAgentId?: string;
+  originAgentId?: string;
+  originThreadId?: string;
+  targetAgentId?: string;
+  targetThreadId?: string;
+  returnToAgentId?: string;
+  returnToThreadId?: string;
   status: DelegationStatus;
   result?: string;
   error?: string;
@@ -51,6 +58,12 @@ export type StartAsyncDelegationInput = {
   callerThreadId: string;
   /** Agent that should consume pending results; defaults to meta-agent for backward compatibility */
   callerAgentId?: string;
+  originAgentId?: string;
+  originThreadId?: string;
+  targetAgentId?: string;
+  targetThreadId?: string;
+  returnToAgentId?: string;
+  returnToThreadId?: string;
   repoPath?: string;
   timeoutMs?: number;
 };
@@ -70,8 +83,10 @@ export async function startAsyncDelegation(
   input: StartAsyncDelegationInput,
 ): Promise<{ delegationId: string }> {
   const delegationId = randomUUID();
-  const agentThreadId = `async-delegation-${delegationId}`;
+  const agentThreadId = input.targetThreadId ?? `async-delegation-${delegationId}`;
   const now = new Date();
+  const returnToAgentId = input.returnToAgentId ?? input.callerAgentId ?? 'meta-agent';
+  const returnToThreadId = input.returnToThreadId ?? input.callerThreadId;
 
   const record: DelegationRecord = {
     delegationId,
@@ -80,6 +95,12 @@ export async function startAsyncDelegation(
     agentThreadId,
     callerThreadId: input.callerThreadId,
     callerAgentId: input.callerAgentId ?? 'meta-agent',
+    originAgentId: input.originAgentId ?? input.callerAgentId ?? 'meta-agent',
+    originThreadId: input.originThreadId ?? input.callerThreadId,
+    targetAgentId: input.targetAgentId ?? input.agentId,
+    targetThreadId: agentThreadId,
+    returnToAgentId,
+    returnToThreadId,
     status: 'running',
     startedAt: now,
   };
@@ -142,15 +163,23 @@ async function executeDelegation(
 
   try {
     const delegatedPrompt = buildDelegatedPrompt(input);
-    const harnessResult = await generateCoding({
-      agent: input.agent,
-      agentId: input.agentId,
-      prompt: delegatedPrompt,
-      threadId: agentThreadId,
-      phase: 'chat',
-      repoPath: input.repoPath ?? AGENTIC_AGENTS_REPO,
-      timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-    });
+    const harnessResult = input.agentId === 'automationArchitect'
+      ? await generateAutomation({
+          agent: input.agent,
+          prompt: delegatedPrompt,
+          threadId: agentThreadId,
+          phase: 'chat',
+          timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+        })
+      : await generateCoding({
+          agent: input.agent,
+          agentId: input.agentId,
+          prompt: delegatedPrompt,
+          threadId: agentThreadId,
+          phase: 'chat',
+          repoPath: input.repoPath ?? AGENTIC_AGENTS_REPO,
+          timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+        });
 
     const responseText = harnessResult.outputPreview ?? '';
     const durationMs = Date.now() - start;
@@ -170,8 +199,8 @@ async function executeDelegation(
 
     // Queue result as pending message for meta-agent's thread
     await queuePendingMessage({
-      threadId: input.callerThreadId,
-      targetAgentId: input.callerAgentId ?? 'meta-agent',
+      threadId: input.returnToThreadId ?? input.callerThreadId,
+      targetAgentId: input.returnToAgentId ?? input.callerAgentId ?? 'meta-agent',
       source: 'background_task',
       content: [
         `## Async Delegation Result`,
@@ -187,6 +216,12 @@ async function executeDelegation(
         agentId: input.agentId,
         durationMs,
         type: 'async_delegation_result',
+        originAgentId: input.originAgentId ?? input.callerAgentId ?? 'meta-agent',
+        originThreadId: input.originThreadId ?? input.callerThreadId,
+        targetAgentId: input.targetAgentId ?? input.agentId,
+        targetThreadId: agentThreadId,
+        returnToAgentId: input.returnToAgentId ?? input.callerAgentId ?? 'meta-agent',
+        returnToThreadId: input.returnToThreadId ?? input.callerThreadId,
       },
     });
 
@@ -220,8 +255,8 @@ async function executeDelegation(
 
     // Queue error as pending message for meta-agent's thread
     await queuePendingMessage({
-      threadId: input.callerThreadId,
-      targetAgentId: input.callerAgentId ?? 'meta-agent',
+      threadId: input.returnToThreadId ?? input.callerThreadId,
+      targetAgentId: input.returnToAgentId ?? input.callerAgentId ?? 'meta-agent',
       source: 'background_task',
       content: [
         `## Async Delegation Failed`,
@@ -237,6 +272,12 @@ async function executeDelegation(
         durationMs,
         error: err.message,
         type: 'async_delegation_result',
+        originAgentId: input.originAgentId ?? input.callerAgentId ?? 'meta-agent',
+        originThreadId: input.originThreadId ?? input.callerThreadId,
+        targetAgentId: input.targetAgentId ?? input.agentId,
+        targetThreadId: agentThreadId,
+        returnToAgentId: input.returnToAgentId ?? input.callerAgentId ?? 'meta-agent',
+        returnToThreadId: input.returnToThreadId ?? input.callerThreadId,
       },
     });
 
@@ -256,9 +297,16 @@ async function executeDelegation(
 
 function buildDelegatedPrompt(input: StartAsyncDelegationInput): string {
   const callerAgentId = input.callerAgentId ?? 'meta-agent';
+  const returnToAgentId = input.returnToAgentId ?? callerAgentId;
+  const returnToThreadId = input.returnToThreadId ?? input.callerThreadId;
   return [
     `SYSTEM DELEGATION CONTEXT: This task was delegated asynchronously by ${callerAgentId}.`,
-    `Caller thread id for pending results: ${input.callerThreadId}.`,
+    `originAgentId: ${input.originAgentId ?? callerAgentId}`,
+    `originThreadId: ${input.originThreadId ?? input.callerThreadId}`,
+    `targetAgentId: ${input.targetAgentId ?? input.agentId}`,
+    `targetThreadId: ${input.targetThreadId ?? '(assigned by delegation service)'}`,
+    `returnToAgentId: ${returnToAgentId}`,
+    `returnToThreadId: ${returnToThreadId}`,
     'If you start durable background work, target completion notifications back to the caller when the result is needed after your response.',
     '',
     input.prompt,

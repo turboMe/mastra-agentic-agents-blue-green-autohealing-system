@@ -165,6 +165,19 @@ async function main() {
     { expireAfterSeconds: 0 },
   );
 
+  // ── automation jobs (Sprint C native Golden Path jobs) ───────────────────
+  console.log('🤖 automation_jobs...');
+  const automationJobs = db.collection('automation_jobs');
+  await automationJobs.createIndex({ jobId: 1 }, { unique: true });
+  await automationJobs.createIndex({ automationId: 1, startedAt: -1 });
+  await automationJobs.createIndex({ targetAgentId: 1, status: 1, startedAt: -1 });
+  await automationJobs.createIndex({ returnToAgentId: 1, status: 1, startedAt: -1 });
+  await automationJobs.createIndex({ status: 1, lastHeartbeatAt: -1 });
+  await automationJobs.createIndex(
+    { expiresAt: 1 },
+    { expireAfterSeconds: 0 },
+  );
+
   // ── pending user messages (Harness — soft interrupts) ───────────────────
   console.log('💬 pending_user_messages...');
   const pendingMessages = db.collection('pending_user_messages');

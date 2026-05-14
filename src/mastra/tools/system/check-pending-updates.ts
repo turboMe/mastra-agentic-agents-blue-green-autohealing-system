@@ -15,7 +15,7 @@ import { getDb } from '../../lib/mongo.js';
 type PendingDoc = {
   id: string;
   threadId?: string;
-  targetAgentId?: string;
+  targetAgentId?: string | null;
   source: string;
   content: string;
   urgent: boolean;
@@ -65,7 +65,7 @@ export const checkPendingUpdatesTool = createTool({
         .find({
           ...scopedQuery,
           status: 'pending',
-          source: 'background_task',
+          source: { $in: ['background_task', 'automation_job'] },
           expiresAt: { $gt: now },
         })
         .sort({ urgent: -1, createdAt: 1 })
