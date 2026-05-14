@@ -9,9 +9,9 @@ estimatedTokens: 3000
 outputFormat: json
 tags: [notebooklm, notebook, crud, knowledge-management]
 version: 1
-success_rate: null
-total_uses: 0
-last_used: null
+success_rate: 1
+total_uses: 1
+last_used: 2026-05-14
 ---
 # NotebookLM — Notebook Management
 

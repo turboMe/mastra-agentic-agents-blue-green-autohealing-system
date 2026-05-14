@@ -8,6 +8,7 @@ import { randomUUID } from 'crypto';
 import { logAgentEvent } from '../../lib/agent-event-log.js';
 import { generateCoding } from '../../services/coding-harness.js';
 import { generateAutomation } from '../../services/automation-harness.js';
+import { generateKnowledge } from '../../services/knowledge-harness.js';
 import { startAsyncDelegation } from '../../services/async-delegation.js';
 import { AGENTIC_AGENTS_REPO } from '../../workspaces/code-workspace.js';
 
@@ -28,6 +29,7 @@ const AGENT_IDS: Record<string, string> = {
   salesAgent: 'salesAgent',
   analyticsAgent: 'analyticsAgent',
   automationArchitect: 'automationArchitect',
+  knowledgeAgent: 'knowledgeAgent',
   crmAgent: 'crmAgent',
   codingAgent: 'codingAgent',
 } as const;
@@ -45,6 +47,7 @@ Agents and their domains:
 - salesAgent      → CRM pipeline, proposals, onboarding, meeting scheduling (has CRM + Calendar + Gmail tools)
 - analyticsAgent  → KPI reports, ROI, anomalies, trend analysis (has n8n monitoring + shared memory tools)
 - automationArchitect → n8n workflow design, Pattern RAG, risk scoring, deploy with guardrails (has full n8n + Pattern RAG tools)
+- knowledgeAgent  → Google NotebookLM research, notebook/source operations, cross-notebook Q&A, Studio artifacts (has NotebookLM MCP tools)
 - crmAgent        → quick lead lookup only, runs on local model (read-only CRM, fast)
 - codingAgent     → local repo work: read/search files, prepare patches, run safe verification commands (workspace tools with approval)
 
@@ -56,24 +59,24 @@ taskDescription should include:
 
 CAN be called multiple times in parallel when tasks are independent.`,
   inputSchema: z.object({
-    targetAgent: z.enum(['marketingAgent', 'salesAgent', 'analyticsAgent', 'automationArchitect', 'crmAgent', 'codingAgent'])
+    targetAgent: z.enum(['marketingAgent', 'salesAgent', 'analyticsAgent', 'automationArchitect', 'knowledgeAgent', 'crmAgent', 'codingAgent'])
       .describe('Nazwa sub-agenta do którego delegujemy zadanie'),
     taskDescription: z.string().min(20).describe('Full task brief IN ENGLISH: GOAL + CONTEXT + OUTPUT FORMAT + CONSTRAINTS. The more explicit, the better the result from the sub-agent.'),
     threadId: z.string().optional().describe('ThreadId z Mastra Memory — przekaż gdy chcesz zachować ciągłość rozmowy z sub-agentem'),
     resourceId: z.string().optional().describe('ResourceId (np. userId) do segregacji pamięci'),
     async: z.boolean().optional().default(false).describe(
       'If true, delegate in background and return immediately. Use for long-running tasks like builds, tests, deploys, or scrapers. ' +
-      'The result will be delivered automatically on the next user interaction. Supported for codingAgent and automationArchitect.',
+      'The result will be delivered automatically on the next user interaction. Supported for codingAgent, automationArchitect, and knowledgeAgent.',
     ),
     callerThreadId: z.string().optional().describe(
       'Your own threadId — required when async=true so the result can be delivered back to you.',
     ),
-    callerAgentId: z.enum(['meta-agent', 'automationArchitect']).optional().default('meta-agent').describe(
+    callerAgentId: z.enum(['meta-agent', 'automationArchitect', 'knowledgeAgent']).optional().default('meta-agent').describe(
       'Agent that should receive async pending results. Use automationArchitect when the architect delegates subtasks.',
     ),
     originAgentId: z.string().optional().describe('Original agent that initiated the delegation chain.'),
     originThreadId: z.string().optional().describe('Original thread that initiated the delegation chain.'),
-    returnToAgentId: z.enum(['meta-agent', 'automationArchitect', 'codingAgent']).optional().describe(
+    returnToAgentId: z.enum(['meta-agent', 'automationArchitect', 'codingAgent', 'knowledgeAgent']).optional().describe(
       'Agent that should receive async results. Defaults to callerAgentId.',
     ),
     returnToThreadId: z.string().optional().describe('Thread that should receive async results. Defaults to callerThreadId.'),
@@ -121,6 +124,14 @@ CAN be called multiple times in parallel when tasks are independent.`,
         return {
           success: false,
           result: 'automationArchitect cannot delegate recursively to itself.',
+          agentUsed: context.targetAgent,
+          error: 'recursive_delegation_blocked',
+        };
+      }
+      if (callerAgentId === 'knowledgeAgent' && context.targetAgent === 'knowledgeAgent') {
+        return {
+          success: false,
+          result: 'knowledgeAgent cannot delegate recursively to itself.',
           agentUsed: context.targetAgent,
           error: 'recursive_delegation_blocked',
         };
@@ -247,6 +258,60 @@ CAN be called multiple times in parallel when tasks are independent.`,
               'automation_contract_missing: automationArchitect must return a terminal status and automationId/workflowId when deploy/test succeeds.',
           };
         }
+
+        return {
+          success: true,
+          result: responseText,
+          agentUsed: context.targetAgent,
+        };
+      }
+
+      // ── Route knowledgeAgent through harness for NotebookLM precontext + memory ──
+      if (context.targetAgent === 'knowledgeAgent') {
+        if (context.async) {
+          const callerThread = context.callerThreadId || context.threadId || `meta-${randomUUID()}`;
+          const { delegationId } = await startAsyncDelegation({
+            agent,
+            agentId: 'knowledgeAgent',
+            prompt: context.taskDescription,
+            callerThreadId: callerThread,
+            callerAgentId,
+            originAgentId,
+            originThreadId,
+            targetAgentId: 'knowledgeAgent',
+            targetThreadId: `async-delegation-${randomUUID()}`,
+            returnToAgentId,
+            returnToThreadId: returnToThreadId ?? callerThread,
+            timeoutMs: 300_000,
+          });
+
+          return {
+            success: true,
+            result: `Async NotebookLM delegation started. delegationId: ${delegationId}. ` +
+              `The knowledge agent is working in the background. ` +
+              `Results will be delivered automatically on the next user interaction.`,
+            agentUsed: context.targetAgent,
+          };
+        }
+
+        const harnessResult = await generateKnowledge({
+          agent,
+          prompt: context.taskDescription,
+          threadId: delegationThreadId,
+          phase: 'chat',
+          timeoutMs: 300_000,
+        });
+
+        const responseText = harnessResult.outputPreview ?? '';
+
+        logAgentEvent({
+          type: 'delegation',
+          agentId: context.targetAgent,
+          status: 'success',
+          input: context.taskDescription.slice(0, 500),
+          output: responseText.slice(0, 500),
+          durationMs: Date.now() - start,
+        });
 
         return {
           success: true,

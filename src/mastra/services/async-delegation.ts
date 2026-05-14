@@ -19,6 +19,7 @@ import { getDb } from '../lib/mongo.js';
 import { logAgentEvent } from '../lib/agent-event-log.js';
 import { generateCoding } from './coding-harness.js';
 import { generateAutomation } from './automation-harness.js';
+import { generateKnowledge } from './knowledge-harness.js';
 import { queuePendingMessage } from './pending-message-queue.js';
 import { AGENTIC_AGENTS_REPO } from '../workspaces/code-workspace.js';
 
@@ -171,7 +172,15 @@ async function executeDelegation(
           phase: 'chat',
           timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         })
-      : await generateCoding({
+      : input.agentId === 'knowledgeAgent'
+        ? await generateKnowledge({
+            agent: input.agent,
+            prompt: delegatedPrompt,
+            threadId: agentThreadId,
+            phase: 'chat',
+            timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+          })
+        : await generateCoding({
           agent: input.agent,
           agentId: input.agentId,
           prompt: delegatedPrompt,

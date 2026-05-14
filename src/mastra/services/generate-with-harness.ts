@@ -32,6 +32,12 @@ export type HarnessPhase =
   | 'test'
   | 'repair'
   | 'activate'
+  // Knowledge/NotebookLM phases
+  | 'list'
+  | 'source'
+  | 'query'
+  | 'research'
+  | 'studio'
   // Shared
   | 'chat';
 

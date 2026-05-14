@@ -30,6 +30,7 @@ import {
 } from '../agents/marketing-agent';
 import { researcherAgent } from '../agents/researcher-agent.js';
 import { knowledgeAgent } from '../agents/knowledge-agent.js';
+import { generateKnowledge } from '../services/knowledge-harness.js';
 import { workflowModels } from '../config/workflow-models.js';
 import { getDb } from '../lib/mongo';
 import { GmailService } from '../tools/google/gmail.js';
@@ -529,8 +530,18 @@ const discoverViaNlmStep = createStep({
 
       try {
         console.log(`[producer-hunt:${taskId}] knowledge-agent: tworzę Discovery Notebook (${sources.length} źródeł)...`);
-        const res = await knowledgeAgent.generate([{ role: 'user', content: instruction }]);
-        const parsed = tryParseJson<unknown>(res.text);
+        const res = await generateKnowledge({
+          agent: knowledgeAgent,
+          prompt: instruction,
+          taskId,
+          threadId: `producer-hunt-knowledge-${taskId}`,
+          phase: 'research',
+          timeoutMs: 300_000,
+        });
+        const responseText = typeof (res.response as any)?.text === 'string'
+          ? (res.response as any).text
+          : res.outputPreview;
+        const parsed = tryParseJson<unknown>(responseText);
         const validation = nlmDiscoveryOutputSchema.safeParse(parsed);
         if (validation.success) {
           nlmStatus = validation.data.status ?? 'completed';

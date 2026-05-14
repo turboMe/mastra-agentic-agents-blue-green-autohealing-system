@@ -147,3 +147,6 @@ export const pendingUpdatesProcessor = new PendingUpdatesProcessor();
 export const automationPendingUpdatesProcessor = new PendingUpdatesProcessor({
   agentId: 'automationArchitect',
 });
+export const knowledgePendingUpdatesProcessor = new PendingUpdatesProcessor({
+  agentId: 'knowledgeAgent',
+});

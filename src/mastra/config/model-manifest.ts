@@ -174,7 +174,7 @@ export const agentModels = {
   weatherAgent: 'gemma4-26b' as ModelKey,
   automationArchitect: 'qwen3-coder-30b' as ModelKey,
   marketingAgent: 'gemma4-26b' as ModelKey,
-  knowledgeAgent: 'gemma4-26b' as ModelKey,   // NotebookLM ops — fast function calling for 35 MCP tools
+  knowledgeAgent: 'gemini-3.1-flash-lite-preview' as ModelKey,   // NotebookLM ops — reliable tool calling for MCP tools
   researcherAgent: 'gemini-3.1-flash-lite-preview' as ModelKey,  // PSEV web research — browser + Tavily deep scraping
 } as const;
 
