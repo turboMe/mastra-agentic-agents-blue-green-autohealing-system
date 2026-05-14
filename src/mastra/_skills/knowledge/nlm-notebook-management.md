@@ -3,7 +3,7 @@ name: nlm-notebook-management
 category: knowledge
 description: NotebookLM notebook CRUD operations — create, list, get, describe, rename, delete notebooks. Also covers notebook querying (one-shot Q&A with sources).
 keywords: [notebooklm, notebook, create, list, delete, query, describe, rename, knowledge]
-allowedTools: [mcp_notebooklm_notebook_create, mcp_notebooklm_notebook_list, mcp_notebooklm_notebook_get, mcp_notebooklm_notebook_describe, mcp_notebooklm_notebook_query, mcp_notebooklm_notebook_rename, mcp_notebooklm_notebook_delete]
+allowedTools: [notebook_create, notebook_list, notebook_get, notebook_describe, notebook_query, notebook_rename, notebook_delete]
 minComplexity: simple
 estimatedTokens: 3000
 outputFormat: json

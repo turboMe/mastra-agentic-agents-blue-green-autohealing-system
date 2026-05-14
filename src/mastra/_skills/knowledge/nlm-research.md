@@ -3,7 +3,7 @@ name: nlm-research
 category: knowledge
 description: NotebookLM deep research — discover new sources from web or Google Drive. Start research, monitor progress, import discovered sources into notebook.
 keywords: [notebooklm, research, discover, web search, drive search, deep research, fast research, import]
-allowedTools: [mcp_notebooklm_research_start, mcp_notebooklm_research_status, mcp_notebooklm_research_import]
+allowedTools: [research_start, research_status, research_import]
 minComplexity: moderate
 estimatedTokens: 3000
 outputFormat: json

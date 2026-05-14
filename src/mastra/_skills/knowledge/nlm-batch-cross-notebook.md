@@ -3,7 +3,7 @@ name: nlm-batch-cross-notebook
 category: knowledge
 description: NotebookLM batch operations and cross-notebook queries — query multiple notebooks, add sources across notebooks, batch create/delete, generate artifacts in batch. Tags for smart selection.
 keywords: [notebooklm, batch, cross-notebook, multi-notebook, query, tag, smart-select, aggregate]
-allowedTools: [mcp_notebooklm_batch, mcp_notebooklm_cross_notebook_query, mcp_notebooklm_tag, mcp_notebooklm_pipeline]
+allowedTools: [batch, cross_notebook_query, tag, pipeline]
 minComplexity: moderate
 estimatedTokens: 3000
 outputFormat: json

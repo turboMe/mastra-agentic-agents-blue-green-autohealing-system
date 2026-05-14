@@ -3,7 +3,7 @@ name: nlm-source-management
 category: knowledge
 description: NotebookLM source operations — add URLs, text, Drive docs, files to notebooks. List, describe, get content, rename, sync Drive sources, delete sources.
 keywords: [notebooklm, source, add, url, text, drive, file, upload, sync, delete, content]
-allowedTools: [mcp_notebooklm_source_add, mcp_notebooklm_source_list_drive, mcp_notebooklm_source_describe, mcp_notebooklm_source_get_content, mcp_notebooklm_source_rename, mcp_notebooklm_source_sync_drive, mcp_notebooklm_source_delete]
+allowedTools: [source_add, source_list_drive, source_describe, source_get_content, source_rename, source_sync_drive, source_delete]
 minComplexity: simple
 estimatedTokens: 4000
 outputFormat: json

@@ -3,7 +3,7 @@ name: nlm-studio-content-generation
 category: knowledge
 description: NotebookLM studio — generate podcasts (audio), videos, reports, quizzes, flashcards, mind maps, slides, infographics, data tables from notebook sources. Check status, download, export artifacts.
 keywords: [notebooklm, studio, podcast, audio, video, report, quiz, flashcards, mind map, slides, infographic, data table, generate, artifact]
-allowedTools: [mcp_notebooklm_studio_create, mcp_notebooklm_studio_status, mcp_notebooklm_studio_delete, mcp_notebooklm_studio_revise, mcp_notebooklm_download_artifact, mcp_notebooklm_export_artifact]
+allowedTools: [studio_create, studio_status, studio_delete, studio_revise, download_artifact, export_artifact]
 minComplexity: moderate
 estimatedTokens: 5000
 outputFormat: json

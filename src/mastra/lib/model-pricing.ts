@@ -6,7 +6,8 @@
  * `model_pricing` with effectiveFrom/effectiveTo for historical accuracy.
  *
  * Local models (Ollama) are priced at 0 — no API cost.
- * Override via env: MODEL_PRICING_OVERRIDE_JSON='{"my-model":{"input":1.0,"output":2.0}}'
+ * Override via env:
+ * MODEL_PRICING_OVERRIDE_JSON='{"my-model":{"inputPer1M":1.0,"outputPer1M":2.0}}'
  */
 
 export interface ModelPrice {
@@ -18,41 +19,127 @@ export interface ModelPrice {
   provider: 'anthropic' | 'openai' | 'google' | 'openrouter' | 'ollama' | 'unknown';
 }
 
+const FREE_OPENROUTER_PRICE: ModelPrice = { inputPer1M: 0, outputPer1M: 0, provider: 'openrouter' };
+const FREE_OLLAMA_PRICE: ModelPrice = { inputPer1M: 0, outputPer1M: 0, provider: 'ollama' };
+
 /**
  * Default pricing as of 2026-05.
  * Sources: https://www.anthropic.com/pricing, https://openai.com/api/pricing,
- * https://ai.google.dev/pricing, https://openrouter.ai/models
+ * https://ai.google.dev/gemini-api/docs/pricing, https://openrouter.ai/models
+ *
+ * Notes:
+ * - This tracks standard input/output token rates only. Cached-token discounts,
+ *   batch/flex/priority tiers, long-context uplifts, and tool-call fees are not
+ *   represented by the current dashboard schema.
+ * - `gpt-5.3-mini` is a local manifest alias; OpenAI's current public mini tier
+ *   is `gpt-5.4-mini`, so it is priced against that mini tier until the alias is
+ *   retired or OpenAI publishes a distinct API rate for it.
  */
 export const DEFAULT_MODEL_PRICING: Record<string, ModelPrice> = {
   // ── Anthropic Claude ──────────────────────────────────────────────
-  'claude-opus-4-7': { inputPer1M: 15, outputPer1M: 75, provider: 'anthropic' },
+  'claude-opus-4-7': { inputPer1M: 5, outputPer1M: 25, provider: 'anthropic' },
+  'claude-opus-4.7': { inputPer1M: 5, outputPer1M: 25, provider: 'anthropic' },
+  'claude-opus-4-6': { inputPer1M: 5, outputPer1M: 25, provider: 'anthropic' },
+  'claude-opus-4.6': { inputPer1M: 5, outputPer1M: 25, provider: 'anthropic' },
+  'claude-opus-4-5': { inputPer1M: 5, outputPer1M: 25, provider: 'anthropic' },
+  'claude-opus-4.5': { inputPer1M: 5, outputPer1M: 25, provider: 'anthropic' },
+  'claude-opus-4-1': { inputPer1M: 15, outputPer1M: 75, provider: 'anthropic' },
+  'claude-opus-4-1-20250805': { inputPer1M: 15, outputPer1M: 75, provider: 'anthropic' },
+  'claude-opus-4': { inputPer1M: 15, outputPer1M: 75, provider: 'anthropic' },
   'claude-sonnet-4-6': { inputPer1M: 3, outputPer1M: 15, provider: 'anthropic' },
+  'claude-sonnet-4.6': { inputPer1M: 3, outputPer1M: 15, provider: 'anthropic' },
+  'claude-sonnet-4-5': { inputPer1M: 3, outputPer1M: 15, provider: 'anthropic' },
+  'claude-sonnet-4.5': { inputPer1M: 3, outputPer1M: 15, provider: 'anthropic' },
+  'claude-sonnet-4': { inputPer1M: 3, outputPer1M: 15, provider: 'anthropic' },
+  'claude-sonnet-4-20250514': { inputPer1M: 3, outputPer1M: 15, provider: 'anthropic' },
+  'claude-3-7-sonnet-latest': { inputPer1M: 3, outputPer1M: 15, provider: 'anthropic' },
+  'claude-3-7-sonnet-20250219': { inputPer1M: 3, outputPer1M: 15, provider: 'anthropic' },
+  'claude-3-5-sonnet-latest': { inputPer1M: 3, outputPer1M: 15, provider: 'anthropic' },
+  'claude-3-5-sonnet-20241022': { inputPer1M: 3, outputPer1M: 15, provider: 'anthropic' },
   'claude-haiku-4-5-20251001': { inputPer1M: 1, outputPer1M: 5, provider: 'anthropic' },
   'claude-haiku-4-5': { inputPer1M: 1, outputPer1M: 5, provider: 'anthropic' },
+  'claude-haiku-4.5': { inputPer1M: 1, outputPer1M: 5, provider: 'anthropic' },
+  'claude-3-5-haiku-latest': { inputPer1M: 0.8, outputPer1M: 4, provider: 'anthropic' },
+  'claude-3-5-haiku-20241022': { inputPer1M: 0.8, outputPer1M: 4, provider: 'anthropic' },
+  'claude-3-haiku-20240307': { inputPer1M: 0.25, outputPer1M: 1.25, provider: 'anthropic' },
 
   // ── OpenAI ────────────────────────────────────────────────────────
+  'gpt-5.5': { inputPer1M: 5, outputPer1M: 30, provider: 'openai' },
+  'gpt-5.4': { inputPer1M: 2.5, outputPer1M: 15, provider: 'openai' },
+  'gpt-5.4-mini': { inputPer1M: 0.75, outputPer1M: 4.5, provider: 'openai' },
+  'gpt-5.4-nano': { inputPer1M: 0.2, outputPer1M: 1.25, provider: 'openai' },
+  'gpt-5.3-chat-latest': { inputPer1M: 1.75, outputPer1M: 14, provider: 'openai' },
+  'gpt-5.3-codex': { inputPer1M: 1.75, outputPer1M: 14, provider: 'openai' },
+  'gpt-5.3-mini': { inputPer1M: 0.75, outputPer1M: 4.5, provider: 'openai' },
+  'gpt-5.2': { inputPer1M: 1.75, outputPer1M: 14, provider: 'openai' },
+  'gpt-5.2-chat-latest': { inputPer1M: 1.75, outputPer1M: 14, provider: 'openai' },
+  'gpt-5.2-codex': { inputPer1M: 1.75, outputPer1M: 14, provider: 'openai' },
+  'gpt-5.1': { inputPer1M: 1.25, outputPer1M: 10, provider: 'openai' },
+  'gpt-5.1-chat-latest': { inputPer1M: 1.25, outputPer1M: 10, provider: 'openai' },
+  'gpt-5.1-codex': { inputPer1M: 1.25, outputPer1M: 10, provider: 'openai' },
+  'gpt-5': { inputPer1M: 1.25, outputPer1M: 10, provider: 'openai' },
+  'gpt-5-mini': { inputPer1M: 0.25, outputPer1M: 2, provider: 'openai' },
+  'gpt-5-nano': { inputPer1M: 0.05, outputPer1M: 0.4, provider: 'openai' },
+  'gpt-4.1': { inputPer1M: 2, outputPer1M: 8, provider: 'openai' },
+  'gpt-4.1-mini': { inputPer1M: 0.4, outputPer1M: 1.6, provider: 'openai' },
+  'gpt-4.1-nano': { inputPer1M: 0.1, outputPer1M: 0.4, provider: 'openai' },
   'gpt-4o': { inputPer1M: 2.5, outputPer1M: 10, provider: 'openai' },
   'gpt-4o-mini': { inputPer1M: 0.15, outputPer1M: 0.6, provider: 'openai' },
   'gpt-4-turbo': { inputPer1M: 10, outputPer1M: 30, provider: 'openai' },
+  'o3': { inputPer1M: 2, outputPer1M: 8, provider: 'openai' },
+  'o3-mini': { inputPer1M: 1.1, outputPer1M: 4.4, provider: 'openai' },
+  'o4-mini': { inputPer1M: 1.1, outputPer1M: 4.4, provider: 'openai' },
   'o1': { inputPer1M: 15, outputPer1M: 60, provider: 'openai' },
   'o1-mini': { inputPer1M: 3, outputPer1M: 12, provider: 'openai' },
 
   // ── Google Gemini ─────────────────────────────────────────────────
-  'gemini-2.5-pro': { inputPer1M: 1.25, outputPer1M: 5, provider: 'google' },
-  'gemini-2.5-flash': { inputPer1M: 0.075, outputPer1M: 0.3, provider: 'google' },
-  'google/gemini-2.5-pro': { inputPer1M: 1.25, outputPer1M: 5, provider: 'google' },
-  'google/gemini-2.5-flash': { inputPer1M: 0.075, outputPer1M: 0.3, provider: 'google' },
+  'gemini-3.1-pro-preview': { inputPer1M: 2, outputPer1M: 12, provider: 'google' },
+  'gemini-3.1-flash-lite': { inputPer1M: 0.25, outputPer1M: 1.5, provider: 'google' },
+  'gemini-3.1-flash-lite-preview': { inputPer1M: 0.25, outputPer1M: 1.5, provider: 'google' },
+  'gemini-3-flash-preview': { inputPer1M: 0.5, outputPer1M: 3, provider: 'google' },
+  'gemini-3.1-flash-preview': { inputPer1M: 0.5, outputPer1M: 3, provider: 'google' },
+  'gemini-2.5-pro': { inputPer1M: 1.25, outputPer1M: 10, provider: 'google' },
+  'gemini-2.5-flash': { inputPer1M: 0.3, outputPer1M: 2.5, provider: 'google' },
+  'gemini-2.5-flash-lite': { inputPer1M: 0.1, outputPer1M: 0.4, provider: 'google' },
+  'gemini-2.5-flash-lite-preview': { inputPer1M: 0.1, outputPer1M: 0.4, provider: 'google' },
+  'gemini-2.0-flash': { inputPer1M: 0.1, outputPer1M: 0.4, provider: 'google' },
+  'gemini-2.0-flash-lite': { inputPer1M: 0.075, outputPer1M: 0.3, provider: 'google' },
 
   // ── OpenRouter free tier (cost = 0) ───────────────────────────────
   // Free models are subject to rate limits but have no per-token cost
-  'openrouter/auto': { inputPer1M: 0, outputPer1M: 0, provider: 'openrouter' },
+  'openrouter/auto': FREE_OPENROUTER_PRICE,
+  'nemotron-3-super-120b-a12b:free': FREE_OPENROUTER_PRICE,
+  'nvidia/nemotron-3-super-120b-a12b:free': FREE_OPENROUTER_PRICE,
+  'nemotron-3-nano-30b-a3b:free': FREE_OPENROUTER_PRICE,
+  'nvidia/nemotron-3-nano-30b-a3b:free': FREE_OPENROUTER_PRICE,
+  'laguna-m.1:free': FREE_OPENROUTER_PRICE,
+  'poolside/laguna-m.1:free': FREE_OPENROUTER_PRICE,
+  'ring-2.6-1t:free': FREE_OPENROUTER_PRICE,
+  'inclusionai/ring-2.6-1t:free': FREE_OPENROUTER_PRICE,
+  'minimax-m2.5:free': FREE_OPENROUTER_PRICE,
+  'minimax/minimax-m2.5:free': FREE_OPENROUTER_PRICE,
+  'glm-4.5-air:free': FREE_OPENROUTER_PRICE,
+  'z-ai/glm-4.5-air:free': FREE_OPENROUTER_PRICE,
+  'gpt-oss-120b:free': FREE_OPENROUTER_PRICE,
+  'openai/gpt-oss-120b:free': FREE_OPENROUTER_PRICE,
+  'gpt-oss-20b:free': FREE_OPENROUTER_PRICE,
+  'openai/gpt-oss-20b:free': FREE_OPENROUTER_PRICE,
 
   // ── Ollama local models (cost = 0, runs on local GPU) ─────────────
-  'qwen3:4b': { inputPer1M: 0, outputPer1M: 0, provider: 'ollama' },
-  'qwen3:8b': { inputPer1M: 0, outputPer1M: 0, provider: 'ollama' },
-  'qwen3:14b': { inputPer1M: 0, outputPer1M: 0, provider: 'ollama' },
-  'llama3.1:8b': { inputPer1M: 0, outputPer1M: 0, provider: 'ollama' },
-  'llama3.1:70b': { inputPer1M: 0, outputPer1M: 0, provider: 'ollama' },
+  'qwen3:1.7b': FREE_OLLAMA_PRICE,
+  'qwen3:4b': FREE_OLLAMA_PRICE,
+  'qwen3:8b': FREE_OLLAMA_PRICE,
+  'qwen3:14b': FREE_OLLAMA_PRICE,
+  'qwen3-coder:30b': FREE_OLLAMA_PRICE,
+  'huihui_ai/qwen3.5-abliterated:9b': FREE_OLLAMA_PRICE,
+  'gemma3:4b': FREE_OLLAMA_PRICE,
+  'gemma4:e4b': FREE_OLLAMA_PRICE,
+  'gemma4:26b': FREE_OLLAMA_PRICE,
+  'phi4-reasoning:14b': FREE_OLLAMA_PRICE,
+  'magistral:24b': FREE_OLLAMA_PRICE,
+  'llama3.1:8b': FREE_OLLAMA_PRICE,
+  'llama3.1:70b': FREE_OLLAMA_PRICE,
+  'bge-m3': FREE_OLLAMA_PRICE,
 };
 
 let _pricingCache: Record<string, ModelPrice> | null = null;
@@ -93,17 +180,55 @@ function loadPricing(): Record<string, ModelPrice> {
  */
 export function getModelPricing(model: string): ModelPrice {
   const pricing = loadPricing();
+  const candidates = getModelCandidates(model);
 
-  if (pricing[model]) return pricing[model]!;
+  for (const candidate of candidates) {
+    if (pricing[candidate]) return pricing[candidate]!;
+  }
 
-  // Try fuzzy match on provider prefix (e.g. "anthropic/claude-sonnet-4-6")
-  const slash = model.indexOf('/');
-  if (slash > 0) {
-    const tail = model.slice(slash + 1);
-    if (pricing[tail]) return pricing[tail]!;
+  for (const candidate of candidates) {
+    const match = findSnapshotBase(candidate, pricing);
+    if (match) return match;
+  }
+
+  if (candidates.some(candidate => candidate.endsWith(':free'))) {
+    return FREE_OPENROUTER_PRICE;
+  }
+
+  if (model.startsWith('ollama/') || model.startsWith('ollama/local/')) {
+    return FREE_OLLAMA_PRICE;
   }
 
   return { inputPer1M: 0, outputPer1M: 0, provider: 'unknown' };
+}
+
+function getModelCandidates(model: string): string[] {
+  const trimmed = model.trim();
+  const candidates = new Set<string>([trimmed]);
+  const slash = trimmed.indexOf('/');
+
+  if (slash > 0) {
+    candidates.add(trimmed.slice(slash + 1));
+  }
+
+  const lastSlash = trimmed.lastIndexOf('/');
+  if (lastSlash > 0) {
+    candidates.add(trimmed.slice(lastSlash + 1));
+  }
+
+  if (trimmed.startsWith('ollama/local/')) {
+    candidates.add(trimmed.slice('ollama/local/'.length));
+  }
+
+  return Array.from(candidates).filter(Boolean);
+}
+
+function findSnapshotBase(model: string, pricing: Record<string, ModelPrice>): ModelPrice | undefined {
+  const key = Object.keys(pricing)
+    .filter(k => model.startsWith(`${k}-`))
+    .sort((a, b) => b.length - a.length)[0];
+
+  return key ? pricing[key] : undefined;
 }
 
 /**

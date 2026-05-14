@@ -3,7 +3,7 @@ name: nlm-auth-and-error-recovery
 category: knowledge
 description: NotebookLM authentication, session management, error recovery, and rate limiting. Covers login, token refresh, profile switching, re-auth on failure, retry with backoff, and all known error codes with solutions.
 keywords: [notebooklm, auth, authentication, login, session, cookies, error, recovery, rate limit, retry, refresh, profile]
-allowedTools: [mcp_notebooklm_refresh_auth, mcp_notebooklm_save_auth_tokens, mcp_notebooklm_server_info]
+allowedTools: [refresh_auth, save_auth_tokens, server_info]
 minComplexity: simple
 estimatedTokens: 3000
 outputFormat: text

@@ -45,10 +45,12 @@ export const knowledgeAgent = new Agent({
   instructions: knowledgeInstructions,
   model: resolveModelId(agentModels.knowledgeAgent),
   tools: {
-    // 35 NotebookLM MCP tools (dynamic)
+    // NotebookLM MCP tools (dynamic). These keys are already the exact
+    // callable names exposed by the MCP server, e.g. notebook_list/source_add.
     ...nlmTools,
-    // Skill retrieval (on-demand NLM procedures from _skills/knowledge/)
-    skillSearchTool,
-    skillLoadTool,
+    // Stable snake_case aliases. Mastra exposes tool calls by the object key,
+    // so camelCase keys here make the prompt's `skill_search` contract fail.
+    skill_search: skillSearchTool,
+    skill_load: skillLoadTool,
   },
 });

@@ -3,7 +3,7 @@ name: nlm-sharing-notes-chat
 category: knowledge
 description: NotebookLM sharing, notes management, and chat configuration — invite collaborators, public links, create/update notes, configure chat behavior and response length.
 keywords: [notebooklm, share, invite, public link, notes, chat, configure, response length, collaborator]
-allowedTools: [mcp_notebooklm_notebook_share_status, mcp_notebooklm_notebook_share_public, mcp_notebooklm_notebook_share_invite, mcp_notebooklm_notebook_share_batch, mcp_notebooklm_note, mcp_notebooklm_chat_configure]
+allowedTools: [notebook_share_status, notebook_share_public, notebook_share_invite, notebook_share_batch, note, chat_configure]
 minComplexity: simple
 estimatedTokens: 2500
 outputFormat: json

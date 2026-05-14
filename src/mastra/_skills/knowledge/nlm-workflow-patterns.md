@@ -3,7 +3,7 @@ name: nlm-workflow-patterns
 category: knowledge
 description: NotebookLM proven workflow patterns — Research to Podcast pipeline, Quick Content Ingestion, Study Materials Generation, Drive Document Workflow, Batch & Cross-Notebook Workflow. Step-by-step sequences for common multi-tool tasks.
 keywords: [notebooklm, workflow, pattern, pipeline, research, podcast, ingest, study, drive, batch, cross-notebook, sequence]
-allowedTools: [mcp_notebooklm_notebook_create, mcp_notebooklm_source_add, mcp_notebooklm_research_start, mcp_notebooklm_research_status, mcp_notebooklm_research_import, mcp_notebooklm_studio_create, mcp_notebooklm_studio_status, mcp_notebooklm_notebook_query, mcp_notebooklm_batch, mcp_notebooklm_cross_notebook_query, mcp_notebooklm_tag, mcp_notebooklm_source_list_drive, mcp_notebooklm_source_sync_drive, mcp_notebooklm_download_artifact]
+allowedTools: [notebook_create, source_add, research_start, research_status, research_import, studio_create, studio_status, notebook_query, batch, cross_notebook_query, tag, source_list_drive, source_sync_drive, download_artifact]
 minComplexity: moderate
 estimatedTokens: 4000
 outputFormat: json
