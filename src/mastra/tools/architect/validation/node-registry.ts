@@ -8,6 +8,7 @@ export const KNOWN_NODE_TYPES: Record<string, number[]> = {
   'n8n-nodes-base.emailReadImap': [1, 2],
   'n8n-nodes-base.gmail': [2, 2.1],
   'n8n-nodes-base.gmailTrigger': [1, 1.1, 1.2],
+  'n8n-nodes-base.executeWorkflowTrigger': [1],
   'n8n-nodes-base.code': [1, 2],
   'n8n-nodes-base.if': [1, 2],
   'n8n-nodes-base.switch': [1, 2, 3],
@@ -42,10 +43,13 @@ export const TRIGGER_TYPES = new Set([
   'n8n-nodes-base.scheduleTrigger',
   'n8n-nodes-base.manualTrigger',
   'n8n-nodes-base.errorTrigger',
+  'n8n-nodes-base.formTrigger',
   'n8n-nodes-base.cron',
   'n8n-nodes-base.rssFeedReadTrigger',
   'n8n-nodes-base.telegramTrigger',
   'n8n-nodes-base.emailReadImap',
+  'n8n-nodes-base.gmailTrigger',
+  'n8n-nodes-base.executeWorkflowTrigger',
 ]);
 
 export const FORBIDDEN_NODE_TYPES = [

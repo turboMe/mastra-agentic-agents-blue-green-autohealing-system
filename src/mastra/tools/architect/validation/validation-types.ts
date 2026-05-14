@@ -17,6 +17,14 @@ export type MissingConfig = {
   required: boolean;
 };
 
+export type WorkflowGraphComponent = {
+  index: number;
+  nodeNames: string[];
+  executableNodeNames: string[];
+  triggerNodeNames: string[];
+  hasTrigger: boolean;
+};
+
 export type ValidationResult = {
   valid: boolean;
   profile: 'draft' | 'strict' | 'activation';
@@ -27,4 +35,8 @@ export type ValidationResult = {
   missingConfig: MissingConfig[];
   nodeCount: number;
   connectionCount: number;
+  triggerCount: number;
+  reachableNodeCount: number;
+  orphanNodeCount: number;
+  disconnectedComponents: WorkflowGraphComponent[];
 };

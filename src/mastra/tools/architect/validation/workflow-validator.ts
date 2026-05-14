@@ -1,4 +1,10 @@
-import { ValidationFinding, ValidationResult, MissingCredential, MissingConfig } from './validation-types.js';
+import {
+  ValidationFinding,
+  ValidationResult,
+  MissingCredential,
+  MissingConfig,
+  WorkflowGraphComponent,
+} from './validation-types.js';
 import { KNOWN_NODE_TYPES, TRIGGER_TYPES, FORBIDDEN_NODE_TYPES } from './node-registry.js';
 import { getRuntimeTopology } from '../../../config/runtime-topology.js';
 
@@ -34,6 +40,15 @@ type NodeLookup = {
 type ResolvedNodeRef = {
   name: string;
   reason: 'node.id' | 'trimmed node.name' | 'trimmed node.id' | 'normalized node ref';
+};
+
+type WorkflowGraphAnalysis = {
+  triggerNodeNames: string[];
+  executableNodeNames: string[];
+  reachableNodeNames: string[];
+  reachableExecutableNodeNames: string[];
+  orphanNodeNames: string[];
+  disconnectedComponents: WorkflowGraphComponent[];
 };
 
 function normalizeNodeRef(value: string): string {
@@ -266,6 +281,120 @@ export function normalizeConnectionKeys(workflowJson: any): string[] {
   }
 
   return fixes;
+}
+
+function analyzeWorkflowGraph(nodes: any[], connections: Record<string, any>): WorkflowGraphAnalysis {
+  const nodeByName = new Map<string, any>();
+  const adjacency = new Map<string, Set<string>>();
+  const reverseAdjacency = new Map<string, Set<string>>();
+
+  for (const node of nodes) {
+    if (typeof node?.name !== 'string' || !node.name || nodeByName.has(node.name)) continue;
+    nodeByName.set(node.name, node);
+    adjacency.set(node.name, new Set());
+    reverseAdjacency.set(node.name, new Set());
+  }
+
+  for (const [sourceName, sourceConnections] of Object.entries(connections)) {
+    if (!adjacency.has(sourceName)) continue;
+
+    const main = (sourceConnections as any)?.main;
+    if (!Array.isArray(main)) continue;
+
+    for (const outputGroup of main) {
+      if (!Array.isArray(outputGroup)) continue;
+      for (const conn of outputGroup) {
+        if (!conn || typeof conn.node !== 'string' || !adjacency.has(conn.node)) continue;
+        adjacency.get(sourceName)?.add(conn.node);
+        reverseAdjacency.get(conn.node)?.add(sourceName);
+      }
+    }
+  }
+
+  const nodeNames = [...nodeByName.keys()];
+  const triggerNodeNames = nodeNames.filter((name) => isTriggerType(nodeByName.get(name)?.type));
+  const executableNodeNames = nodeNames.filter((name) => isExecutableNode(nodeByName.get(name)));
+  const reachable = new Set<string>();
+  const queue = [...triggerNodeNames];
+
+  while (queue.length > 0) {
+    const name = queue.shift();
+    if (!name || reachable.has(name)) continue;
+    reachable.add(name);
+    for (const target of adjacency.get(name) ?? []) {
+      if (!reachable.has(target)) queue.push(target);
+    }
+  }
+
+  const reachableExecutableNodeNames = executableNodeNames.filter((name) => reachable.has(name));
+  const orphanNodeNames =
+    triggerNodeNames.length === 0
+      ? [...executableNodeNames]
+      : executableNodeNames.filter((name) => !reachable.has(name));
+  const components = findGraphComponents(nodeNames, nodeByName, adjacency, reverseAdjacency);
+  const disconnectedComponents = components.filter((component) => component.executableNodeNames.length > 0 && !component.hasTrigger);
+
+  return {
+    triggerNodeNames,
+    executableNodeNames,
+    reachableNodeNames: [...reachable],
+    reachableExecutableNodeNames,
+    orphanNodeNames,
+    disconnectedComponents,
+  };
+}
+
+function findGraphComponents(
+  nodeNames: string[],
+  nodeByName: Map<string, any>,
+  adjacency: Map<string, Set<string>>,
+  reverseAdjacency: Map<string, Set<string>>,
+): WorkflowGraphComponent[] {
+  const visited = new Set<string>();
+  const components: WorkflowGraphComponent[] = [];
+
+  for (const start of nodeNames) {
+    if (visited.has(start)) continue;
+
+    const queue = [start];
+    const componentNodes: string[] = [];
+
+    while (queue.length > 0) {
+      const name = queue.shift();
+      if (!name || visited.has(name)) continue;
+      visited.add(name);
+      componentNodes.push(name);
+
+      const neighbors = new Set([...(adjacency.get(name) ?? []), ...(reverseAdjacency.get(name) ?? [])]);
+      for (const neighbor of neighbors) {
+        if (!visited.has(neighbor)) queue.push(neighbor);
+      }
+    }
+
+    const sortedNodeNames = componentNodes.sort((a, b) => a.localeCompare(b));
+    const executableNodeNames = sortedNodeNames.filter((name) => isExecutableNode(nodeByName.get(name)));
+    const triggerNodeNames = sortedNodeNames.filter((name) => isTriggerType(nodeByName.get(name)?.type));
+
+    components.push({
+      index: components.length + 1,
+      nodeNames: sortedNodeNames,
+      executableNodeNames,
+      triggerNodeNames,
+      hasTrigger: triggerNodeNames.length > 0,
+    });
+  }
+
+  return components;
+}
+
+function isTriggerType(type: string | undefined): boolean {
+  return typeof type === 'string' && TRIGGER_TYPES.has(type);
+}
+
+function isExecutableNode(node: any): boolean {
+  if (!node?.name || typeof node.type !== 'string') return false;
+  if (isTriggerType(node.type)) return false;
+  return node.type !== 'n8n-nodes-base.noOp' && node.type !== 'n8n-nodes-base.stickyNote';
 }
 
 export function validateWorkflow(
@@ -513,6 +642,38 @@ export function validateWorkflow(
     }
   }
 
+  const graph = analyzeWorkflowGraph(nodes, connections);
+  const triggerCount = graph.triggerNodeNames.length;
+  const orphanPreview = graph.orphanNodeNames.slice(0, 8).join(', ');
+
+  if (profile === 'draft') {
+    if (graph.executableNodeNames.length > 1 && connectionCount === 0) {
+      errors.push({
+        message: `Workflow has ${graph.executableNodeNames.length} executable nodes but no connections; graph is disconnected.`,
+        severity: 'error',
+      });
+    } else if (graph.orphanNodeNames.length > 0) {
+      warnings.push({
+        message: `Executable nodes are not reachable from any trigger: ${orphanPreview}.`,
+        severity: 'warning',
+      });
+    }
+  }
+
+  if ((profile === 'strict' || profile === 'activation') && graph.executableNodeNames.length > 0) {
+    if (triggerCount === 0) {
+      errors.push({
+        message: `Workflow has ${graph.executableNodeNames.length} executable nodes but no trigger node.`,
+        severity: 'error',
+      });
+    } else if (graph.orphanNodeNames.length > 0) {
+      errors.push({
+        message: `Executable nodes are not reachable from any trigger: ${orphanPreview}.`,
+        severity: 'error',
+      });
+    }
+  }
+
   // 8. Profile-specific logic
   let isValid = errors.length === 0;
 
@@ -525,6 +686,9 @@ export function validateWorkflow(
   if (profile === 'activation') {
     if (!hasTrigger) {
       errors.push({ message: 'Activation profile requires a trigger node.', severity: 'error' });
+      isValid = false;
+    } else if (graph.executableNodeNames.length > 0 && graph.reachableExecutableNodeNames.length === 0) {
+      errors.push({ message: 'Activation profile requires a trigger path to at least one executable node.', severity: 'error' });
       isValid = false;
     }
   }
@@ -539,6 +703,10 @@ export function validateWorkflow(
     missingConfig,
     nodeCount: nodes.length,
     connectionCount,
+    triggerCount,
+    reachableNodeCount: graph.reachableNodeNames.length,
+    orphanNodeCount: graph.orphanNodeNames.length,
+    disconnectedComponents: graph.disconnectedComponents,
   };
 }
 
@@ -590,5 +758,9 @@ function createErrorResult(message: string, profile: any): ValidationResult {
     missingConfig: [],
     nodeCount: 0,
     connectionCount: 0,
+    triggerCount: 0,
+    reachableNodeCount: 0,
+    orphanNodeCount: 0,
+    disconnectedComponents: [],
   };
 }

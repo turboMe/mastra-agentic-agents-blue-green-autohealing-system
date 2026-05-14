@@ -1,3 +1,5 @@
+import { TRIGGER_TYPES } from '../validation/node-registry.js';
+
 /**
  * Generates a synthetic payload suitable for the workflow's trigger type.
  * Used in mock test mode and as a default for manual test instructions.
@@ -113,11 +115,5 @@ function mockWebhook(trigger: any): { triggerType: string; payload: any; instruc
 
 function isTriggerNode(type: string): boolean {
   if (!type) return false;
-  return (
-    type.endsWith('Trigger') ||
-    type === 'n8n-nodes-base.webhook' ||
-    type === 'n8n-nodes-base.cron' ||
-    type === 'n8n-nodes-base.scheduleTrigger' ||
-    type === 'n8n-nodes-base.manualTrigger'
-  );
+  return TRIGGER_TYPES.has(type) || type.endsWith('Trigger');
 }

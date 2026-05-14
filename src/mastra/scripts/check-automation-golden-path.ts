@@ -40,6 +40,7 @@ const unsafeWorkflow = {
 
 async function main() {
   const connectionNormalization = checkConnectionIdNormalization();
+  const graphValidation = checkGraphValidation();
 
   const unsafeResult = await executeAutomationGoldenPath({
     mode: 'workflow_json',
@@ -86,6 +87,7 @@ async function main() {
 
   console.log('automation-golden-path check passed');
   console.log(`connectionIdNormalization=${connectionNormalization}`);
+  console.log(`graphValidation=${graphValidation}`);
   console.log(`unsafeStatus=${unsafeResult.status}, securityIssues=${securityCount}`);
   console.log(`safeStatus=${safeResult.status}, workflowId=${safeResult.workflowId}`);
   process.exit(0);
@@ -140,6 +142,80 @@ function checkConnectionIdNormalization(): string {
   if (warnings.length < 2) {
     console.error(JSON.stringify({ warnings, workflow }, null, 2));
     throw new Error('Connection normalization did not report source and target warnings.');
+  }
+
+  return 'passed';
+}
+
+function checkGraphValidation(): string {
+  const disconnectedWorkflow: any = {
+    name: `Disconnected Graph ${randomUUID().slice(0, 8)}`,
+    active: false,
+    settings: { executionOrder: 'v1' },
+    nodes: [
+      {
+        id: 'manual',
+        name: 'Manual Trigger',
+        type: 'n8n-nodes-base.manualTrigger',
+        typeVersion: 1,
+        position: [0, 0],
+        parameters: {},
+      },
+      {
+        id: 'transform_a',
+        name: 'Transform A',
+        type: 'n8n-nodes-base.set',
+        typeVersion: 3.4,
+        position: [220, 0],
+        parameters: {},
+      },
+      {
+        id: 'transform_b',
+        name: 'Transform B',
+        type: 'n8n-nodes-base.set',
+        typeVersion: 3.4,
+        position: [440, 0],
+        parameters: {},
+      },
+      {
+        id: 'respond',
+        name: 'Respond',
+        type: 'n8n-nodes-base.respondToWebhook',
+        typeVersion: 1.1,
+        position: [660, 0],
+        parameters: {},
+      },
+    ],
+    connections: {},
+  };
+
+  const disconnectedDraft = validateWorkflow(disconnectedWorkflow, 'draft');
+  const disconnectedStrict = validateWorkflow(disconnectedWorkflow, 'strict');
+  if (disconnectedDraft.valid || disconnectedStrict.valid || disconnectedStrict.orphanNodeCount !== 3) {
+    console.error(JSON.stringify({ disconnectedDraft, disconnectedStrict }, null, 2));
+    throw new Error('Disconnected executable graph was not blocked by validation.');
+  }
+
+  const linearWorkflow: any = {
+    ...disconnectedWorkflow,
+    name: `Linear Graph ${randomUUID().slice(0, 8)}`,
+    connections: {
+      'Manual Trigger': {
+        main: [[{ node: 'Transform A', type: 'main', index: 0 }]],
+      },
+      'Transform A': {
+        main: [[{ node: 'Transform B', type: 'main', index: 0 }]],
+      },
+      'Transform B': {
+        main: [[{ node: 'Respond', type: 'main', index: 0 }]],
+      },
+    },
+  };
+
+  const linearStrict = validateWorkflow(linearWorkflow, 'strict');
+  if (!linearStrict.valid || linearStrict.orphanNodeCount !== 0 || linearStrict.reachableNodeCount !== 4) {
+    console.error(JSON.stringify({ linearStrict }, null, 2));
+    throw new Error('Linear trigger-to-executable graph did not pass validation.');
   }
 
   return 'passed';
