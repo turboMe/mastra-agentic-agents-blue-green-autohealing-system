@@ -39,6 +39,7 @@ export const models = {
   // ═══════════════════════════════════════════════════════════════════════════
   // GOOGLE (klucz: GOOGLE_GENERATIVE_AI_API_KEY)
   // ═══════════════════════════════════════════════════════════════════════════
+  'gemini-3.1-flash-lite-preview': 'google/gemini-3.1-flash-lite-preview', // newest light flash
   'gemini-2.5-pro': 'google/gemini-2.5-pro',           // flagship, 1M ctx, reasoning + code
   'gemini-2.5-flash': 'google/gemini-2.5-flash',         // fast, 1M ctx, daily driver
   'gemini-2.0-flash': 'google/gemini-2.0-flash',         // starszy flash, tańszy
@@ -49,6 +50,7 @@ export const models = {
   // OPENAI (klucz: OPENAI_API_KEY)
   // ═══════════════════════════════════════════════════════════════════════════
   'gpt-5.5': 'openai/gpt-5.5',                  // flagship, najnowszy
+  'gpt-5.4-mini': 'openai/gpt-5.4-mini',             // szybki, tani, dobry do JSON (v5.4)
   'gpt-5.3-mini': 'openai/gpt-5.3-mini',             // szybki, tani, dobry do JSON
   'gpt-5.1': 'openai/gpt-5.1',                  // solidny, tańszy od 5.5
   'gpt-4.1': 'openai/gpt-4.1',                  // coding-focused, 1M ctx
@@ -163,17 +165,17 @@ export function resolveModelId(key: ModelKey): string {
 // ═════════════════════════════════════════════════════════════════════════════
 
 export const agentModels = {
-  metaAgent: 'gemini-2.5-flash' as ModelKey,  // Flash — better native tool-calling vs Pro XML hallucination
-  codingAgent: 'gemini-2.5-flash' as ModelKey,  // Flash — reliable function calling for workspace tools
+  metaAgent: 'gemini-3.1-flash-lite-preview' as ModelKey,  // Flash — better native tool-calling vs Pro XML hallucination
+  codingAgent: 'gemini-3.1-flash-lite-preview' as ModelKey,  // Flash — reliable function calling for workspace tools
   codeReviewAgent: 'qwen3-coder-30b' as ModelKey,
   salesAgent: 'gemma4-26b' as ModelKey,
   crmAgent: 'gemma4-26b' as ModelKey,
   analyticsAgent: 'qwen3-coder-30b' as ModelKey,
   weatherAgent: 'gemma4-26b' as ModelKey,
-  automationArchitect: 'gemini-2.5-flash' as ModelKey,
+  automationArchitect: 'qwen3-coder-30b' as ModelKey,
   marketingAgent: 'gemma4-26b' as ModelKey,
   knowledgeAgent: 'gemma4-26b' as ModelKey,   // NotebookLM ops — fast function calling for 35 MCP tools
-  researcherAgent: 'nemotron-super-free' as ModelKey,  // PSEV web research — browser + Tavily deep scraping
+  researcherAgent: 'gemini-3.1-flash-lite-preview' as ModelKey,  // PSEV web research — browser + Tavily deep scraping
 } as const;
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -185,16 +187,16 @@ export const agentModels = {
 
 export const workflowAssignments = {
   coding: {
-    default: 'gemini-2.5-flash' as ModelKey,  // diagnose-and-plan
+    default: 'qwen3-coder-30b' as ModelKey,  // diagnose-and-plan
     patch: 'qwen3-coder-30b' as ModelKey,  // execute-patch fallback
     review: 'gemini-2.5-flash' as ModelKey,  // code review (Haiku: tani + dobry do walidacji)
     selfHealingPlanner: 'gpt-5.4-mini' as ModelKey,
     selfHealingReview: 'nemotron-super-free' as ModelKey,
-    jsonRepair: 'gpt-4.1-mini' as ModelKey,
+    jsonRepair: 'qwen3-coder-30b' as ModelKey,
   },
 
   marketing: {
-    default: 'gemini-2.5-flash' as ModelKey,
+    default: 'gemma4-26b' as ModelKey,
   },
 
   weeklyContent: {
@@ -202,15 +204,15 @@ export const workflowAssignments = {
     copyPl: 'gemma4-26b' as ModelKey,
     copyRepair: 'gemini-2.5-flash' as ModelKey,
     translateEn: 'gemma4-26b' as ModelKey,
-    jsonRepair: 'gpt-4.1-mini' as ModelKey,
+    jsonRepair: 'qwen3-coder-30b' as ModelKey,
   },
 
   producerHunt: {
     discovery: 'gemma4-26b' as ModelKey,
-    enrichment: 'gemini-2.5-flash' as ModelKey,
-    emailExtraction: 'gemini-2.5-flash' as ModelKey,
+    enrichment: 'gemma4-26b' as ModelKey,
+    emailExtraction: 'gemma4-26b' as ModelKey,
     draftEmail: 'gemma4-26b' as ModelKey,
-    jsonRepair: 'gpt-4.1-mini' as ModelKey,
+    jsonRepair: 'qwen3-coder-30b' as ModelKey,
     cloudFallback: 'gemini-2.5-flash' as ModelKey,
   },
 } as const;
@@ -223,9 +225,9 @@ export const workflowAssignments = {
 
 export const workerPresets = {
   fast: 'gemma4-e4b' as ModelKey,
-  default: 'gemma4-26b' as ModelKey,
-  reasoning: 'qwen3-coder-30b' as ModelKey,
-  powerful: 'gemini-2.5-pro' as ModelKey,
+  default: 'gemma4-e4b'  as ModelKey,
+  reasoning: 'qwen3.5-9b' as ModelKey,
+  powerful: 'qwen3.5-9b' as ModelKey,
   cloud: 'gemini-2.5-flash' as ModelKey,
 } as const;
 
@@ -238,7 +240,7 @@ export const workerPresets = {
 
 export const infrastructure = {
   /** Model used by Observational Memory to compress conversation history */
-  observationalMemory: 'gemini-2.5-flash' as ModelKey,
+  observationalMemory: 'gemma4-e4b' as ModelKey,
 
   /** Embedding model source of truth (used by lib/embedder.ts) */
   embedding: {
@@ -247,7 +249,7 @@ export const infrastructure = {
 
   /** N8n workflow generation defaults (used by automation-architect builders) */
   n8n: {
-    defaultModel: 'gemini-2.5-flash' as ModelKey,
-    reasoningModel: 'gemini-2.5-flash' as ModelKey,
+    defaultModel: 'qwen3.5-9b' as ModelKey,
+    reasoningModel: 'qwen3.5-9b' as ModelKey,
   },
 } as const;

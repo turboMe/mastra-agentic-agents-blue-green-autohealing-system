@@ -2,9 +2,9 @@
 
 An autonomous, multi-domain agentic ecosystem built on top of the [Mastra](https://mastra.ai/) framework. This repository contains a suite of highly specialized TypeScript-based AI agents and workflows, featuring dynamic model routing and an advanced self-healing infrastructure.
 
-## Core Capabilities
+##  Capabilities
 
-### 1. Auto-Healing Infrastructure (System Foundation)
+### 1. Auto-Healing Infrastructure 
 The stability of the environment relies on a comprehensive self-healing diagnostic pipeline that ensures continuous operation without manual intervention:
 * **Two-Phase Repair Workflow**: Employs a `diagnose-and-plan` followed by an `execute-patch` sequence, cleanly isolating architectural reasoning from low-level execution.
 * **Isolated Staging Environments**: Uses a Staging Worktree architecture to test code modifications and patches in isolation before merging.
@@ -12,7 +12,7 @@ The stability of the environment relies on a comprehensive self-healing diagnost
 * **Resilience Mechanisms**: Incorporates runtime validation, automatic JSON repair, and deterministic fallbacks when models produce malformed outputs.
 
 ### 2. Dynamic Model Routing & Manipulation
-To balance performance, cost, and local hardware constraints (VRAM allocation), the environment employs an intelligent model manipulation strategy:
+To balance performance, cost, and local hardware constraints (VRAM allocation), the environment employs model manipulation strategy:
 * **Smart Router & Model Registry**: Dynamically allocates subtasks between local models (e.g., via Ollama) and cloud providers (Google Gemini, OpenAI, Anthropic). 
 * **Context-Aware Assignment**: Models are selected on the fly based on the required task complexity, available VRAM budget, and cost efficiency.
 * **Multi-Tier Fallbacks**: Configurable fallback chains (e.g., Local Model → Cloud Fallback Agent → Deterministic Fallback) ensure high reliability during heavy research or generation tasks.
@@ -23,7 +23,7 @@ The ecosystem operates through a network of specialized agents, overseen by a su
 * **Coding & Code Review Agents**: Specialized in software engineering, interacting with file systems, executing tests, and verifying code quality.
 * **Domain-Specific Agents**: Includes agents for Marketing (`weekly-content`, `producer-hunt`), CRM, Sales, Analytics, and custom domains.
 
-### 4. Advanced Tool Integrations
+### 4. Tool Integrations
 Agents have access to a rich set of deterministic and AI-driven tools:
 * **Code & Workspace**: Git worktree manipulation, external project scaffolding, and precise file tracking.
 * **External Systems**: Deep integration with Google Workspace (Gmail, Calendar), external search (Tavily), and RSS feeds.
