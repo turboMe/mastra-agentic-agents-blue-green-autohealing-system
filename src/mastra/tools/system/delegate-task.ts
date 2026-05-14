@@ -67,6 +67,9 @@ CAN be called multiple times in parallel when tasks are independent.`,
     callerThreadId: z.string().optional().describe(
       'Your own threadId — required when async=true so the result can be delivered back to you.',
     ),
+    callerAgentId: z.enum(['meta-agent', 'automationArchitect']).optional().default('meta-agent').describe(
+      'Agent that should receive async pending results. Use automationArchitect when the architect delegates subtasks.',
+    ),
   }),
   outputSchema: z.object({
     success: z.boolean(),
@@ -101,6 +104,16 @@ CAN be called multiple times in parallel when tasks are independent.`,
       const start = Date.now();
       const delegationThreadId = context.threadId || `delegation-${randomUUID()}`;
       const delegationResourceId = context.resourceId || 'meta-agent';
+      const callerAgentId = context.callerAgentId ?? 'meta-agent';
+
+      if (callerAgentId === 'automationArchitect' && context.targetAgent === 'automationArchitect') {
+        return {
+          success: false,
+          result: 'automationArchitect cannot delegate recursively to itself.',
+          agentUsed: context.targetAgent,
+          error: 'recursive_delegation_blocked',
+        };
+      }
 
       // ── Route codingAgent through harness for telemetry + precontext ──
       if (context.targetAgent === 'codingAgent') {
@@ -112,6 +125,7 @@ CAN be called multiple times in parallel when tasks are independent.`,
             agentId: 'codingAgent',
             prompt: context.taskDescription,
             callerThreadId: callerThread,
+            callerAgentId,
             repoPath: AGENTIC_AGENTS_REPO,
             timeoutMs: 300_000,
           });
@@ -164,6 +178,7 @@ CAN be called multiple times in parallel when tasks are independent.`,
             agentId: 'automationArchitect',
             prompt: context.taskDescription,
             callerThreadId: callerThread,
+            callerAgentId,
             timeoutMs: 300_000,
           });
 

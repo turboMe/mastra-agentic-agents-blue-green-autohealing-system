@@ -1,6 +1,8 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { validateWorkflow } from './workflow-validator.js';
+import { withToolEnvelope } from '../../../services/harness-tool-envelope.js';
+import { compactAutomationResultForModel } from '../../../services/automation-output-compaction.js';
 
 export const validateWorkflowTool = createTool({
   id: 'architect_validate_workflow',
@@ -19,8 +21,26 @@ export const validateWorkflowTool = createTool({
     missingConfig: z.array(z.any()),
     nodeCount: z.number(),
     connectionCount: z.number(),
+    outputArtifactId: z.string().optional(),
+    outputTruncated: z.boolean().optional(),
+    originalBytes: z.number().optional(),
+    previewBytes: z.number().optional(),
+    outputCompaction: z.any().optional(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'architect_validate_workflow',
+    category: 'other',
+    risk: 'low',
+    defaultAgentId: 'automationArchitect',
+    redactInputFields: ['workflow'],
+    policy: (input: any) => ({
+      agentId: 'automationArchitect',
+      action: 'compose_automation' as const,
+      riskHint: 'low' as const,
+    }),
+    execute: async (context: any) => {
     return validateWorkflow(context.workflow, context.profile);
-  },
+    },
+    modelOutput: (output, _input, metadata) => compactAutomationResultForModel(output, metadata),
+  }),
 });

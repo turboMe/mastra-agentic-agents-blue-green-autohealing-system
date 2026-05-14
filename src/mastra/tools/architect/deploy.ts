@@ -5,6 +5,8 @@ import { getDb } from '../../lib/mongo.js';
 import { validateWorkflow, normalizeConnectionKeys } from './validation/workflow-validator.js';
 import { analyzeWorkflow } from './risk-scoring.js';
 import { randomUUID } from 'crypto';
+import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
+import { compactAutomationResultForModel } from '../../services/automation-output-compaction.js';
 
 export const deployAutomationTool = createTool({
   id: 'architect_deploy_automation',
@@ -26,8 +28,25 @@ export const deployAutomationTool = createTool({
     error: z.string().optional(),
     validation: z.any().optional(),
     risk: z.any().optional(),
+    outputArtifactId: z.string().optional(),
+    outputTruncated: z.boolean().optional(),
+    originalBytes: z.number().optional(),
+    previewBytes: z.number().optional(),
+    outputCompaction: z.any().optional(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'architect_deploy_automation',
+    category: 'network',
+    risk: 'high',
+    defaultAgentId: 'automationArchitect',
+    redactInputFields: ['workflow', 'approvalToken'],
+    policy: (input: any) => ({
+      agentId: 'automationArchitect',
+      action: 'deploy_automation' as const,
+      target: input.workflowId ? `update:${input.workflowId}` : 'create:new',
+      riskHint: 'high' as const,
+    }),
+    execute: async (context: any) => {
     const automationId = context.automationId || randomUUID();
 
     // 1. Best-effort fixup of obvious LLM mistakes in connection keys
@@ -181,5 +200,7 @@ export const deployAutomationTool = createTool({
         error: (error as Error).message,
       };
     }
-  },
+    },
+    modelOutput: (output, _input, metadata) => compactAutomationResultForModel(output, metadata),
+  }),
 });

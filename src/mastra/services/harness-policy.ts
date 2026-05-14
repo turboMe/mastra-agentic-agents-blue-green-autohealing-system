@@ -23,7 +23,12 @@ export type HarnessPolicyAction =
   | 'network'
   | 'git'
   | 'approval'
-  | 'memory_write';
+  | 'memory_write'
+  // ── Automation Architect actions ──
+  | 'deploy_automation'
+  | 'activate_automation'
+  | 'test_automation'
+  | 'compose_automation';
 
 export type HarnessPolicyRisk = 'low' | 'medium' | 'high';
 export type HarnessPolicySeverity = 'info' | 'warning' | 'block';
@@ -148,6 +153,29 @@ async function evaluatePolicy(
     case 'approval':
     case 'memory_write':
       return allowDecision(`${request.action}_allowed`, `${request.action} is allowed and logged.`);
+    // ── Automation Architect actions ──
+    case 'deploy_automation':
+      return requireApprovalDecision(
+        'deploy_automation_requires_approval',
+        'Deploying an n8n workflow modifies the automation runtime and should require approval.',
+        'deploy_automation',
+        'warning',
+      );
+    case 'activate_automation':
+      return requireApprovalDecision(
+        'activate_automation_requires_approval',
+        'Activating a workflow enables live execution of external-facing automation and should require approval.',
+        'activate_automation',
+        'warning',
+      );
+    case 'test_automation':
+      return allowDecision(
+        'test_automation_allowed',
+        'Testing a workflow in mock/real mode is allowed and logged.',
+        'warning',
+      );
+    case 'compose_automation':
+      return allowDecision('compose_automation_allowed', 'Composing workflow JSON is a read-only operation.');
   }
 }
 

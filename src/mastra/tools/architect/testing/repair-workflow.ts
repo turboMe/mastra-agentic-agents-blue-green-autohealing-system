@@ -5,6 +5,7 @@ import { validateWorkflow } from '../validation/workflow-validator.js';
 import { getCredentialFromRegistry } from '../credentials/credential-registry.js';
 import { getRuntimeTopology } from '../../../config/runtime-topology.js';
 import type { RepairChange, RepairResult, TestFinding } from './test-types.js';
+import { withToolEnvelope } from '../../../services/harness-tool-envelope.js';
 
 const MAX_ATTEMPTS = 3;
 
@@ -51,7 +52,19 @@ export const repairWorkflowTool = createTool({
     stopReason: z.string().optional(),
     message: z.string(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'architect_repair_workflow',
+    category: 'other',
+    risk: 'low',
+    defaultAgentId: 'automationArchitect',
+    redactInputFields: ['workflow'],
+    policy: (input: any) => ({
+      agentId: 'automationArchitect',
+      action: 'test_automation' as const, // treat repair as part of test loop
+      target: input.automationId,
+      riskHint: 'low' as const,
+    }),
+    execute: async (context: any) => {
     const { automationId, attempt } = context;
     const db = await getDb();
 
@@ -113,7 +126,8 @@ export const repairWorkflowTool = createTool({
           ? 'Brak zmian mozliwych do automatycznego zastosowania. Wymaga zmiany specu lub manualnej interwencji.'
           : `Workflow czesciowo naprawiony (zmiany: ${result.changes.length}), ale pozostaly bledy. Sprobuj ponownie lub wymaga manualnej interwencji.`,
     };
-  },
+    }
+  }),
 });
 
 export function applyRepairs(

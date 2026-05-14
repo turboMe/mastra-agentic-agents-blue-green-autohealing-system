@@ -1,6 +1,8 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { executeAutomationGoldenPath } from '../../services/automation-golden-path.js';
+import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
+import { compactAutomationResultForModel } from '../../services/automation-output-compaction.js';
 
 export const executeAutomationRequestTool = createTool({
   id: 'architect_execute_automation_request',
@@ -22,7 +24,21 @@ export const executeAutomationRequestTool = createTool({
     requiresPublicWebhook: z.boolean().optional().default(false),
   }),
   outputSchema: z.any(),
-  execute: async (context) => {
-    return executeAutomationGoldenPath(context as any);
-  },
+  execute: withToolEnvelope({
+    toolId: 'architect_execute_automation_request',
+    category: 'network',
+    risk: 'high',
+    defaultAgentId: 'automationArchitect',
+    redactInputFields: ['workflow', 'approvalToken', 'spec'],
+    policy: (input: any) => ({
+      agentId: 'automationArchitect',
+      action: 'deploy_automation' as const, // treat execute as deploy since it does deploy
+      target: input.workflowId ?? 'new_automation',
+      riskHint: 'high' as const,
+    }),
+    execute: async (context: any) => {
+      return executeAutomationGoldenPath(context as any);
+    },
+    modelOutput: (output, _input, metadata) => compactAutomationResultForModel(output, metadata),
+  }),
 });

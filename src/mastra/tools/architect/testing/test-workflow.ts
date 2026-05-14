@@ -6,6 +6,8 @@ import { validateWorkflow } from '../validation/workflow-validator.js';
 import { generateMockPayload } from './mock-data.js';
 import { analyzeExecution } from './execution-analyzer.js';
 import type { TestFinding, TestStatus } from './test-types.js';
+import { withToolEnvelope } from '../../../services/harness-tool-envelope.js';
+import { compactAutomationResultForModel } from '../../../services/automation-output-compaction.js';
 
 export const testWorkflowTool = createTool({
   id: 'architect_test_workflow',
@@ -35,8 +37,25 @@ export const testWorkflowTool = createTool({
     ),
     testPlan: z.array(z.string()).optional(),
     message: z.string(),
+    outputArtifactId: z.string().optional(),
+    outputTruncated: z.boolean().optional(),
+    originalBytes: z.number().optional(),
+    previewBytes: z.number().optional(),
+    outputCompaction: z.any().optional(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'architect_test_workflow',
+    category: 'network',
+    risk: 'medium',
+    defaultAgentId: 'automationArchitect',
+    redactInputFields: ['approvalToken', 'payload'],
+    policy: (input: any) => ({
+      agentId: 'automationArchitect',
+      action: 'test_automation' as const,
+      target: input.workflowId,
+      riskHint: 'medium' as const,
+    }),
+    execute: async (context: any) => {
     const { automationId, workflowId, mode } = context;
     const db = await getDb();
 
@@ -250,7 +269,9 @@ export const testWorkflowTool = createTool({
         ? `Real test passed (executionId=${executionId ?? 'n/a'}).`
         : 'Real test failed — sprawdz findings i uzyj architect.repair_workflow.',
     };
-  },
+    },
+    modelOutput: (output, _input, metadata) => compactAutomationResultForModel(output, metadata),
+  }),
 });
 
 async function persistTestEvent(

@@ -4,6 +4,8 @@ import { isHarnessFeatureEnabled } from '../config/harness-flags.js';
 import { getDb } from '../lib/mongo.js';
 import { redactSecrets } from '../lib/secrets-redactor.js';
 import { logHarnessEvent } from './harness-events.js';
+import { compactHarnessOutput } from './harness-output-compactor.js';
+import { getHarnessExecutionContext } from './harness-execution-context.js';
 import { evaluateAndLogHarnessPolicy } from './harness-policy.js';
 import type { HarnessPolicyDecision, HarnessPolicyRequest } from './harness-policy.js';
 
@@ -68,9 +70,15 @@ type ToolEnvelopeConfig<TInput, TOutput> = {
   risk: ToolEnvelopeRisk;
   defaultAgentId?: string;
   redactInputFields?: string[];
+  redactOutputFields?: string[];
   inputPreviewMaxChars?: number;
   outputPreviewMaxChars?: number;
   metadata?: (input: TInput) => ToolEnvelopeMetadata;
+  modelOutput?: (
+    output: TOutput,
+    input: TInput,
+    metadata: ToolEnvelopeMetadata & { agentId: string; runId?: string; toolId: string },
+  ) => TOutput | Promise<TOutput>;
   policy?: (
     input: TInput,
     metadata: ToolEnvelopeMetadata & { agentId: string; runId?: string },
@@ -79,7 +87,10 @@ type ToolEnvelopeConfig<TInput, TOutput> = {
     | HarnessPolicyRequest[]
     | undefined
     | Promise<HarnessPolicyRequest | HarnessPolicyRequest[] | undefined>;
-  execute: (input: TInput) => Promise<TOutput>;
+  execute: (
+    input: TInput,
+    metadata?: ToolEnvelopeMetadata & { agentId: string; runId?: string; toolId: string },
+  ) => Promise<TOutput>;
 };
 
 const DEFAULT_TTL_DAYS = 30;
@@ -90,12 +101,17 @@ export function withToolEnvelope<TInput, TOutput>(
 ): (input: TInput) => Promise<TOutput> {
   return async (input: TInput): Promise<TOutput> => {
     if (!isHarnessFeatureEnabled('FEATURE_TOOL_ENVELOPE', true)) {
-      return config.execute(input);
+      return config.execute(input, {
+        agentId: config.defaultAgentId ?? 'codingAgent',
+        toolId: config.toolId,
+      });
     }
 
     const startedAt = Date.now();
     const executionId = randomUUID();
+    const activeHarnessContext = getHarnessExecutionContext() ?? {};
     const metadata = {
+      ...activeHarnessContext,
       ...extractToolMetadata(input),
       ...(config.metadata?.(input) ?? {}),
     };
@@ -123,12 +139,21 @@ export function withToolEnvelope<TInput, TOutput>(
         throw new Error(blocked?.reason ?? `Policy blocked tool execution: ${config.toolId}`);
       }
 
-      const output = await config.execute(input);
-      const durationMs = Date.now() - startedAt;
-      const outputPreview = buildToolPreview(output, {
-        maxChars: config.outputPreviewMaxChars ?? DEFAULT_PREVIEW_CHARS,
+      const output = await config.execute(input, {
+        ...metadata,
+        agentId,
+        runId,
+        toolId: config.toolId,
       });
-      const outputArtifactId = extractOutputArtifactId(output);
+      const durationMs = Date.now() - startedAt;
+      const outputCompaction = await compactToolOutput(output, config, {
+        ...metadata,
+        agentId,
+        runId,
+        toolId: config.toolId,
+      });
+      const outputPreview = outputCompaction.preview;
+      const outputArtifactId = extractOutputArtifactId(output) ?? outputCompaction.outputArtifactId;
       const success = isSuccessfulToolOutput(output);
       const errorMessage = success ? undefined : extractOutputErrorMessage(output);
       const errorClass = success ? undefined : classifyToolError({
@@ -158,7 +183,12 @@ export function withToolEnvelope<TInput, TOutput>(
         errorMessage,
       });
 
-      return output;
+      return await buildModelOutput(config, output, input, {
+        ...metadata,
+        agentId,
+        runId,
+        toolId: config.toolId,
+      });
     } catch (error) {
       const durationMs = Date.now() - startedAt;
       const err = error as Error;
@@ -249,19 +279,69 @@ export function buildToolPreview(
   options: { redactFields?: string[]; maxChars?: number } = {},
 ): string {
   const maxChars = options.maxChars ?? DEFAULT_PREVIEW_CHARS;
-  const redactedFieldSet = new Set((options.redactFields ?? []).map((field) => field.toLowerCase()));
-  let serialized = '';
-
-  try {
-    serialized = typeof value === 'string'
-      ? value
-      : JSON.stringify(redactStructuredValue(value, redactedFieldSet));
-  } catch {
-    serialized = String(value);
-  }
+  const serialized = stringifyToolValue(value, options.redactFields, {
+    maxStringChars: 4000,
+    maxArrayItems: 25,
+    maxDepth: 6,
+  });
 
   const safeText = redactSecrets(serialized).text;
   return truncate(safeText, maxChars);
+}
+
+async function compactToolOutput<TInput, TOutput>(
+  output: TOutput,
+  config: ToolEnvelopeConfig<TInput, TOutput>,
+  metadata: ToolEnvelopeMetadata & { agentId: string; runId?: string; toolId: string },
+): Promise<{ preview: string; outputArtifactId?: string }> {
+  const text = redactSecrets(
+    stringifyToolValue(output, config.redactOutputFields ?? config.redactInputFields, {
+      maxStringChars: 50_000,
+      maxArrayItems: 1000,
+      maxDepth: 10,
+    }),
+  ).text;
+
+  const compaction = await compactHarnessOutput({
+    text,
+    kind: 'tool_output',
+    taskId: metadata.taskId,
+    subtaskId: metadata.subtaskId,
+    agentId: metadata.agentId,
+    threadId: metadata.threadId,
+    runId: metadata.runId,
+    turnId: metadata.turnId,
+    toolId: metadata.toolId,
+    previewBytes: config.outputPreviewMaxChars ?? DEFAULT_PREVIEW_CHARS,
+    metadata: {
+      category: config.category,
+      risk: config.risk,
+    },
+  });
+
+  return {
+    preview: compaction.preview,
+    outputArtifactId: compaction.fullTextArtifactId,
+  };
+}
+
+async function buildModelOutput<TInput, TOutput>(
+  config: ToolEnvelopeConfig<TInput, TOutput>,
+  output: TOutput,
+  input: TInput,
+  metadata: ToolEnvelopeMetadata & { agentId: string; runId?: string; toolId: string },
+): Promise<TOutput> {
+  if (!config.modelOutput) return output;
+
+  try {
+    return await config.modelOutput(output, input, metadata);
+  } catch (error) {
+    console.warn(
+      `[ToolEnvelope] modelOutput compaction failed for ${config.toolId}:`,
+      (error as Error).message,
+    );
+    return output;
+  }
 }
 
 export function classifyToolError(input: {
@@ -307,13 +387,35 @@ function extractToolMetadata(input: unknown): ToolEnvelopeMetadata {
   };
 }
 
-function redactStructuredValue(value: unknown, redactedFields: Set<string>, depth = 0): unknown {
-  if (depth > 6) return '[Max depth]';
+function stringifyToolValue(
+  value: unknown,
+  redactFields: string[] | undefined,
+  limits: { maxStringChars: number; maxArrayItems: number; maxDepth: number },
+): string {
+  const redactedFieldSet = new Set((redactFields ?? []).map((field) => field.toLowerCase()));
+  try {
+    return typeof value === 'string'
+      ? value
+      : JSON.stringify(redactStructuredValue(value, redactedFieldSet, limits));
+  } catch {
+    return String(value);
+  }
+}
+
+function redactStructuredValue(
+  value: unknown,
+  redactedFields: Set<string>,
+  limits: { maxStringChars: number; maxArrayItems: number; maxDepth: number },
+  depth = 0,
+): unknown {
+  if (depth > limits.maxDepth) return '[Max depth]';
   if (value === null || value === undefined) return value;
-  if (typeof value === 'string') return truncate(value, 4000);
+  if (typeof value === 'string') return truncate(value, limits.maxStringChars);
   if (typeof value !== 'object') return value;
   if (Array.isArray(value)) {
-    return value.slice(0, 25).map((entry) => redactStructuredValue(entry, redactedFields, depth + 1));
+    return value
+      .slice(0, limits.maxArrayItems)
+      .map((entry) => redactStructuredValue(entry, redactedFields, limits, depth + 1));
   }
 
   const out: Record<string, unknown> = {};
@@ -323,7 +425,7 @@ function redactStructuredValue(value: unknown, redactedFields: Set<string>, dept
         ? `[redacted:${entry.length} chars]`
         : '[redacted]';
     } else {
-      out[key] = redactStructuredValue(entry, redactedFields, depth + 1);
+      out[key] = redactStructuredValue(entry, redactedFields, limits, depth + 1);
     }
   }
   return out;

@@ -4,6 +4,8 @@ import { getDb } from '../../lib/mongo.js';
 import { N8nService } from '../n8n/client.js';
 import { analyzeWorkflow } from './risk-scoring.js';
 import { validateWorkflow } from './validation/workflow-validator.js';
+import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
+import { compactAutomationResultForModel } from '../../services/automation-output-compaction.js';
 
 type ActivationPolicy = {
   approvalRequired: boolean;
@@ -30,8 +32,25 @@ export const activateAutomationTool = createTool({
     validation: z.any().optional(),
     risk: z.any().optional(),
     activationPolicy: z.any().optional(),
+    outputArtifactId: z.string().optional(),
+    outputTruncated: z.boolean().optional(),
+    originalBytes: z.number().optional(),
+    previewBytes: z.number().optional(),
+    outputCompaction: z.any().optional(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'architect_activate_automation',
+    category: 'network',
+    risk: 'high',
+    defaultAgentId: 'automationArchitect',
+    redactInputFields: ['approvalToken'],
+    policy: (input: any) => ({
+      agentId: 'automationArchitect',
+      action: 'activate_automation' as const,
+      target: `${input.automationId}:${input.workflowId}`,
+      riskHint: 'high' as const,
+    }),
+    execute: async (context: any) => {
     const mode = context.mode ?? 'auto';
     const db = await getDb();
     const automation = await db.collection('automation_requests').findOne({ automationId: context.automationId });
@@ -175,7 +194,9 @@ export const activateAutomationTool = createTool({
         error: (error as Error).message,
       };
     }
-  },
+    },
+    modelOutput: (output, _input, metadata) => compactAutomationResultForModel(output, metadata),
+  }),
 });
 
 function evaluateActivationPolicy(workflow: any, score: number, mode: 'auto' | 'after_approval'): ActivationPolicy {

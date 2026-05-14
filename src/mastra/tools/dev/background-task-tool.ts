@@ -66,7 +66,7 @@ export const bgTaskTool = createTool({
     status: z.enum(['running', 'completed', 'failed', 'cancelled', 'unknown']).optional(),
     limit: z.number().optional().default(10),
     // harness metadata
-    agentId: z.string().optional(),
+    agentId: z.string().optional().describe('Owner/target agent for completion notifications. Defaults to current harness agent.'),
     threadId: z.string().optional(),
     runId: z.string().optional(),
     turnId: z.string().optional(),
@@ -107,15 +107,19 @@ export const bgTaskTool = createTool({
       return {
         action: 'run_command',
         command: context.command,
-        taskId: context.ownerTaskId,
+        taskId: context.ownerTaskId ?? metadata.taskId,
         agentId: metadata.agentId,
-        threadId: context.threadId,
+        threadId: context.threadId ?? metadata.threadId,
         runId: metadata.runId,
         turnId: metadata.turnId,
       };
     },
-    execute: async (context) => {
+    execute: async (context, metadata) => {
       try {
+        const ownerAgentId = context.agentId ?? metadata?.agentId ?? 'codingAgent';
+        const ownerThreadId = context.threadId ?? metadata?.threadId;
+        const ownerTaskId = context.ownerTaskId ?? metadata?.taskId;
+
         switch (context.action) {
           case 'start': {
             if (!context.command) {
@@ -139,8 +143,9 @@ export const bgTaskTool = createTool({
             const record = await startBackgroundTask({
               command: context.command,
               cwd: context.cwd || process.cwd(),
-              ownerTaskId: context.ownerTaskId,
-              agentId: context.agentId ?? 'codingAgent',
+              ownerTaskId,
+              threadId: ownerThreadId,
+              agentId: ownerAgentId,
               notify: context.notify ?? false,
               wake: context.wake ?? true,
             });
@@ -234,12 +239,12 @@ export const bgTaskTool = createTool({
             const compaction = await compactHarnessOutput({
               text: fullOutput,
               kind: 'command_log',
-              taskId: context.ownerTaskId,
+              taskId: ownerTaskId,
               subtaskId: context.subtaskId,
-              agentId: context.agentId,
-              threadId: context.threadId,
-              runId: context.runId,
-              turnId: context.turnId,
+              agentId: ownerAgentId,
+              threadId: ownerThreadId,
+              runId: context.runId ?? metadata?.runId,
+              turnId: context.turnId ?? metadata?.turnId,
               toolId: 'bg_task',
               metadata: { bgTaskId: context.taskId, action: 'output' },
             });

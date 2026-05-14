@@ -2,6 +2,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { MongoClient } from 'mongodb';
 import { getRuntimeTopology } from '../../config/runtime-topology.js';
+import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
 
 export const runtimeCheckTool = createTool({
   id: 'architect_runtime_check',
@@ -32,7 +33,17 @@ export const runtimeCheckTool = createTool({
       }),
     ),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'architect_runtime_check',
+    category: 'other',
+    risk: 'low',
+    defaultAgentId: 'automationArchitect',
+    policy: () => ({
+      agentId: 'automationArchitect',
+      action: 'compose_automation' as const,
+      riskHint: 'low' as const,
+    }),
+    execute: async (context: any) => {
     const topology = getRuntimeTopology();
     const checks: any[] = [];
     const missingConfig: any[] = [];
@@ -183,5 +194,6 @@ export const runtimeCheckTool = createTool({
       checks,
       missingConfig,
     };
-  },
+    }
+  }),
 });

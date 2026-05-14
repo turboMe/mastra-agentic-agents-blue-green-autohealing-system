@@ -1,9 +1,9 @@
 /**
- * Pending Updates Input Processor for Meta-Agent
+ * Pending Updates Input Processor
  *
  * Runs at processInput (once per generate/stream call) to check for
  * pending messages from async delegations, background tasks, and system
- * notifications. Injects them as a system context block so the meta-agent
+ * notifications. Injects them as a system context block so the target agent
  * naturally surfaces updates in its response.
  *
  * Etap Harness — Async Delegation Layer
@@ -45,13 +45,24 @@ export class PendingUpdatesProcessor extends BaseProcessor<'pending-updates'> {
   readonly id = 'pending-updates' as const;
   readonly name = 'Pending Updates Processor';
   readonly description =
-    'Checks for async delegation results and background task notifications before each meta-agent turn.';
+    'Checks for async delegation results and background task notifications before each agent turn.';
+
+  constructor(
+    private readonly options: {
+      agentId?: string;
+      maxUpdates?: number;
+    } = {},
+  ) {
+    super();
+  }
 
   async processInput(args: ProcessInputArgs): Promise<ProcessInputResult> {
     const { messages, systemMessages } = args;
     const threadId = extractThreadId(args);
+    const agentId = this.options.agentId ?? 'meta-agent';
+    const limit = this.options.maxUpdates ?? 5;
 
-    console.log(`[PendingUpdatesProcessor] ▶ processInput called. threadId=${threadId ?? '(none)'}, messages=${messages.length}`);
+    console.log(`[PendingUpdatesProcessor] ▶ processInput called. agentId=${agentId}, threadId=${threadId ?? '(none)'}, messages=${messages.length}`);
 
     try {
       let pendingMessages: PendingMessage[];
@@ -60,8 +71,8 @@ export class PendingUpdatesProcessor extends BaseProcessor<'pending-updates'> {
         console.log(`[PendingUpdatesProcessor] Using scoped query: threadId=${threadId}`);
         pendingMessages = await takePendingMessages({
           threadId,
-          agentId: 'meta-agent',
-          limit: 5,
+          agentId,
+          limit,
         });
       } else {
         // Fallback: query ALL undelivered pending messages broadly.
@@ -73,6 +84,11 @@ export class PendingUpdatesProcessor extends BaseProcessor<'pending-updates'> {
           .find({
             status: 'pending',
             source: 'background_task',
+            $or: [
+              { targetAgentId: agentId },
+              { targetAgentId: { $exists: false } },
+              { targetAgentId: null },
+            ],
             expiresAt: { $gt: now },
           })
           .sort({ urgent: -1, createdAt: 1 })
@@ -85,7 +101,7 @@ export class PendingUpdatesProcessor extends BaseProcessor<'pending-updates'> {
           const ids = docs.map((d) => d.id);
           await db.collection<PendingMessage>('pending_user_messages').updateMany(
             { id: { $in: ids }, status: 'pending' },
-            { $set: { status: 'consumed' as const, consumedAt: new Date(), consumedBy: 'meta-agent:pending-updates-processor' } },
+            { $set: { status: 'consumed' as const, consumedAt: new Date(), consumedBy: `${agentId}:pending-updates-processor` } },
           );
           console.log(`[PendingUpdatesProcessor] Marked ${ids.length} message(s) as consumed`);
         }
@@ -128,5 +144,7 @@ export class PendingUpdatesProcessor extends BaseProcessor<'pending-updates'> {
 }
 
 export const pendingUpdatesProcessor = new PendingUpdatesProcessor();
-
+export const automationPendingUpdatesProcessor = new PendingUpdatesProcessor({
+  agentId: 'automationArchitect',
+});
 

@@ -17,6 +17,10 @@ import { getCredentialFromRegistry } from '../tools/architect/credentials/creden
 import { generateMockPayload } from '../tools/architect/testing/mock-data.js';
 import { applyRepairs } from '../tools/architect/testing/repair-workflow.js';
 import type { TestFinding } from '../tools/architect/testing/test-types.js';
+import {
+  recordAutomationGoldenPathFailure,
+  recordAutomationGoldenPathRecovery,
+} from './automation-failure-learning.js';
 
 export type AutomationGoldenPathMode = 'pattern' | 'workflow_file' | 'workflow_json';
 
@@ -34,6 +38,13 @@ export type AutomationGoldenPathStep = {
   status: AutomationGoldenPathStepStatus;
   message: string;
   data?: Record<string, unknown>;
+};
+
+export type AutomationRecoveryStrategy = {
+  name: string;
+  outcome: 'attempted' | 'succeeded' | 'failed' | 'blocked' | 'not_applicable';
+  reason: string;
+  changes?: unknown[];
 };
 
 export type AutomationGoldenPathInput = {
@@ -71,6 +82,7 @@ export type AutomationGoldenPathResult = {
   };
   missingConfig?: unknown[];
   missingCredentials?: unknown[];
+  recoveryStrategies?: AutomationRecoveryStrategy[];
   repairAttempts: number;
   error?: string;
 };
@@ -100,6 +112,7 @@ export async function executeAutomationGoldenPath(
   let deployedWorkflow: any;
   let operation: 'create' | 'update' | undefined;
   let repairAttempts = 0;
+  const recoveryStrategies: AutomationRecoveryStrategy[] = [];
 
   const pushStep = (
     name: string,
@@ -110,15 +123,34 @@ export async function executeAutomationGoldenPath(
     steps.push({ name, status, message, data });
   };
 
+  const finalize = async (result: AutomationGoldenPathResult): Promise<AutomationGoldenPathResult> => {
+    result.recoveryStrategies = [...recoveryStrategies];
+    if (result.success) {
+      await recordAutomationGoldenPathRecovery({ input, result }).catch((error) => {
+        console.warn('[AutomationGoldenPath] recovery learning failed:', (error as Error).message);
+      });
+    } else {
+      await recordAutomationGoldenPathFailure({ input, result }).catch((error) => {
+        console.warn('[AutomationGoldenPath] failure learning failed:', (error as Error).message);
+      });
+    }
+    return result;
+  };
+
   try {
-    const workflow = await resolveWorkflowInput(input);
+    let workflow = await resolveWorkflowInput(input);
     workflowName = input.workflowName || workflow.name;
     pushStep('resolve_workflow', 'success', `Workflow resolved: ${workflowName ?? '(unnamed)'}`);
 
     const runtime = await checkRuntime(inferRuntimeRequirements(workflow, input));
     pushStep('runtime_check', runtime.ok ? 'success' : 'blocked', runtime.message, { checks: runtime.checks });
     if (!runtime.ok) {
-      return buildResult({
+      recoveryStrategies.push({
+        name: 'runtime_preflight',
+        outcome: 'blocked',
+        reason: 'Runtime requirements failed before workflow deploy.',
+      });
+      return await finalize(buildResult({
         success: false,
         status: 'blocked',
         automationId,
@@ -128,7 +160,7 @@ export async function executeAutomationGoldenPath(
         steps,
         repairAttempts,
         missingConfig: runtime.missingConfig,
-      });
+      }));
     }
 
     const normalizationWarnings = normalizeWorkflowForDeploy(workflow);
@@ -140,18 +172,14 @@ export async function executeAutomationGoldenPath(
       pushStep('normalize_workflow', 'success', 'Workflow normalization complete.');
     }
 
-    const draftValidation = validateWorkflow(workflow, 'draft');
+    let draftValidation = validateWorkflow(workflow, 'draft');
     if (normalizationWarnings.length > 0) {
       draftValidation.warnings = [
         ...draftValidation.warnings,
         ...normalizationWarnings.map((message) => ({ message, severity: 'warning' as const })),
       ];
     }
-    const hasRequiredMissingCredentials = draftValidation.missingCredentials.some((credential) => credential.required);
-    const blocksDeploy =
-      draftValidation.errors.length > 0 ||
-      draftValidation.securityIssues.length > 0 ||
-      (input.allowDraftWithMissingCredentials === false && hasRequiredMissingCredentials);
+    let blocksDeploy = blocksDraftDeploy(draftValidation, input);
 
     pushStep('validate_draft', blocksDeploy ? 'blocked' : 'success',
       blocksDeploy ? 'Draft validation blocked deploy.' : 'Draft validation passed.', {
@@ -162,7 +190,47 @@ export async function executeAutomationGoldenPath(
       });
 
     if (blocksDeploy) {
-      return buildResult({
+      const draftRepair = await repairDraftBeforeDeploy({
+        automationId,
+        workflow,
+        validation: draftValidation,
+        attempt: repairAttempts + 1,
+        allowDraftWithMissingCredentials: input.allowDraftWithMissingCredentials,
+      });
+      repairAttempts += draftRepair.attempts;
+      recoveryStrategies.push({
+        name: 'draft_validation_repair',
+        outcome: draftRepair.succeeded ? 'succeeded' : draftRepair.changed ? 'failed' : 'not_applicable',
+        reason: draftRepair.message,
+        changes: draftRepair.changes,
+      });
+      pushStep(
+        'strategy_retry',
+        draftRepair.succeeded ? 'success' : draftRepair.changed ? 'warning' : 'failed',
+        draftRepair.message,
+        { strategy: 'draft_validation_repair', changes: draftRepair.changes },
+      );
+
+      if (draftRepair.workflow && draftRepair.validation) {
+        workflow = draftRepair.workflow;
+        draftValidation = draftRepair.validation;
+        blocksDeploy = blocksDraftDeploy(draftValidation, input);
+        pushStep(
+          'validate_draft_retry',
+          blocksDeploy ? 'blocked' : 'success',
+          blocksDeploy ? 'Draft validation still blocks deploy after retry.' : 'Draft validation passed after retry.',
+          {
+            errors: draftValidation.errors.length,
+            securityIssues: draftValidation.securityIssues.length,
+            missingCredentials: draftValidation.missingCredentials.length,
+            missingConfig: draftValidation.missingConfig.length,
+          },
+        );
+      }
+    }
+
+    if (blocksDeploy) {
+      return await finalize(buildResult({
         success: false,
         status: 'blocked',
         automationId,
@@ -174,7 +242,7 @@ export async function executeAutomationGoldenPath(
         repairAttempts,
         missingConfig: draftValidation.missingConfig,
         missingCredentials: draftValidation.missingCredentials,
-      });
+      }));
     }
 
     const risk = withVerdict(analyzeWorkflow(workflow));
@@ -182,7 +250,12 @@ export async function executeAutomationGoldenPath(
       `Risk score=${risk.score}, verdict=${risk.verdict}.`, { findings: risk.findings });
 
     if (risk.verdict === 'block') {
-      return buildResult({
+      recoveryStrategies.push({
+        name: 'risk_reduction',
+        outcome: 'blocked',
+        reason: `Risk verdict block at score ${risk.score}; automatic bypass is not allowed.`,
+      });
+      return await finalize(buildResult({
         success: false,
         status: 'blocked',
         automationId,
@@ -195,11 +268,16 @@ export async function executeAutomationGoldenPath(
         repairAttempts,
         missingConfig: draftValidation.missingConfig,
         missingCredentials: draftValidation.missingCredentials,
-      });
+      }));
     }
 
     if (risk.verdict === 'review' && !input.approvalToken) {
-      return buildResult({
+      recoveryStrategies.push({
+        name: 'approval_gate',
+        outcome: 'blocked',
+        reason: `Risk verdict review at score ${risk.score}; approvalToken required.`,
+      });
+      return await finalize(buildResult({
         success: false,
         status: 'blocked',
         automationId,
@@ -212,7 +290,7 @@ export async function executeAutomationGoldenPath(
         repairAttempts,
         missingConfig: draftValidation.missingConfig,
         missingCredentials: draftValidation.missingCredentials,
-      });
+      }));
     }
 
     const deployed = await deployWorkflow({
@@ -241,6 +319,12 @@ export async function executeAutomationGoldenPath(
 
     while (test.status !== 'passed' && repairAttempts < 3) {
       repairAttempts += 1;
+      const strategyName = selectMockTestRecoveryStrategy(test.findings);
+      recoveryStrategies.push({
+        name: strategyName,
+        outcome: 'attempted',
+        reason: `Mock test failed; attempting repair ${repairAttempts}/3.`,
+      });
       const repair = await repairAndRedeploy({
         automationId,
         workflowId,
@@ -254,8 +338,14 @@ export async function executeAutomationGoldenPath(
         'repair_workflow',
         repair.success ? 'success' : repair.changed ? 'warning' : 'failed',
         repair.message,
-        { attempt: repairAttempts, changes: repair.changes },
+        { attempt: repairAttempts, strategy: strategyName, changes: repair.changes },
       );
+      recoveryStrategies[recoveryStrategies.length - 1] = {
+        name: strategyName,
+        outcome: repair.success ? 'succeeded' : repair.changed ? 'failed' : 'not_applicable',
+        reason: repair.message,
+        changes: repair.changes,
+      };
 
       if (!repair.changed || !repair.workflow) {
         break;
@@ -273,7 +363,7 @@ export async function executeAutomationGoldenPath(
 
     if (test.status !== 'passed') {
       await markAutomationStatus(automationId, 'manual_review_required', workflowId);
-      return buildResult({
+      return await finalize(buildResult({
         success: false,
         status: 'manual_review_required',
         automationId,
@@ -288,7 +378,7 @@ export async function executeAutomationGoldenPath(
         repairAttempts,
         missingConfig: draftValidation.missingConfig,
         missingCredentials: draftValidation.missingCredentials,
-      });
+      }));
     }
 
     if (input.activate) {
@@ -300,7 +390,7 @@ export async function executeAutomationGoldenPath(
       pushStep('activate', activation.success ? 'success' : 'blocked', activation.message, activation.data);
       await syncAutomationStatus({ automationId, workflowId });
 
-      return buildResult({
+      return await finalize(buildResult({
         success: activation.success,
         status: activation.success ? 'active' : 'tested',
         automationId,
@@ -317,13 +407,13 @@ export async function executeAutomationGoldenPath(
         repairAttempts,
         missingConfig: draftValidation.missingConfig,
         missingCredentials: draftValidation.missingCredentials,
-      });
+      }));
     }
 
     await markAutomationStatus(automationId, 'tested', workflowId);
     await syncAutomationStatus({ automationId, workflowId });
 
-    return buildResult({
+    return await finalize(buildResult({
       success: true,
       status: 'tested',
       automationId,
@@ -338,10 +428,10 @@ export async function executeAutomationGoldenPath(
       repairAttempts,
       missingConfig: draftValidation.missingConfig,
       missingCredentials: draftValidation.missingCredentials,
-    });
+    }));
   } catch (error) {
     pushStep('golden_path_failed', 'failed', (error as Error).message);
-    return buildResult({
+    return await finalize(buildResult({
       success: false,
       status: 'blocked',
       automationId,
@@ -351,7 +441,7 @@ export async function executeAutomationGoldenPath(
       steps,
       repairAttempts,
       error: (error as Error).message,
-    });
+    }));
   }
 }
 
@@ -612,6 +702,103 @@ function withVerdict(result: ReturnType<typeof analyzeWorkflow>): ReturnType<typ
     ...result,
     verdict: result.score >= 80 ? 'block' : result.score >= 20 ? 'review' : 'approve',
   };
+}
+
+function blocksDraftDeploy(validation: ValidationResult, input: AutomationGoldenPathInput): boolean {
+  const hasRequiredMissingCredentials = validation.missingCredentials.some((credential) => credential.required);
+  return (
+    validation.errors.length > 0 ||
+    validation.securityIssues.length > 0 ||
+    (input.allowDraftWithMissingCredentials === false && hasRequiredMissingCredentials)
+  );
+}
+
+async function repairDraftBeforeDeploy(input: {
+  automationId: string;
+  workflow: any;
+  validation: ValidationResult;
+  attempt: number;
+  allowDraftWithMissingCredentials?: boolean;
+}): Promise<{
+  attempts: number;
+  changed: boolean;
+  succeeded: boolean;
+  workflow?: any;
+  validation?: ValidationResult;
+  changes: unknown[];
+  message: string;
+}> {
+  if (input.attempt > 3) {
+    return {
+      attempts: 0,
+      changed: false,
+      succeeded: false,
+      changes: [],
+      message: 'Draft repair skipped: max repair attempts already reached.',
+    };
+  }
+
+  const findings = validationToFindings(input.validation);
+  const repaired = applyRepairs(input.workflow, findings);
+  const attempts = repaired.changes.length > 0 ? 1 : 0;
+
+  if (attempts > 0) {
+    const db = await getDb();
+    await db.collection('automation_events').insertOne({
+      automationId: input.automationId,
+      type: 'repair_attempt',
+      data: {
+        stage: 'draft_validation',
+        attempt: input.attempt,
+        changes: repaired.changes,
+      },
+      createdAt: new Date(),
+    });
+  }
+
+  if (!repaired.patchedWorkflow || repaired.changes.length === 0) {
+    return {
+      attempts,
+      changed: false,
+      succeeded: false,
+      changes: [],
+      message: 'No deterministic draft repair was possible.',
+    };
+  }
+
+  const normalizationWarnings = normalizeWorkflowForDeploy(repaired.patchedWorkflow);
+  const nextValidation = validateWorkflow(repaired.patchedWorkflow, 'draft');
+  if (normalizationWarnings.length > 0) {
+    nextValidation.warnings = [
+      ...nextValidation.warnings,
+      ...normalizationWarnings.map((message) => ({ message, severity: 'warning' as const })),
+    ];
+  }
+
+  const hasRequiredMissingCredentials = nextValidation.missingCredentials.some((credential) => credential.required);
+  const stillBlocked =
+    nextValidation.errors.length > 0 ||
+    nextValidation.securityIssues.length > 0 ||
+    (input.allowDraftWithMissingCredentials === false && hasRequiredMissingCredentials);
+  return {
+    attempts,
+    changed: true,
+    succeeded: !stillBlocked,
+    workflow: repaired.patchedWorkflow,
+    validation: nextValidation,
+    changes: repaired.changes,
+    message: stillBlocked
+      ? 'Draft repair changed the workflow, but draft validation still blocks deploy.'
+      : 'Draft repair resolved blocking validation issues before deploy.',
+  };
+}
+
+function selectMockTestRecoveryStrategy(findings: TestFinding[]): string {
+  const text = findings.map((finding) => `${finding.message} ${finding.suggestedFix ?? ''}`).join('\n').toLowerCase();
+  if (/credential|chatid|telegram|gmail|mongo/.test(text)) return 'credential_or_config_repair';
+  if (/localhost:3000|af-mongodb|\$vars|executionorder|active=false/.test(text)) return 'runtime_topology_repair';
+  if (/security|auth|webhook/.test(text)) return 'security_repair_or_escalation';
+  return 'structural_workflow_repair';
 }
 
 async function deployWorkflow(input: {
@@ -969,6 +1156,7 @@ function buildResult(input: Omit<AutomationGoldenPathResult, 'operation'> & {
     lastTest: input.lastTest,
     missingConfig: input.missingConfig,
     missingCredentials: input.missingCredentials,
+    recoveryStrategies: input.recoveryStrategies,
     repairAttempts: input.repairAttempts,
     error: input.error,
   };

@@ -10,6 +10,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb } from '../../lib/mongo.js';
 import { randomUUID } from 'crypto';
+import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
 
 export const requestApprovalTool = createTool({
   id: 'system_request_approval',
@@ -28,7 +29,20 @@ export const requestApprovalTool = createTool({
     message: z.string(),
     error: z.string().optional(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'system_request_approval',
+    category: 'approval',
+    risk: 'low',
+    defaultAgentId: 'meta-agent',
+    redactInputFields: ['args'],
+    policy: (input: any) => ({
+      agentId: input.agentId ?? 'meta-agent',
+      taskId: input.taskId,
+      action: 'approval' as const,
+      target: input.tool,
+      riskHint: 'low' as const,
+    }),
+    execute: async (context) => {
     try {
       const db = await getDb();
       const approvalId = randomUUID();
@@ -57,5 +71,6 @@ export const requestApprovalTool = createTool({
         error: (error as Error).message,
       };
     }
-  },
+    },
+  }),
 });

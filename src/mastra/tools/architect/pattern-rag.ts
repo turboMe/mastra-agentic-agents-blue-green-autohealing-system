@@ -10,6 +10,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb } from '../../lib/mongo.js';
+import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
 import {
   EMBEDDING_MODEL_ID,
   generateEmbedding,
@@ -38,7 +39,17 @@ export const syncPatternsTool = createTool({
     embedded: z.number(),
     skipped: z.number(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'architect_sync_patterns',
+    category: 'other',
+    risk: 'low',
+    defaultAgentId: 'automationArchitect',
+    policy: () => ({
+      agentId: 'automationArchitect',
+      action: 'compose_automation' as const,
+      riskHint: 'low' as const,
+    }),
+    execute: async (context: any) => {
     const force = context.force ?? false;
     const db = await getDb();
     const col = db.collection<StoredAutomationPattern>(COLLECTION);
@@ -94,7 +105,8 @@ export const syncPatternsTool = createTool({
     }
 
     return { synced, embedded, skipped };
-  },
+    }
+  }),
 });
 
 export const matchPatternTool = createTool({
@@ -128,7 +140,18 @@ export const matchPatternTool = createTool({
     ),
     message: z.string(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'architect_match_pattern',
+    category: 'other',
+    risk: 'low',
+    defaultAgentId: 'automationArchitect',
+    policy: (input: any) => ({
+      agentId: 'automationArchitect',
+      action: 'compose_automation' as const,
+      target: input.name,
+      riskHint: 'low' as const,
+    }),
+    execute: async (context: any) => {
     try {
       const queryText = `${context.name}: ${context.description} ${context.goal}`;
       const queryEmbedding = await generateEmbedding(queryText);
@@ -189,5 +212,6 @@ export const matchPatternTool = createTool({
         message: `Błąd RAG: ${(error as Error).message}`,
       };
     }
-  },
+    }
+  }),
 });

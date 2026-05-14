@@ -5,6 +5,8 @@
  */
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
+import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
+import { compactAutomationResultForModel } from '../../services/automation-output-compaction.js';
 
 // ── Forbidden node types that immediately raise risk ───────────────────────
 const CRITICAL_NODE_TYPES = [
@@ -210,8 +212,25 @@ export const riskScoringTool = createTool({
     })),
     summary: z.string(),
     approvalRequired: z.boolean(),
+    outputArtifactId: z.string().optional(),
+    outputTruncated: z.boolean().optional(),
+    originalBytes: z.number().optional(),
+    previewBytes: z.number().optional(),
+    outputCompaction: z.any().optional(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'architect_risk_score',
+    category: 'other',
+    risk: 'low',
+    defaultAgentId: 'automationArchitect',
+    redactInputFields: ['workflowJson'],
+    policy: (input: any) => ({
+      agentId: 'automationArchitect',
+      action: 'compose_automation' as const,
+      target: input.workflowName,
+      riskHint: 'low' as const,
+    }),
+    execute: async (context: any) => {
     let parsed: unknown;
     try {
       parsed = JSON.parse(context.workflowJson);
@@ -260,5 +279,7 @@ export const riskScoringTool = createTool({
            'Deploy dozwolony po przeglądzie.');
 
     return { score, riskLevel, verdict, findings, summary, approvalRequired };
-  },
+    },
+    modelOutput: (output, _input, metadata) => compactAutomationResultForModel(output, metadata),
+  }),
 });

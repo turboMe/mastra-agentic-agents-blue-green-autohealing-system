@@ -19,6 +19,7 @@ export type PendingMessage = {
   id: string;
   taskId?: string;
   threadId?: string;
+  targetAgentId?: string;
   source: PendingMessageSource;
   content: string;
   urgent: boolean;
@@ -33,6 +34,7 @@ export type PendingMessage = {
 export type QueuePendingMessageInput = {
   taskId?: string;
   threadId?: string;
+  targetAgentId?: string;
   source: PendingMessageSource;
   content: string;
   urgent?: boolean;
@@ -65,6 +67,7 @@ export async function queuePendingMessage(input: QueuePendingMessageInput): Prom
     id,
     taskId: input.taskId,
     threadId: input.threadId,
+    targetAgentId: input.targetAgentId,
     source: input.source,
     content,
     urgent: Boolean(input.urgent),
@@ -79,7 +82,7 @@ export async function queuePendingMessage(input: QueuePendingMessageInput): Prom
     await db.collection<PendingMessage>(COLLECTION).insertOne(doc);
     await logHarnessEvent({
       type: 'soft_interrupt_queued',
-      agentId: 'codingAgent',
+      agentId: input.targetAgentId ?? 'codingAgent',
       threadId: input.threadId,
       taskId: input.taskId,
       feature: 'pending_message_queue',
@@ -108,7 +111,7 @@ export async function takePendingMessages(input: TakePendingMessagesInput): Prom
     const now = new Date();
     const messages = await db.collection<PendingMessage>(COLLECTION)
       .find({
-        ...scopeQuery(input),
+        ...scopedTargetQuery(input),
         status: 'pending',
         expiresAt: { $gt: now },
       })
@@ -213,4 +216,22 @@ function scopeQuery(input: Pick<TakePendingMessagesInput, 'taskId' | 'threadId'>
   if (input.taskId) clauses.push({ taskId: input.taskId });
   if (input.threadId) clauses.push({ threadId: input.threadId });
   return clauses.length === 1 ? clauses[0] : { $or: clauses };
+}
+
+function targetAgentQuery(agentId?: string): Record<string, unknown> {
+  if (!agentId) return {};
+  return {
+    $or: [
+      { targetAgentId: agentId },
+      { targetAgentId: { $exists: false } },
+      { targetAgentId: null },
+    ],
+  };
+}
+
+function scopedTargetQuery(input: TakePendingMessagesInput): Record<string, unknown> {
+  const scope = scopeQuery(input);
+  const target = targetAgentQuery(input.agentId);
+  if (Object.keys(target).length === 0) return scope;
+  return { $and: [scope, target] };
 }

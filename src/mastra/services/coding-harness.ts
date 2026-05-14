@@ -17,6 +17,7 @@ import { buildCodingPrecontext } from './coding-precontext.js';
 import { scheduleSemanticMemoryCheck } from './semantic-memory-worker.js';
 import { beginHarnessTurn, completeHarnessTurn, failHarnessTurn } from './harness-run-state.js';
 import { isWorkspaceTool, logPostHocToolExecution } from './harness-tool-envelope.js';
+import { runWithHarnessExecutionContext } from './harness-execution-context.js';
 
 export type HarnessPhase =
   // ── Coding phases ──
@@ -376,12 +377,23 @@ async function callAgentGenerate<TResponse>(
 
   console.log(`[Harness] callAgentGenerate: maxSteps=${generateOptions.maxSteps}, model=${generateOptions.model ?? 'agent-default'}, memory=${!!generateOptions.memory}, keys=${Object.keys(generateOptions).join(',')}`);
 
-  const call = input.agent.generate(input.prompt, generateOptions as any);
-
-  return withTimeout(
-    call as Promise<TResponse>,
-    input.timeoutMs,
-    `Harness LLM call timed out after ${(input.timeoutMs ?? 0) / 1000}s`,
+  return runWithHarnessExecutionContext(
+    {
+      agentId: input.agentId,
+      runId: harnessContext?.runId,
+      turnId: harnessContext?.turnId,
+      threadId: harnessContext?.threadId,
+      taskId: input.taskId,
+      subtaskId: input.subtaskId,
+    },
+    () => {
+      const call = input.agent.generate(input.prompt, generateOptions as any);
+      return withTimeout(
+        call as Promise<TResponse>,
+        input.timeoutMs,
+        `Harness LLM call timed out after ${(input.timeoutMs ?? 0) / 1000}s`,
+      );
+    },
   );
 }
 

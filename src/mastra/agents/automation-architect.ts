@@ -1,7 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 import { agentModels, infrastructure, resolveModelId } from '../config/model-manifest.js';
 import { Memory } from '@mastra/memory';
-import { TokenLimiterProcessor } from '@mastra/core/processors';
+import { TokenLimiterProcessor, ToolSearchProcessor } from '@mastra/core/processors';
 import {
   n8nTriggerWebhookTool,
   n8nHealthTool,
@@ -9,6 +9,10 @@ import {
   n8nGetWorkflowTool,
 } from '../tools/n8n/n8n-tools.js';
 import { requestApprovalTool } from '../tools/system/request-approval.js';
+import { delegateTaskTool } from '../tools/system/delegate-task.js';
+import { runWorkerTool } from '../tools/system/run-worker.js';
+import { checkPendingUpdatesTool } from '../tools/system/check-pending-updates.js';
+import { bgTaskTool } from '../tools/dev/background-task-tool.js';
 import { riskScoringTool } from '../tools/architect/risk-scoring.js';
 import { skillsSearchTool } from '../tools/architect/skills-search.js';
 import { syncPatternsTool, matchPatternTool } from '../tools/architect/pattern-rag.js';
@@ -30,6 +34,7 @@ import { memoryWriteTool } from '../tools/system/memory-write.js';
 import { skillSearchTool } from '../tools/system/skill-search.js';
 import { skillLoadTool } from '../tools/system/skill-load.js';
 import { skillReportTool } from '../tools/system/skill-report.js';
+import { automationPendingUpdatesProcessor } from '../processors/pending-updates.js';
 
 export const automationArchitect = new Agent({
   id: 'automation-architect',
@@ -117,6 +122,11 @@ export const automationArchitect = new Agent({
     repairWorkflowTool,
     // Human approval gate
     requestApprovalTool,
+    // Orchestration for bounded subtasks
+    delegateTaskTool,
+    runWorkerTool,
+    // Background task results
+    checkPendingUpdatesTool,
     // System knowledge (harness upgrade — Sprint A)
     memoryRecallTool,
     memoryWriteTool,
@@ -127,6 +137,14 @@ export const automationArchitect = new Agent({
   },
   // Context window protection (prevents overflow in long Golden Path sessions)
   inputProcessors: [
+    automationPendingUpdatesProcessor,
+    new ToolSearchProcessor({
+      tools: {
+        bgTaskTool,
+      },
+      search: { topK: 4, minScore: 0.25 },
+      ttl: 3_600_000,
+    }),
     new TokenLimiterProcessor({
       limit: 120_000,  // Effective limit for Gemini 2.5 Pro
     }),

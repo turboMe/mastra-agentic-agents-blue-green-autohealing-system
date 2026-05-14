@@ -34,6 +34,7 @@ export type BackgroundTaskStatus =
 export type BackgroundTaskRecord = {
   taskId: string;
   ownerTaskId?: string;
+  threadId?: string;
   agentId: string;
   command: string;
   cwd: string;
@@ -69,6 +70,7 @@ export type StartTaskInput = {
   command: string;
   cwd: string;
   ownerTaskId?: string;
+  threadId?: string;
   agentId?: string;
   notify?: boolean;
   wake?: boolean;
@@ -127,6 +129,7 @@ export async function startBackgroundTask(
   const record: BackgroundTaskRecord = {
     taskId,
     ownerTaskId: input.ownerTaskId,
+    threadId: input.threadId,
     agentId: input.agentId ?? 'codingAgent',
     command: input.command,
     cwd: input.cwd,
@@ -163,6 +166,7 @@ export async function startBackgroundTask(
   await logHarnessEvent({
     type: 'bg_task_started',
     agentId: record.agentId,
+    threadId: record.threadId,
     taskId: input.ownerTaskId,
     feature: 'background_tasks',
     status: 'success',
@@ -346,6 +350,7 @@ export async function cancelBackgroundTask(
   await logHarnessEvent({
     type: 'bg_task_completed',
     agentId: record.agentId,
+    threadId: record.threadId,
     taskId: record.ownerTaskId,
     feature: 'background_tasks',
     status: 'success',
@@ -444,6 +449,7 @@ async function handleTaskExit(
     await logHarnessEvent({
       type: 'bg_task_completed',
       agentId: record.agentId,
+      threadId: record.threadId,
       taskId: record.ownerTaskId,
       feature: 'background_tasks',
       status: status === 'completed' ? 'success' : 'error',
@@ -471,6 +477,8 @@ async function handleTaskExit(
 
       await queuePendingMessage({
         taskId: record.ownerTaskId,
+        threadId: record.threadId,
+        targetAgentId: record.agentId,
         source: 'background_task',
         content,
         urgent: exitCode !== 0,
@@ -517,6 +525,8 @@ async function handleTaskError(
     if (record.wake) {
       await queuePendingMessage({
         taskId: record.ownerTaskId,
+        threadId: record.threadId,
+        targetAgentId: record.agentId,
         source: 'background_task',
         content: `Background task ❌ failed to start: \`${record.command}\`\nError: ${errorMessage}`,
         urgent: true,

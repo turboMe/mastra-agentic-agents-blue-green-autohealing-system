@@ -33,6 +33,8 @@ export type DelegationRecord = {
   agentThreadId: string;
   /** Thread of the meta-agent caller — results are delivered here */
   callerThreadId: string;
+  /** Agent that should consume the pending result */
+  callerAgentId?: string;
   status: DelegationStatus;
   result?: string;
   error?: string;
@@ -47,6 +49,8 @@ export type StartAsyncDelegationInput = {
   prompt: string;
   /** Thread of the meta-agent — where to deliver results */
   callerThreadId: string;
+  /** Agent that should consume pending results; defaults to meta-agent for backward compatibility */
+  callerAgentId?: string;
   repoPath?: string;
   timeoutMs?: number;
 };
@@ -75,6 +79,7 @@ export async function startAsyncDelegation(
     taskDescription: input.prompt.slice(0, 2000),
     agentThreadId,
     callerThreadId: input.callerThreadId,
+    callerAgentId: input.callerAgentId ?? 'meta-agent',
     status: 'running',
     startedAt: now,
   };
@@ -91,7 +96,7 @@ export async function startAsyncDelegation(
     metadata: { delegationId, async: true },
   });
 
-  // Fire-and-forget — run coding agent in background
+  // Fire-and-forget — run target agent in background
   void executeDelegation(delegationId, agentThreadId, input);
 
   return { delegationId };
@@ -136,10 +141,11 @@ async function executeDelegation(
   const db = await getDb();
 
   try {
+    const delegatedPrompt = buildDelegatedPrompt(input);
     const harnessResult = await generateCoding({
       agent: input.agent,
       agentId: input.agentId,
-      prompt: input.prompt,
+      prompt: delegatedPrompt,
       threadId: agentThreadId,
       phase: 'chat',
       repoPath: input.repoPath ?? AGENTIC_AGENTS_REPO,
@@ -165,6 +171,7 @@ async function executeDelegation(
     // Queue result as pending message for meta-agent's thread
     await queuePendingMessage({
       threadId: input.callerThreadId,
+      targetAgentId: input.callerAgentId ?? 'meta-agent',
       source: 'background_task',
       content: [
         `## Async Delegation Result`,
@@ -214,6 +221,7 @@ async function executeDelegation(
     // Queue error as pending message for meta-agent's thread
     await queuePendingMessage({
       threadId: input.callerThreadId,
+      targetAgentId: input.callerAgentId ?? 'meta-agent',
       source: 'background_task',
       content: [
         `## Async Delegation Failed`,
@@ -244,4 +252,15 @@ async function executeDelegation(
 
     console.warn(`[AsyncDelegation] ❌ ${delegationId} failed after ${(durationMs / 1000).toFixed(1)}s: ${err.message}`);
   }
+}
+
+function buildDelegatedPrompt(input: StartAsyncDelegationInput): string {
+  const callerAgentId = input.callerAgentId ?? 'meta-agent';
+  return [
+    `SYSTEM DELEGATION CONTEXT: This task was delegated asynchronously by ${callerAgentId}.`,
+    `Caller thread id for pending results: ${input.callerThreadId}.`,
+    'If you start durable background work, target completion notifications back to the caller when the result is needed after your response.',
+    '',
+    input.prompt,
+  ].join('\n');
 }

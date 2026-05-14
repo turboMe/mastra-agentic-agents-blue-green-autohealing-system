@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { readFileSync, readdirSync, statSync } from 'fs';
 import { join, resolve } from 'path';
 import { AGENTIC_AGENTS_REPO } from '../../workspaces/code-workspace.js';
+import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
 
 // Tool files are bundled into .mastra/output/tools, so import.meta-relative
 // resolution points at the build directory. Keep this tied to the source repo.
@@ -174,7 +175,18 @@ export const skillsSearchTool = createTool({
     totalFound: z.number(),
     query: z.string(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'architect_skills_search',
+    category: 'other',
+    risk: 'low',
+    defaultAgentId: 'automationArchitect',
+    policy: (input: any) => ({
+      agentId: 'automationArchitect',
+      action: 'compose_automation' as const,
+      target: input.query,
+      riskHint: 'low' as const,
+    }),
+    execute: async (context: any) => {
     const allSkills = loadAllSkills();
 
     // Filter by category
@@ -210,5 +222,6 @@ export const skillsSearchTool = createTool({
     }));
 
     return { results, totalFound: scored.length, query: context.query };
-  },
+    }
+  }),
 });

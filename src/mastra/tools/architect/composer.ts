@@ -6,6 +6,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getPatternById } from './pattern-catalog.js';
 import type { AutomationSpec } from './types.js';
+import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
 
 const inputItemSchema = z.object({
   name: z.string(),
@@ -159,7 +160,19 @@ export const composeWorkflowTool = createTool({
       )
       .optional(),
   }),
-  execute: async (context) => {
+  execute: withToolEnvelope({
+    toolId: 'architect_compose_workflow',
+    category: 'other',
+    risk: 'low',
+    defaultAgentId: 'automationArchitect',
+    redactInputFields: ['spec'],
+    policy: (input: any) => ({
+      agentId: 'automationArchitect',
+      action: 'compose_automation' as const,
+      target: input.patternId,
+      riskHint: 'low' as const,
+    }),
+    execute: async (context: any) => {
     try {
       const spec = context.spec as AutomationSpec;
       const pattern = getPatternById(context.patternId);
@@ -273,5 +286,6 @@ export const composeWorkflowTool = createTool({
         error: (error as Error).message,
       };
     }
-  },
+    }
+  }),
 });

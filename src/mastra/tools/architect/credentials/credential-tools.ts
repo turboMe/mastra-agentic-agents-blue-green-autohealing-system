@@ -1,6 +1,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { resolveCredentials } from './credential-resolver.js';
+import { withToolEnvelope } from '../../../services/harness-tool-envelope.js';
 
 export const resolveCredentialsTool = createTool({
   id: 'architect_resolve_credentials',
@@ -33,7 +34,18 @@ export const resolveCredentialsTool = createTool({
       }),
     ),
   }),
-  execute: async (context) => {
-    return resolveCredentials(context.required);
-  },
+  execute: withToolEnvelope({
+    toolId: 'architect_resolve_credentials',
+    category: 'other',
+    risk: 'low',
+    defaultAgentId: 'automationArchitect',
+    policy: () => ({
+      agentId: 'automationArchitect',
+      action: 'compose_automation' as const,
+      riskHint: 'low' as const,
+    }),
+    execute: async (context) => {
+      return resolveCredentials(context.required);
+    },
+  }),
 });

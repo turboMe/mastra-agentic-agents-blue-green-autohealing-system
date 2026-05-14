@@ -14,6 +14,8 @@ import { getDb } from '../../lib/mongo.js';
 
 type PendingDoc = {
   id: string;
+  threadId?: string;
+  targetAgentId?: string;
   source: string;
   content: string;
   urgent: boolean;
@@ -26,9 +28,12 @@ export const checkPendingUpdatesTool = createTool({
   id: 'checkPendingUpdates',
   description:
     'Check for completed background tasks and async delegation results. ' +
-    'Call this FIRST at the start of every conversation turn to see if there are any pending updates from coding agent or other background processes. ' +
+    'Call this FIRST at the start of every conversation turn to see if there are any pending updates from background processes. ' +
     'If results are available, report them to the user before answering their question.',
-  inputSchema: z.object({}),
+  inputSchema: z.object({
+    agentId: z.enum(['meta-agent', 'automationArchitect', 'codingAgent']).optional().default('meta-agent'),
+    threadId: z.string().optional().describe('Optional thread scope. Use when you know the active Mastra thread id.'),
+  }),
   outputSchema: z.object({
     hasUpdates: z.boolean(),
     updates: z.array(z.object({
@@ -40,13 +45,25 @@ export const checkPendingUpdatesTool = createTool({
     message: z.string(),
   }),
 
-  execute: async () => {
+  execute: async (input) => {
     try {
       const db = await getDb();
       const now = new Date();
+      const agentId = input.agentId ?? 'meta-agent';
+      const targetQuery = {
+        $or: [
+          { targetAgentId: agentId },
+          { targetAgentId: { $exists: false } },
+          { targetAgentId: null },
+        ],
+      };
+      const scopedQuery = input.threadId
+        ? { $and: [{ threadId: input.threadId }, targetQuery] }
+        : targetQuery;
 
       const docs = await db.collection<PendingDoc>('pending_user_messages')
         .find({
+          ...scopedQuery,
           status: 'pending',
           source: 'background_task',
           expiresAt: { $gt: now },
@@ -71,12 +88,12 @@ export const checkPendingUpdatesTool = createTool({
           $set: {
             status: 'consumed',
             consumedAt: new Date(),
-            consumedBy: 'meta-agent:checkPendingUpdatesTool',
+            consumedBy: `${agentId}:checkPendingUpdatesTool`,
           },
         },
       );
 
-      console.log(`[checkPendingUpdates] Delivered ${docs.length} update(s) to meta-agent`);
+      console.log(`[checkPendingUpdates] Delivered ${docs.length} update(s) to ${agentId}`);
 
       const updates = docs.map((d) => ({
         source: d.source,
