@@ -1,7 +1,7 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb } from '../../../lib/mongo.js';
-import { validateWorkflow } from '../validation/workflow-validator.js';
+import { normalizeConnectionKeys, validateWorkflow } from '../validation/workflow-validator.js';
 import { getCredentialFromRegistry } from '../credentials/credential-registry.js';
 import { getRuntimeTopology } from '../../../config/runtime-topology.js';
 import type { RepairChange, RepairResult, TestFinding } from './test-types.js';
@@ -269,6 +269,11 @@ export function applyRepairs(
       node.name = newName;
     }
     seen.add(node.name);
+  }
+
+  // 5. Normalize n8n connections from node.id/quoted refs to node.name.
+  for (const reason of normalizeConnectionKeys(patched)) {
+    changes.push({ field: 'connections', reason });
   }
 
   // Suggestions from findings that we can't auto-fix get reflected as no-ops here;

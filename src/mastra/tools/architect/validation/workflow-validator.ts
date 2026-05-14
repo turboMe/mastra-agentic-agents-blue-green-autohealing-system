@@ -23,40 +23,231 @@ function stripEnclosingQuotes(s: string): string {
   return t;
 }
 
+type NodeLookup = {
+  nodeNames: Set<string>;
+  nodeIdToName: Map<string, string>;
+  ambiguousNodeIds: Set<string>;
+  normalizedRefToName: Map<string, string>;
+  ambiguousNormalizedRefs: Set<string>;
+};
+
+type ResolvedNodeRef = {
+  name: string;
+  reason: 'node.id' | 'trimmed node.name' | 'trimmed node.id' | 'normalized node ref';
+};
+
+function normalizeNodeRef(value: string): string {
+  return stripEnclosingQuotes(value).toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function addUniqueLookup(
+  map: Map<string, string>,
+  ambiguous: Set<string>,
+  key: string | undefined,
+  nodeName: string,
+) {
+  if (!key) return;
+  const existing = map.get(key);
+  if (!existing) {
+    if (!ambiguous.has(key)) map.set(key, nodeName);
+    return;
+  }
+
+  if (existing !== nodeName) {
+    map.delete(key);
+    ambiguous.add(key);
+  }
+}
+
+function buildNodeLookup(nodes: any[]): NodeLookup {
+  const nodeNames = new Set<string>();
+  const nodeIdToName = new Map<string, string>();
+  const ambiguousNodeIds = new Set<string>();
+  const normalizedRefToName = new Map<string, string>();
+  const ambiguousNormalizedRefs = new Set<string>();
+
+  for (const node of nodes) {
+    const name = typeof node?.name === 'string' ? node.name : '';
+    if (!name) continue;
+    nodeNames.add(name);
+    addUniqueLookup(normalizedRefToName, ambiguousNormalizedRefs, normalizeNodeRef(name), name);
+
+    if (typeof node?.id === 'string' && node.id.length > 0) {
+      addUniqueLookup(nodeIdToName, ambiguousNodeIds, node.id, name);
+      addUniqueLookup(normalizedRefToName, ambiguousNormalizedRefs, normalizeNodeRef(node.id), name);
+    }
+  }
+
+  return { nodeNames, nodeIdToName, ambiguousNodeIds, normalizedRefToName, ambiguousNormalizedRefs };
+}
+
+function resolveNodeRef(ref: string, lookup: NodeLookup): ResolvedNodeRef | null {
+  if (lookup.nodeNames.has(ref)) return null;
+
+  const cleaned = stripEnclosingQuotes(ref);
+  if (cleaned !== ref && lookup.nodeNames.has(cleaned)) {
+    return { name: cleaned, reason: 'trimmed node.name' };
+  }
+
+  if (!lookup.ambiguousNodeIds.has(ref)) {
+    const byId = lookup.nodeIdToName.get(ref);
+    if (byId) return { name: byId, reason: 'node.id' };
+  }
+
+  if (cleaned !== ref) {
+    if (!lookup.ambiguousNodeIds.has(cleaned)) {
+      const byCleanedId = lookup.nodeIdToName.get(cleaned);
+      if (byCleanedId) return { name: byCleanedId, reason: 'trimmed node.id' };
+    }
+  }
+
+  const normalized = normalizeNodeRef(cleaned);
+  if (normalized && !lookup.ambiguousNormalizedRefs.has(normalized)) {
+    const byNormalizedRef = lookup.normalizedRefToName.get(normalized);
+    if (byNormalizedRef && byNormalizedRef !== ref) {
+      return { name: byNormalizedRef, reason: 'normalized node ref' };
+    }
+  }
+
+  return null;
+}
+
+function isRecord(value: unknown): value is Record<string, any> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function stableJson(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function dedupeConnectionGroup(group: any[]): any[] {
+  const seen = new Set<string>();
+  const out: any[] = [];
+
+  for (const item of group) {
+    const key = stableJson(item);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+
+  return out;
+}
+
+function mergeMainConnections(existingMain: unknown, incomingMain: unknown): { success: true; value: any[] } | { success: false; reason: string } {
+  if (!Array.isArray(existingMain) || !Array.isArray(incomingMain)) {
+    return { success: false, reason: 'main connections are not both arrays' };
+  }
+
+  const merged: any[] = [];
+  const maxLength = Math.max(existingMain.length, incomingMain.length);
+  for (let i = 0; i < maxLength; i += 1) {
+    const existingGroup = existingMain[i];
+    const incomingGroup = incomingMain[i];
+
+    if (existingGroup === undefined) {
+      merged[i] = incomingGroup;
+      continue;
+    }
+    if (incomingGroup === undefined) {
+      merged[i] = existingGroup;
+      continue;
+    }
+    if (!Array.isArray(existingGroup) || !Array.isArray(incomingGroup)) {
+      return { success: false, reason: `main[${i}] connection groups are not both arrays` };
+    }
+
+    merged[i] = dedupeConnectionGroup([...existingGroup, ...incomingGroup]);
+  }
+
+  return { success: true, value: merged };
+}
+
+function mergeConnectionRecords(
+  existingRecord: unknown,
+  incomingRecord: unknown,
+): { success: true; value: Record<string, any> } | { success: false; reason: string } {
+  if (!isRecord(existingRecord) || !isRecord(incomingRecord)) {
+    return { success: false, reason: 'connection records are not both objects' };
+  }
+
+  const merged: Record<string, any> = { ...existingRecord };
+
+  for (const [key, incomingValue] of Object.entries(incomingRecord)) {
+    if (key === 'main') continue;
+
+    if (!(key in merged)) {
+      merged[key] = incomingValue;
+      continue;
+    }
+
+    if (stableJson(merged[key]) !== stableJson(incomingValue)) {
+      return { success: false, reason: `conflicting connection property "${key}"` };
+    }
+  }
+
+  if ('main' in incomingRecord) {
+    if (!('main' in merged)) {
+      merged.main = incomingRecord.main;
+    } else {
+      const mainMerge = mergeMainConnections(merged.main, incomingRecord.main);
+      if (!mainMerge.success) return mainMerge;
+      merged.main = mainMerge.value;
+    }
+  }
+
+  return { success: true, value: merged };
+}
+
 /**
- * Normalize connection source keys and target node refs by stripping accidental
- * enclosing quotes/whitespace, when the cleaned name matches an actual node.name.
+ * Normalize connection source keys and target node refs when they point to a
+ * node id, or contain accidental enclosing quotes/whitespace.
  * Mutates the workflow in-place. Returns a list of normalizations performed
  * (each entry is one warning to surface to the caller).
  *
- * Why: LLMs (notably gemini-2.5-pro) sometimes emit n8n connections with keys
- * like {"'Set Vars'": …}. n8n is strict — these silently fail to wire. We fix
- * up obvious typos rather than rejecting an otherwise correct workflow.
+ * Why: n8n connections are keyed by node.name, but LLMs often emit node.id
+ * values such as {"scheduleTrigger_01": ...}. n8n and this validator are strict
+ * about names, so we repair unambiguous id/name mismatches before validation.
  */
 export function normalizeConnectionKeys(workflowJson: any): string[] {
   const fixes: string[] = [];
   if (!workflowJson || typeof workflowJson !== 'object') return fixes;
 
   const nodes: any[] = Array.isArray(workflowJson.nodes) ? workflowJson.nodes : [];
-  const nodeNames = new Set(
-    nodes.map((n) => n?.name).filter((n): n is string => typeof n === 'string' && n.length > 0),
-  );
+  const lookup = buildNodeLookup(nodes);
 
   const conns = workflowJson.connections;
   if (!conns || typeof conns !== 'object' || Array.isArray(conns)) return fixes;
 
-  // Fix source-key typos.
+  // Fix source keys. n8n requires source keys to be node.name, not node.id.
   for (const key of Object.keys(conns)) {
-    if (nodeNames.has(key)) continue;
-    const cleaned = stripEnclosingQuotes(key);
-    if (cleaned !== key && nodeNames.has(cleaned)) {
-      conns[cleaned] = conns[key];
+    const resolved = resolveNodeRef(key, lookup);
+    if (!resolved) continue;
+
+    if (Object.prototype.hasOwnProperty.call(conns, resolved.name)) {
+      const merged = mergeConnectionRecords(conns[resolved.name], conns[key]);
+      if (!merged.success) {
+        fixes.push(
+          `Connections: cannot normalize source "${key}" to "${resolved.name}" (${resolved.reason}) because ${merged.reason}.`,
+        );
+        continue;
+      }
+      conns[resolved.name] = merged.value;
       delete conns[key];
-      fixes.push(`Connections: znormalizowano klucz "${key}" → "${cleaned}"`);
+      fixes.push(`Connections: source "${key}" matched ${resolved.reason} and was merged into node.name "${resolved.name}".`);
+      continue;
     }
+
+    conns[resolved.name] = conns[key];
+    delete conns[key];
+    fixes.push(`Connections: source "${key}" matched ${resolved.reason} and was normalized to node.name "${resolved.name}".`);
   }
 
-  // Fix target-node typos inside connections[*].main[*][*].node.
+  // Fix target node refs inside connections[*].main[*][*].node.
   for (const [sourceName, sourceConnections] of Object.entries(conns)) {
     const main = (sourceConnections as any)?.main;
     if (!Array.isArray(main)) continue;
@@ -64,12 +255,12 @@ export function normalizeConnectionKeys(workflowJson: any): string[] {
       if (!Array.isArray(outputGroup)) continue;
       for (const conn of outputGroup) {
         if (!conn || typeof conn !== 'object' || typeof conn.node !== 'string') continue;
-        if (nodeNames.has(conn.node)) continue;
-        const cleaned = stripEnclosingQuotes(conn.node);
-        if (cleaned !== conn.node && nodeNames.has(cleaned)) {
-          fixes.push(`Connections z "${sourceName}": cel "${conn.node}" → "${cleaned}"`);
-          conn.node = cleaned;
-        }
+        const resolved = resolveNodeRef(conn.node, lookup);
+        if (!resolved) continue;
+        fixes.push(
+          `Connections from "${sourceName}": target "${conn.node}" matched ${resolved.reason} and was normalized to node.name "${resolved.name}".`,
+        );
+        conn.node = resolved.name;
       }
     }
   }

@@ -1,6 +1,6 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
-import { validateWorkflow } from './workflow-validator.js';
+import { normalizeConnectionKeys, validateWorkflow } from './workflow-validator.js';
 import { withToolEnvelope } from '../../../services/harness-tool-envelope.js';
 import { compactAutomationResultForModel } from '../../../services/automation-output-compaction.js';
 
@@ -10,6 +10,11 @@ export const validateWorkflowTool = createTool({
   inputSchema: z.object({
     workflow: z.any().describe('Workflow JSON do walidacji'),
     profile: z.enum(['draft', 'strict', 'activation']).default('strict'),
+    normalizeConnections: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe('Normalize obvious n8n connection id/name mismatches before validation.'),
   }),
   outputSchema: z.object({
     valid: z.boolean(),
@@ -39,7 +44,17 @@ export const validateWorkflowTool = createTool({
       riskHint: 'low' as const,
     }),
     execute: async (context: any) => {
-    return validateWorkflow(context.workflow, context.profile);
+    const normalizationWarnings = context.normalizeConnections === false
+      ? []
+      : normalizeConnectionKeys(context.workflow);
+    const validation = validateWorkflow(context.workflow, context.profile);
+    if (normalizationWarnings.length > 0) {
+      validation.warnings = [
+        ...validation.warnings,
+        ...normalizationWarnings.map((message) => ({ message, severity: 'warning' as const })),
+      ];
+    }
+    return validation;
     },
     modelOutput: (output, _input, metadata) => compactAutomationResultForModel(output, metadata),
   }),
