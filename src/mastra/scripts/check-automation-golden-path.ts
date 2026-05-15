@@ -84,6 +84,12 @@ async function main() {
       console.error(JSON.stringify(safeResult, null, 2));
       throw new Error('Safe workflow did not complete deploy + mock test.');
     }
+
+    const deployedWorkflow = await new N8nService().getWorkflow(safeResult.workflowId);
+    if (deployedWorkflow.active) {
+      console.error(JSON.stringify({ workflowId: safeResult.workflowId, active: deployedWorkflow.active }, null, 2));
+      throw new Error('Safe workflow was not left inactive after deploy + mock test.');
+    }
   } finally {
     await cleanup(automationId, safeResult.workflowId);
   }
@@ -93,6 +99,7 @@ async function main() {
   console.log(`graphValidation=${graphValidation}`);
   console.log(`connectionRepair=${connectionRepair}`);
   console.log(`unsupportedVars=${unsupportedVars}`);
+  console.log('inactiveAfterDeploy=passed');
   console.log(`unsafeStatus=${unsafeResult.status}, securityIssues=${securityCount}`);
   console.log(`safeStatus=${safeResult.status}, workflowId=${safeResult.workflowId}`);
   process.exit(0);

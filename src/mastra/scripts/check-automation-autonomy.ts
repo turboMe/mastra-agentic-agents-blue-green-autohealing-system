@@ -60,7 +60,7 @@ async function main() {
   process.env.FEATURE_BACKGROUND_TASKS = 'true';
   process.env.N8N_CREDENTIAL_TELEGRAM_ID = process.env.N8N_CREDENTIAL_TELEGRAM_ID || 'check-secret-credential-id';
 
-  checkToolErrorClassification();
+  const classificationWorkflowValidation = checkToolErrorClassification();
 
   const db = await getDb();
   const suffix = `${Date.now()}-${randomUUID().slice(0, 6)}`;
@@ -276,6 +276,9 @@ async function main() {
     assert(marked >= 1, 'stale automation job was not marked stale');
 
     console.log('automation-autonomy check passed');
+    console.log('metaStructuredWorkflowJson=passed');
+    console.log(`classificationWorkflowValidation=${classificationWorkflowValidation}`);
+    console.log('asyncFullResultArtifact=passed');
     console.log(`precontextTokens=${precontext.tokenEstimate}`);
     console.log(`jobId=${jobId}, jobStatus=${completedJob.status}`);
     console.log(`decisionKey=${decision.key}`);
@@ -378,7 +381,7 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
 
-function checkToolErrorClassification(): void {
+function checkToolErrorClassification(): string {
   const workflowValidationClass = classifyToolError({
     category: 'network',
     output: {
@@ -420,6 +423,8 @@ function checkToolErrorClassification(): void {
     errorMessage: 'workflow object is required for mode=workflow_json.',
   });
   assert(contractClass === 'tool_input_contract', `tool input contract classified as ${contractClass}`);
+
+  return 'passed';
 }
 
 function sleep(ms: number): Promise<void> {
