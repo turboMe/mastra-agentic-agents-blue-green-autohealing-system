@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 
+import { CODING_AGENT_ID, canonicalizeRuntimeAgentId } from '../config/agent-ids.js';
 import { isHarnessFeatureEnabled } from '../config/harness-flags.js';
 import { getDb } from '../lib/mongo.js';
 import { redactSecrets } from '../lib/secrets-redactor.js';
@@ -102,7 +103,7 @@ export function withToolEnvelope<TInput, TOutput>(
   return async (input: TInput): Promise<TOutput> => {
     if (!isHarnessFeatureEnabled('FEATURE_TOOL_ENVELOPE', true)) {
       return config.execute(input, {
-        agentId: config.defaultAgentId ?? 'codingAgent',
+        agentId: canonicalizeRuntimeAgentId(config.defaultAgentId) ?? CODING_AGENT_ID,
         toolId: config.toolId,
       });
     }
@@ -115,7 +116,7 @@ export function withToolEnvelope<TInput, TOutput>(
       ...extractToolMetadata(input),
       ...(config.metadata?.(input) ?? {}),
     };
-    const agentId = metadata.agentId ?? config.defaultAgentId ?? 'codingAgent';
+    const agentId = canonicalizeRuntimeAgentId(metadata.agentId ?? config.defaultAgentId) ?? CODING_AGENT_ID;
     const runId = metadata.runId ?? metadata.taskId;
     const inputPreview = buildToolPreview(input, {
       redactFields: config.redactInputFields,

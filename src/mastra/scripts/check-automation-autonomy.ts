@@ -6,12 +6,18 @@ import { randomUUID } from 'crypto';
 import { buildAutomationPrecontext } from '../services/automation-precontext.js';
 import {
   getAutomationJob,
+  listAutomationJobs,
   markStaleAutomationJobs,
 } from '../services/automation-job-manager.js';
 import { startAutomationRequest } from '../tools/system/start-automation-request.js';
 import { queuePendingMessage, takePendingMessages } from '../services/pending-message-queue.js';
 import { automationDecisionOutputProcessor } from '../processors/automation-decision-output.js';
 import { getDb, closeDb } from '../lib/mongo.js';
+import {
+  AUTOMATION_ARCHITECT_AGENT_ID,
+  AUTOMATION_ARCHITECT_MASTRA_AGENT_ID,
+  META_AGENT_ID,
+} from '../config/agent-ids.js';
 
 const unsafeWorkflow = {
   name: 'Autonomy Check Unsafe Function',
@@ -57,11 +63,13 @@ async function main() {
   let jobId: string | undefined;
   let pendingArchitectId: string | undefined;
   let pendingMetaId: string | undefined;
+  let legacyPendingId: string | undefined;
+  let legacyAliasJobId: string | undefined;
   let staleJobId: string | undefined;
 
   try {
     const precontext = await buildAutomationPrecontext({
-      agentId: 'automationArchitect',
+      agentId: AUTOMATION_ARCHITECT_AGENT_ID,
       threadId,
       userPrompt: 'Build a Telegram automation and avoid previous n8n failure cases.',
       automationId,
@@ -72,14 +80,14 @@ async function main() {
 
     pendingArchitectId = await queuePendingMessage({
       threadId,
-      targetAgentId: 'automationArchitect',
+      targetAgentId: AUTOMATION_ARCHITECT_AGENT_ID,
       source: 'automation_job',
       content: 'architect-only update',
       metadata: { automationId, type: 'automation_job_result' },
     });
     pendingMetaId = await queuePendingMessage({
       threadId,
-      targetAgentId: 'meta-agent',
+      targetAgentId: META_AGENT_ID,
       source: 'automation_job',
       content: 'meta-only update',
       metadata: { automationId, type: 'automation_job_result' },
@@ -87,7 +95,7 @@ async function main() {
 
     const architectMessages = await takePendingMessages({
       threadId,
-      agentId: 'automationArchitect',
+      agentId: AUTOMATION_ARCHITECT_AGENT_ID,
       limit: 10,
     });
     assert(architectMessages.some((message) => message.id === pendingArchitectId), 'architect did not receive its pending update');
@@ -95,18 +103,64 @@ async function main() {
     const metaStillPending = await db.collection('pending_user_messages').findOne({ id: pendingMetaId, status: 'pending' });
     assert(Boolean(metaStillPending), 'meta-agent pending update was consumed by the wrong agent');
 
+    legacyPendingId = `legacy-pending-${suffix}`;
+    await db.collection('pending_user_messages').insertOne({
+      id: legacyPendingId,
+      threadId,
+      targetAgentId: AUTOMATION_ARCHITECT_MASTRA_AGENT_ID,
+      source: 'automation_job',
+      content: 'legacy architect update',
+      urgent: false,
+      status: 'pending',
+      createdAt: new Date(),
+      expiresAt: new Date(Date.now() + 60_000),
+      metadata: { automationId, type: 'automation_job_result' },
+    });
+    const legacyAliasMessages = await takePendingMessages({
+      threadId,
+      agentId: AUTOMATION_ARCHITECT_AGENT_ID,
+      limit: 10,
+    });
+    assert(
+      legacyAliasMessages.some((message) => message.id === legacyPendingId),
+      'canonical automationArchitect did not consume legacy automation-architect pending update',
+    );
+
+    legacyAliasJobId = `legacy-alias-job-${suffix}`;
+    await db.collection('automation_jobs').insertOne({
+      jobId: legacyAliasJobId,
+      automationId: `${automationId}-legacy-alias`,
+      targetAgentId: AUTOMATION_ARCHITECT_MASTRA_AGENT_ID,
+      returnToAgentId: AUTOMATION_ARCHITECT_MASTRA_AGENT_ID,
+      status: 'completed',
+      inputPreview: '{}',
+      resultPreview: 'legacy alias job',
+      startedAt: new Date(),
+      completedAt: new Date(),
+      lastHeartbeatAt: new Date(),
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    const aliasJobs = await listAutomationJobs({
+      returnToAgentId: AUTOMATION_ARCHITECT_AGENT_ID,
+      limit: 20,
+    });
+    assert(
+      aliasJobs.some((record) => record.jobId === legacyAliasJobId),
+      'canonical automationArchitect did not list legacy automation-architect automation job',
+    );
+
     const job = await startAutomationRequest({
       mode: 'workflow_json',
       automationId,
       workflow: unsafeWorkflow,
-      callerAgentId: 'meta-agent',
+      callerAgentId: META_AGENT_ID,
       callerThreadId: threadId,
-      returnToAgentId: 'meta-agent',
+      returnToAgentId: META_AGENT_ID,
       returnToThreadId: threadId,
       wake: true,
     });
     assert(job.executionMode === 'job', 'system_start_automation_request did not start a durable job');
-    assert(job.returnToAgentId === 'meta-agent', 'structured automation request did not preserve returnToAgentId');
+    assert(job.returnToAgentId === META_AGENT_ID, 'structured automation request did not preserve returnToAgentId');
     jobId = job.jobId;
 
     const persistedJob = await db.collection('automation_jobs').findOne({ jobId });
@@ -117,7 +171,7 @@ async function main() {
     assert(completedJob.resultPreview || completedJob.error, 'job has no result preview or error');
 
     const pendingJobResult = await db.collection('pending_user_messages').findOne({
-      targetAgentId: 'meta-agent',
+      targetAgentId: META_AGENT_ID,
       source: 'automation_job',
       status: 'pending',
       'metadata.jobId': jobId,
@@ -152,7 +206,7 @@ async function main() {
     await db.collection('automation_jobs').insertOne({
       jobId: staleJobId,
       automationId: `${automationId}-stale`,
-      targetAgentId: 'automationArchitect',
+      targetAgentId: AUTOMATION_ARCHITECT_AGENT_ID,
       status: 'running',
       inputPreview: '{}',
       startedAt: new Date(Date.now() - 120_000),
@@ -173,6 +227,8 @@ async function main() {
       jobId,
       pendingArchitectId,
       pendingMetaId,
+      legacyPendingId,
+      legacyAliasJobId,
       staleJobId,
     });
     await closeDb();
@@ -195,7 +251,7 @@ async function waitForSharedDecision(automationId: string, timeoutMs: number): P
   while (Date.now() - started < timeoutMs) {
     const decision = await db.collection('shared_memory').findOne({
       type: 'automation_decision',
-      sourceAgent: 'automationArchitect',
+      sourceAgent: AUTOMATION_ARCHITECT_AGENT_ID,
       automationId,
     });
     if (decision) return decision;
@@ -210,6 +266,8 @@ async function cleanup(input: {
   jobId?: string;
   pendingArchitectId?: string;
   pendingMetaId?: string;
+  legacyPendingId?: string;
+  legacyAliasJobId?: string;
   staleJobId?: string;
 }) {
   const db = await getDb();
@@ -217,14 +275,14 @@ async function cleanup(input: {
     db.collection('pending_user_messages').deleteMany({
       $or: [
         { threadId: input.threadId },
-        { id: { $in: [input.pendingArchitectId, input.pendingMetaId].filter(Boolean) } },
+        { id: { $in: [input.pendingArchitectId, input.pendingMetaId, input.legacyPendingId].filter(Boolean) } },
         { 'metadata.automationId': input.automationId },
       ],
     }),
     db.collection('automation_jobs').deleteMany({
       $or: [
         { automationId: input.automationId },
-        { jobId: { $in: [input.jobId, input.staleJobId].filter(Boolean) } },
+        { jobId: { $in: [input.jobId, input.staleJobId, input.legacyAliasJobId].filter(Boolean) } },
       ],
     }),
     db.collection('automation_events').deleteMany({ automationId: input.automationId }),

@@ -13,6 +13,13 @@ import type { ProcessInputArgs, ProcessInputResult } from '@mastra/core/processo
 import { BaseProcessor } from '@mastra/core/processors';
 import { takePendingMessages, formatPendingMessagesForPrompt } from '../services/pending-message-queue.js';
 import { getDb } from '../lib/mongo.js';
+import {
+  AUTOMATION_ARCHITECT_AGENT_ID,
+  KNOWLEDGE_AGENT_ID,
+  META_AGENT_ID,
+  canonicalizeRuntimeAgentId,
+  pendingTargetAgentQuery,
+} from '../config/agent-ids.js';
 
 import type { PendingMessage } from '../services/pending-message-queue.js';
 
@@ -59,7 +66,7 @@ export class PendingUpdatesProcessor extends BaseProcessor<'pending-updates'> {
   async processInput(args: ProcessInputArgs): Promise<ProcessInputResult> {
     const { messages, systemMessages } = args;
     const threadId = extractThreadId(args);
-    const agentId = this.options.agentId ?? 'meta-agent';
+    const agentId = canonicalizeRuntimeAgentId(this.options.agentId) ?? META_AGENT_ID;
     const limit = this.options.maxUpdates ?? 5;
 
     console.log(`[PendingUpdatesProcessor] ▶ processInput called. agentId=${agentId}, threadId=${threadId ?? '(none)'}, messages=${messages.length}`);
@@ -84,11 +91,7 @@ export class PendingUpdatesProcessor extends BaseProcessor<'pending-updates'> {
           .find({
             status: 'pending',
             source: { $in: ['background_task', 'automation_job'] },
-            $or: [
-              { targetAgentId: agentId },
-              { targetAgentId: { $exists: false } },
-              { targetAgentId: null },
-            ],
+            ...pendingTargetAgentQuery(agentId),
             expiresAt: { $gt: now },
           })
           .sort({ urgent: -1, createdAt: 1 })
@@ -145,8 +148,8 @@ export class PendingUpdatesProcessor extends BaseProcessor<'pending-updates'> {
 
 export const pendingUpdatesProcessor = new PendingUpdatesProcessor();
 export const automationPendingUpdatesProcessor = new PendingUpdatesProcessor({
-  agentId: 'automationArchitect',
+  agentId: AUTOMATION_ARCHITECT_AGENT_ID,
 });
 export const knowledgePendingUpdatesProcessor = new PendingUpdatesProcessor({
-  agentId: 'knowledgeAgent',
+  agentId: KNOWLEDGE_AGENT_ID,
 });

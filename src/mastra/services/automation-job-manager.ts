@@ -8,6 +8,11 @@
 
 import { randomUUID } from 'crypto';
 
+import {
+  AUTOMATION_ARCHITECT_AGENT_ID,
+  agentIdFieldFilter,
+  canonicalizeRuntimeAgentId,
+} from '../config/agent-ids.js';
 import { isHarnessFeatureEnabled } from '../config/harness-flags.js';
 import { getDb } from '../lib/mongo.js';
 import { redactSecrets } from '../lib/secrets-redactor.js';
@@ -100,17 +105,17 @@ export async function startAutomationJob(
     ...input.input,
     automationId,
   };
-  const returnToAgentId = input.returnToAgentId ?? input.targetAgentId ?? 'automationArchitect';
-  const targetAgentId = input.targetAgentId ?? returnToAgentId;
+  const returnToAgentId = canonicalizeRuntimeAgentId(input.returnToAgentId ?? input.targetAgentId) ?? AUTOMATION_ARCHITECT_AGENT_ID;
+  const targetAgentId = canonicalizeRuntimeAgentId(input.targetAgentId ?? returnToAgentId) ?? AUTOMATION_ARCHITECT_AGENT_ID;
 
   const record: AutomationJobRecord = {
     jobId,
     automationId,
     targetAgentId,
-    callerAgentId: input.callerAgentId,
+    callerAgentId: canonicalizeRuntimeAgentId(input.callerAgentId),
     callerThreadId: input.callerThreadId,
     architectThreadId: input.architectThreadId,
-    originAgentId: input.originAgentId ?? input.callerAgentId,
+    originAgentId: canonicalizeRuntimeAgentId(input.originAgentId ?? input.callerAgentId),
     originThreadId: input.originThreadId ?? input.callerThreadId,
     targetThreadId: input.targetThreadId ?? input.architectThreadId,
     returnToAgentId,
@@ -162,8 +167,8 @@ export async function listAutomationJobs(
   const db = await getDb();
   const query: Record<string, unknown> = {};
   if (filter.automationId) query.automationId = filter.automationId;
-  if (filter.targetAgentId) query.targetAgentId = filter.targetAgentId;
-  if (filter.returnToAgentId) query.returnToAgentId = filter.returnToAgentId;
+  if (filter.targetAgentId) query.targetAgentId = agentIdFieldFilter(filter.targetAgentId);
+  if (filter.returnToAgentId) query.returnToAgentId = agentIdFieldFilter(filter.returnToAgentId);
   if (filter.status) query.status = filter.status;
 
   return db.collection<AutomationJobRecord>(COLLECTION)

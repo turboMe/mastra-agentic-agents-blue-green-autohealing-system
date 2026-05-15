@@ -6,6 +6,7 @@
  */
 
 import { buildCodingPrecontext } from './coding-precontext.js';
+import { CODING_AGENT_ID, canonicalizeRuntimeAgentId } from '../config/agent-ids.js';
 import { generateWithHarness } from './generate-with-harness.js';
 import type {
   HarnessGenerateInput,
@@ -27,7 +28,7 @@ export async function generateCoding<TResponse = unknown>(
     precontextFeatureFlag: 'FEATURE_CODING_PRECONTEXT',
     precontextFeature: 'coding_precontext',
     precontextDefaultEnabled: false,
-    memoryResource: input.memoryResource ?? input.agentId ?? 'codingAgent',
+    memoryResource: input.memoryResource ?? canonicalizeRuntimeAgentId(input.agentId) ?? CODING_AGENT_ID,
     contextBuilder: (context) => buildCodingPrecontext({
       taskId: context.taskId,
       subtaskId: context.subtaskId,

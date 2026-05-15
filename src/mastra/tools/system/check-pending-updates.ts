@@ -11,6 +11,12 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { getDb } from '../../lib/mongo.js';
+import {
+  META_AGENT_ID,
+  PENDING_UPDATES_AGENT_IDS,
+  canonicalizeRuntimeAgentId,
+  pendingTargetAgentQuery,
+} from '../../config/agent-ids.js';
 
 type PendingDoc = {
   id: string;
@@ -31,7 +37,7 @@ export const checkPendingUpdatesTool = createTool({
     'Call this FIRST at the start of every conversation turn to see if there are any pending updates from background processes. ' +
     'If results are available, report them to the user before answering their question.',
   inputSchema: z.object({
-    agentId: z.enum(['meta-agent', 'automationArchitect', 'codingAgent']).optional().default('meta-agent'),
+    agentId: z.enum(PENDING_UPDATES_AGENT_IDS).optional().default(META_AGENT_ID),
     threadId: z.string().optional().describe('Optional thread scope. Use when you know the active Mastra thread id.'),
   }),
   outputSchema: z.object({
@@ -49,14 +55,8 @@ export const checkPendingUpdatesTool = createTool({
     try {
       const db = await getDb();
       const now = new Date();
-      const agentId = input.agentId ?? 'meta-agent';
-      const targetQuery = {
-        $or: [
-          { targetAgentId: agentId },
-          { targetAgentId: { $exists: false } },
-          { targetAgentId: null },
-        ],
-      };
+      const agentId = canonicalizeRuntimeAgentId(input.agentId) ?? META_AGENT_ID;
+      const targetQuery = pendingTargetAgentQuery(agentId);
       const scopedQuery = input.threadId
         ? { $and: [{ threadId: input.threadId }, targetQuery] }
         : targetQuery;

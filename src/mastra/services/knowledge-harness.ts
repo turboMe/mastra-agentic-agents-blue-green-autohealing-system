@@ -3,6 +3,7 @@
  */
 
 import { buildKnowledgePrecontext } from './knowledge-precontext.js';
+import { KNOWLEDGE_AGENT_ID, canonicalizeRuntimeAgentId } from '../config/agent-ids.js';
 import { generateWithHarness } from './generate-with-harness.js';
 import type {
   HarnessGenerateInput,
@@ -25,11 +26,11 @@ export async function generateKnowledge<TResponse = unknown>(
 ): Promise<HarnessGenerateResult<TResponse>> {
   return generateWithHarness<TResponse>({
     ...input,
-    agentId: input.agentId ?? 'knowledgeAgent',
+    agentId: canonicalizeRuntimeAgentId(input.agentId) ?? KNOWLEDGE_AGENT_ID,
     precontextFeatureFlag: 'FEATURE_KNOWLEDGE_PRECONTEXT',
     precontextFeature: 'knowledge_precontext',
     precontextDefaultEnabled: true,
-    memoryResource: input.memoryResource ?? 'knowledgeAgent',
+    memoryResource: input.memoryResource ?? KNOWLEDGE_AGENT_ID,
     contextBuilder: (context) => buildKnowledgePrecontext({
       taskId: context.taskId,
       subtaskId: context.subtaskId,

@@ -8,6 +8,7 @@
 import { randomUUID } from 'crypto';
 
 import { isHarnessFeatureEnabled } from '../config/harness-flags.js';
+import { canonicalizeRuntimeAgentId, pendingTargetAgentQuery, CODING_AGENT_ID } from '../config/agent-ids.js';
 import { getDb } from '../lib/mongo.js';
 import { redactSecrets } from '../lib/secrets-redactor.js';
 import { logHarnessEvent } from './harness-events.js';
@@ -67,7 +68,7 @@ export async function queuePendingMessage(input: QueuePendingMessageInput): Prom
     id,
     taskId: input.taskId,
     threadId: input.threadId,
-    targetAgentId: input.targetAgentId,
+    targetAgentId: canonicalizeRuntimeAgentId(input.targetAgentId) ?? null,
     source: input.source,
     content,
     urgent: Boolean(input.urgent),
@@ -82,7 +83,7 @@ export async function queuePendingMessage(input: QueuePendingMessageInput): Prom
     await db.collection<PendingMessage>(COLLECTION).insertOne(doc);
     await logHarnessEvent({
       type: 'soft_interrupt_queued',
-      agentId: input.targetAgentId ?? 'codingAgent',
+      agentId: doc.targetAgentId ?? CODING_AGENT_ID,
       threadId: input.threadId,
       taskId: input.taskId,
       feature: 'pending_message_queue',
@@ -129,7 +130,7 @@ export async function takePendingMessages(input: TakePendingMessagesInput): Prom
     for (const message of messages) {
       await logHarnessEvent({
         type: 'soft_interrupt_consumed',
-        agentId: input.agentId ?? 'codingAgent',
+        agentId: canonicalizeRuntimeAgentId(input.agentId) ?? CODING_AGENT_ID,
         threadId: message.threadId ?? input.threadId,
         taskId: message.taskId ?? input.taskId,
         subtaskId: input.subtaskId,
@@ -183,7 +184,7 @@ export async function markConsumed(
       $set: {
         status: 'consumed',
         consumedAt: new Date(),
-        consumedBy: [input.agentId, input.subtaskId].filter(Boolean).join(':') || undefined,
+        consumedBy: [canonicalizeRuntimeAgentId(input.agentId), input.subtaskId].filter(Boolean).join(':') || undefined,
       },
     },
   );
@@ -219,14 +220,7 @@ function scopeQuery(input: Pick<TakePendingMessagesInput, 'taskId' | 'threadId'>
 }
 
 function targetAgentQuery(agentId?: string): Record<string, unknown> {
-  if (!agentId) return {};
-  return {
-    $or: [
-      { targetAgentId: agentId },
-      { targetAgentId: { $exists: false } },
-      { targetAgentId: null },
-    ],
-  };
+  return pendingTargetAgentQuery(agentId);
 }
 
 function scopedTargetQuery(input: TakePendingMessagesInput): Record<string, unknown> {

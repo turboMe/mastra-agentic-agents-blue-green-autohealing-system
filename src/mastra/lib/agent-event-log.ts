@@ -8,6 +8,7 @@
  * recurring patterns into permanent system_knowledge.
  */
 import { randomUUID } from 'crypto';
+import { canonicalizeRuntimeAgentId } from '../config/agent-ids.js';
 import { getDb } from './mongo.js';
 import { redactSecrets } from './secrets-redactor.js';
 
@@ -105,6 +106,7 @@ export async function logAgentEvent(
     const db = await getDb();
     await db.collection('agent_events').insertOne({
       ...event,
+      agentId: canonicalizeRuntimeAgentId(event.agentId) ?? event.agentId,
       input: sanitize(event.input),
       output: sanitize(event.output),
       errorMessage: event.errorMessage ? redactSecrets(event.errorMessage).text : undefined,

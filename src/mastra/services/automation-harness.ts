@@ -3,6 +3,7 @@
  */
 
 import { buildAutomationPrecontext } from './automation-precontext.js';
+import { AUTOMATION_ARCHITECT_AGENT_ID, canonicalizeRuntimeAgentId } from '../config/agent-ids.js';
 import { generateWithHarness } from './generate-with-harness.js';
 import type {
   HarnessGenerateInput,
@@ -25,11 +26,11 @@ export async function generateAutomation<TResponse = unknown>(
 ): Promise<HarnessGenerateResult<TResponse>> {
   return generateWithHarness<TResponse>({
     ...input,
-    agentId: input.agentId ?? 'automationArchitect',
+    agentId: canonicalizeRuntimeAgentId(input.agentId) ?? AUTOMATION_ARCHITECT_AGENT_ID,
     precontextFeatureFlag: 'FEATURE_AUTOMATION_PRECONTEXT',
     precontextFeature: 'automation_precontext',
     precontextDefaultEnabled: true,
-    memoryResource: input.memoryResource ?? 'automationArchitect',
+    memoryResource: input.memoryResource ?? AUTOMATION_ARCHITECT_AGENT_ID,
     contextBuilder: (context) => buildAutomationPrecontext({
       taskId: context.taskId,
       subtaskId: context.subtaskId,

@@ -11,6 +11,15 @@ import { generateAutomation } from '../../services/automation-harness.js';
 import { generateKnowledge } from '../../services/knowledge-harness.js';
 import { startAsyncDelegation } from '../../services/async-delegation.js';
 import { AGENTIC_AGENTS_REPO } from '../../workspaces/code-workspace.js';
+import {
+  AUTOMATION_ARCHITECT_AGENT_ID,
+  CODING_AGENT_ID,
+  DELEGATION_CALLER_AGENT_IDS,
+  DELEGATION_RETURN_AGENT_IDS,
+  KNOWLEDGE_AGENT_ID,
+  META_AGENT_ID,
+  canonicalizeRuntimeAgentId,
+} from '../../config/agent-ids.js';
 
 // Lazy-loaded to avoid circular: delegate-task → index → meta-agent → delegate-task
 let _mastra: any = null;
@@ -28,10 +37,10 @@ const AGENT_IDS: Record<string, string> = {
   marketingAgent: 'marketingAgent',
   salesAgent: 'salesAgent',
   analyticsAgent: 'analyticsAgent',
-  automationArchitect: 'automationArchitect',
-  knowledgeAgent: 'knowledgeAgent',
+  automationArchitect: AUTOMATION_ARCHITECT_AGENT_ID,
+  knowledgeAgent: KNOWLEDGE_AGENT_ID,
   crmAgent: 'crmAgent',
-  codingAgent: 'codingAgent',
+  codingAgent: CODING_AGENT_ID,
 } as const;
 
 type AgentKey = keyof typeof AGENT_IDS;
@@ -73,12 +82,12 @@ CAN be called multiple times in parallel when tasks are independent.`,
     callerThreadId: z.string().optional().describe(
       'Your own threadId — required when async=true so the result can be delivered back to you.',
     ),
-    callerAgentId: z.enum(['meta-agent', 'automationArchitect', 'knowledgeAgent']).optional().default('meta-agent').describe(
+    callerAgentId: z.enum(DELEGATION_CALLER_AGENT_IDS).optional().default(META_AGENT_ID).describe(
       'Agent that should receive async pending results. Use automationArchitect when the architect delegates subtasks.',
     ),
     originAgentId: z.string().optional().describe('Original agent that initiated the delegation chain.'),
     originThreadId: z.string().optional().describe('Original thread that initiated the delegation chain.'),
-    returnToAgentId: z.enum(['meta-agent', 'automationArchitect', 'codingAgent', 'knowledgeAgent']).optional().describe(
+    returnToAgentId: z.enum(DELEGATION_RETURN_AGENT_IDS).optional().describe(
       'Agent that should receive async results. Defaults to callerAgentId.',
     ),
     returnToThreadId: z.string().optional().describe('Thread that should receive async results. Defaults to callerThreadId.'),
@@ -115,14 +124,14 @@ CAN be called multiple times in parallel when tasks are independent.`,
     try {
       const start = Date.now();
       const delegationThreadId = context.threadId || `delegation-${randomUUID()}`;
-      const delegationResourceId = context.resourceId || 'meta-agent';
-      const callerAgentId = context.callerAgentId ?? 'meta-agent';
-      const returnToAgentId = context.returnToAgentId ?? callerAgentId;
+      const delegationResourceId = context.resourceId || META_AGENT_ID;
+      const callerAgentId = canonicalizeRuntimeAgentId(context.callerAgentId) ?? META_AGENT_ID;
+      const returnToAgentId = canonicalizeRuntimeAgentId(context.returnToAgentId ?? callerAgentId) ?? callerAgentId;
       const returnToThreadId = context.returnToThreadId ?? context.callerThreadId ?? context.threadId;
-      const originAgentId = context.originAgentId ?? callerAgentId;
+      const originAgentId = canonicalizeRuntimeAgentId(context.originAgentId ?? callerAgentId) ?? callerAgentId;
       const originThreadId = context.originThreadId ?? returnToThreadId;
 
-      if (callerAgentId === 'automationArchitect' && context.targetAgent === 'automationArchitect') {
+      if (callerAgentId === AUTOMATION_ARCHITECT_AGENT_ID && context.targetAgent === 'automationArchitect') {
         return {
           success: false,
           result: 'automationArchitect cannot delegate recursively to itself.',
@@ -130,7 +139,7 @@ CAN be called multiple times in parallel when tasks are independent.`,
           error: 'recursive_delegation_blocked',
         };
       }
-      if (callerAgentId === 'knowledgeAgent' && context.targetAgent === 'knowledgeAgent') {
+      if (callerAgentId === KNOWLEDGE_AGENT_ID && context.targetAgent === 'knowledgeAgent') {
         return {
           success: false,
           result: 'knowledgeAgent cannot delegate recursively to itself.',
@@ -146,13 +155,13 @@ CAN be called multiple times in parallel when tasks are independent.`,
           const callerThread = context.callerThreadId || context.threadId || `meta-${randomUUID()}`;
           const { delegationId } = await startAsyncDelegation({
             agent,
-            agentId: 'codingAgent',
+            agentId: CODING_AGENT_ID,
             prompt: context.taskDescription,
             callerThreadId: callerThread,
             callerAgentId,
             originAgentId,
             originThreadId,
-            targetAgentId: 'codingAgent',
+            targetAgentId: CODING_AGENT_ID,
             targetThreadId: `async-delegation-${randomUUID()}`,
             returnToAgentId,
             returnToThreadId: returnToThreadId ?? callerThread,
@@ -172,7 +181,7 @@ CAN be called multiple times in parallel when tasks are independent.`,
         // ── Synchronous delegation (default): blocking await ──
         const harnessResult = await generateCoding({
           agent,
-          agentId: 'codingAgent',
+          agentId: CODING_AGENT_ID,
           prompt: context.taskDescription,
           threadId: delegationThreadId,
           phase: 'chat',
@@ -205,13 +214,13 @@ CAN be called multiple times in parallel when tasks are independent.`,
           const callerThread = context.callerThreadId || context.threadId || `meta-${randomUUID()}`;
           const { delegationId } = await startAsyncDelegation({
             agent,
-            agentId: 'automationArchitect',
+            agentId: AUTOMATION_ARCHITECT_AGENT_ID,
             prompt: context.taskDescription,
             callerThreadId: callerThread,
             callerAgentId,
             originAgentId,
             originThreadId,
-            targetAgentId: 'automationArchitect',
+            targetAgentId: AUTOMATION_ARCHITECT_AGENT_ID,
             targetThreadId: `async-delegation-${randomUUID()}`,
             returnToAgentId,
             returnToThreadId: returnToThreadId ?? callerThread,
@@ -274,13 +283,13 @@ CAN be called multiple times in parallel when tasks are independent.`,
           const callerThread = context.callerThreadId || context.threadId || `meta-${randomUUID()}`;
           const { delegationId } = await startAsyncDelegation({
             agent,
-            agentId: 'knowledgeAgent',
+            agentId: KNOWLEDGE_AGENT_ID,
             prompt: context.taskDescription,
             callerThreadId: callerThread,
             callerAgentId,
             originAgentId,
             originThreadId,
-            targetAgentId: 'knowledgeAgent',
+            targetAgentId: KNOWLEDGE_AGENT_ID,
             targetThreadId: `async-delegation-${randomUUID()}`,
             returnToAgentId,
             returnToThreadId: returnToThreadId ?? callerThread,

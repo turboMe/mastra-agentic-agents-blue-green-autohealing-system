@@ -6,6 +6,11 @@
  */
 
 import { getRuntimeTopology } from '../config/runtime-topology.js';
+import {
+  AUTOMATION_ARCHITECT_AGENT_ID,
+  canonicalizeRuntimeAgentId,
+  pendingTargetAgentQuery,
+} from '../config/agent-ids.js';
 import { getDb } from '../lib/mongo.js';
 import { redactSecrets } from '../lib/secrets-redactor.js';
 import { recallKnowledge, type RecallResult } from '../lib/failure-brain.js';
@@ -199,7 +204,7 @@ export async function buildAutomationPrecontext(
     taskId: input.taskId,
     subtaskId: input.subtaskId,
     threadId: input.threadId,
-    agentId: input.agentId ?? 'automationArchitect',
+    agentId: canonicalizeRuntimeAgentId(input.agentId) ?? AUTOMATION_ARCHITECT_AGENT_ID,
     toolId: 'automation_precontext',
     previewBytes: Math.max(1600, maxTokens * 4),
     metadata: { scope: 'automation_precontext' },
@@ -308,13 +313,7 @@ async function tryPendingAutomationUpdates(
         expiresAt: { $gt: new Date() },
         $and: [
           { $or: clauses },
-          {
-            $or: [
-              { targetAgentId: 'automationArchitect' },
-              { targetAgentId: { $exists: false } },
-              { targetAgentId: null },
-            ],
-          },
+          pendingTargetAgentQuery(AUTOMATION_ARCHITECT_AGENT_ID),
         ],
       })
       .sort({ urgent: -1, createdAt: 1 })

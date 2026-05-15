@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { getDb } from '../../lib/mongo.js';
 import { randomUUID } from 'crypto';
 import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
+import { META_AGENT_ID } from '../../config/agent-ids.js';
 
 export const requestApprovalTool = createTool({
   id: 'system_request_approval',
@@ -19,7 +20,7 @@ export const requestApprovalTool = createTool({
     tool: z.string().describe('Nazwa narzędzia/akcji do zatwierdzenia, np. "gmail.send_draft"'),
     action: z.string().describe('Opis akcji dla użytkownika'),
     args: z.record(z.string(), z.unknown()).describe('Argumenty akcji, które zostaną przekazane po zatwierdzeniu'),
-    agentId: z.string().optional().default('meta-agent').describe('ID agenta składającego prośbę'),
+    agentId: z.string().optional().default(META_AGENT_ID).describe('ID agenta składającego prośbę'),
     taskId: z.string().optional().describe('ID zadania powiązanego'),
   }),
   outputSchema: z.object({
@@ -33,10 +34,10 @@ export const requestApprovalTool = createTool({
     toolId: 'system_request_approval',
     category: 'approval',
     risk: 'low',
-    defaultAgentId: 'meta-agent',
+    defaultAgentId: META_AGENT_ID,
     redactInputFields: ['args'],
     policy: (input: any) => ({
-      agentId: input.agentId ?? 'meta-agent',
+      agentId: input.agentId ?? META_AGENT_ID,
       taskId: input.taskId,
       action: 'approval' as const,
       target: input.tool,
@@ -48,7 +49,7 @@ export const requestApprovalTool = createTool({
       const approvalId = randomUUID();
       await db.collection('approvals').insertOne({
         id: approvalId,
-        agentId: context.agentId ?? 'meta-agent',
+        agentId: context.agentId ?? META_AGENT_ID,
         taskId: context.taskId ?? null,
         tool: context.tool,
         action: context.action,

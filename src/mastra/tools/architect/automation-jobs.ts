@@ -9,6 +9,7 @@ import {
   markStaleAutomationJobs,
   startAutomationJob,
 } from '../../services/automation-job-manager.js';
+import { AUTOMATION_ARCHITECT_AGENT_ID } from '../../config/agent-ids.js';
 
 const goldenPathInputSchema = z.object({
   mode: z.enum(['pattern', 'workflow_file', 'workflow_json']),
@@ -32,7 +33,7 @@ export const startAutomationJobTool = createTool({
     'Start a native durable Golden Path job in the Mastra process. Returns jobId immediately; completion is delivered as a pending update to returnToAgentId/returnToThreadId.',
   inputSchema: z.object({
     input: goldenPathInputSchema,
-    targetAgentId: z.string().optional().default('automationArchitect'),
+    targetAgentId: z.string().optional().default(AUTOMATION_ARCHITECT_AGENT_ID),
     callerAgentId: z.string().optional(),
     callerThreadId: z.string().optional(),
     architectThreadId: z.string().optional(),
@@ -48,10 +49,10 @@ export const startAutomationJobTool = createTool({
     toolId: 'architect_start_automation_job',
     category: 'network',
     risk: 'high',
-    defaultAgentId: 'automationArchitect',
+    defaultAgentId: AUTOMATION_ARCHITECT_AGENT_ID,
     redactInputFields: ['workflow', 'spec', 'approvalToken', 'input'],
     policy: (context: any) => ({
-      agentId: 'automationArchitect',
+      agentId: AUTOMATION_ARCHITECT_AGENT_ID,
       action: 'deploy_automation' as const,
       target: context.input?.workflowId ?? context.input?.workflowName ?? 'automation_job',
       riskHint: 'high' as const,
@@ -59,14 +60,14 @@ export const startAutomationJobTool = createTool({
     execute: async (context: any, metadata) => {
       const record = await startAutomationJob({
         input: context.input,
-        targetAgentId: context.targetAgentId ?? 'automationArchitect',
+        targetAgentId: context.targetAgentId ?? AUTOMATION_ARCHITECT_AGENT_ID,
         callerAgentId: context.callerAgentId,
         callerThreadId: context.callerThreadId,
         architectThreadId: context.architectThreadId ?? context.threadId ?? metadata?.threadId,
         originAgentId: context.originAgentId ?? context.callerAgentId,
         originThreadId: context.originThreadId ?? context.callerThreadId,
         targetThreadId: context.targetThreadId,
-        returnToAgentId: context.returnToAgentId ?? context.targetAgentId ?? context.callerAgentId ?? metadata?.agentId ?? 'automationArchitect',
+        returnToAgentId: context.returnToAgentId ?? context.targetAgentId ?? context.callerAgentId ?? metadata?.agentId ?? AUTOMATION_ARCHITECT_AGENT_ID,
         returnToThreadId: context.returnToThreadId ?? context.callerThreadId ?? context.threadId ?? metadata?.threadId,
         wake: context.wake ?? true,
         runId: metadata?.runId,
@@ -98,7 +99,7 @@ export const getAutomationJobTool = createTool({
     toolId: 'architect_get_automation_job',
     category: 'other',
     risk: 'low',
-    defaultAgentId: 'automationArchitect',
+    defaultAgentId: AUTOMATION_ARCHITECT_AGENT_ID,
     execute: async (context: any) => {
       const record = await getAutomationJob(context.jobId);
       if (!record) {
@@ -131,7 +132,7 @@ export const listAutomationJobsTool = createTool({
     toolId: 'architect_list_automation_jobs',
     category: 'other',
     risk: 'low',
-    defaultAgentId: 'automationArchitect',
+    defaultAgentId: AUTOMATION_ARCHITECT_AGENT_ID,
     execute: async (context: any) => {
       const jobs = await listAutomationJobs({
         automationId: context.automationId,
@@ -171,7 +172,7 @@ export const cancelAutomationJobTool = createTool({
     toolId: 'architect_cancel_automation_job',
     category: 'other',
     risk: 'medium',
-    defaultAgentId: 'automationArchitect',
+    defaultAgentId: AUTOMATION_ARCHITECT_AGENT_ID,
     execute: async (context: any) => {
       const cancelled = await cancelAutomationJob(context.jobId);
       return {
@@ -194,7 +195,7 @@ export const markStaleAutomationJobsTool = createTool({
     toolId: 'architect_mark_stale_automation_jobs',
     category: 'other',
     risk: 'low',
-    defaultAgentId: 'automationArchitect',
+    defaultAgentId: AUTOMATION_ARCHITECT_AGENT_ID,
     execute: async (context: any) => {
       const marked = await markStaleAutomationJobs({ staleAfterMs: context.staleAfterMs });
       return {

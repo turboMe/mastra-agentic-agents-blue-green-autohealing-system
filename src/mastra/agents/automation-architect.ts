@@ -1,4 +1,5 @@
 import { Agent } from '@mastra/core/agent';
+import { AUTOMATION_ARCHITECT_MASTRA_AGENT_ID } from '../config/agent-ids.js';
 import { agentModels, infrastructure, resolveModelId } from '../config/model-manifest.js';
 import { Memory } from '@mastra/memory';
 import { TokenLimiterProcessor, ToolSearchProcessor } from '@mastra/core/processors';
@@ -45,7 +46,8 @@ import { automationPendingUpdatesProcessor } from '../processors/pending-updates
 import { automationDecisionOutputProcessor } from '../processors/automation-decision-output.js';
 
 export const automationArchitect = new Agent({
-  id: 'automation-architect',
+  // Keep Mastra API/thread compatibility; runtime telemetry uses automationArchitect.
+  id: AUTOMATION_ARCHITECT_MASTRA_AGENT_ID,
   name: 'Automation Architect',
   instructions: withAnthropicSystemCache(await loadPrompt('automation/base')),
   // gemini-2.5-pro: best reasoning for n8n JSON synthesis. Flash sometimes

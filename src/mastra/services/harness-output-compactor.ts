@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
 import { resolve } from 'path';
 
+import { CODING_AGENT_ID, canonicalizeRuntimeAgentId } from '../config/agent-ids.js';
 import { isHarnessFeatureEnabled } from '../config/harness-flags.js';
 import { getDb } from '../lib/mongo.js';
 import { redactSecrets } from '../lib/secrets-redactor.js';
@@ -105,7 +106,7 @@ export async function compactHarnessOutput(
 
   await logHarnessEvent({
     type: 'tool_output_compacted',
-    agentId: input.agentId ?? 'codingAgent',
+    agentId: canonicalizeRuntimeAgentId(input.agentId) ?? CODING_AGENT_ID,
     runId: input.runId ?? input.taskId,
     turnId: input.turnId,
     threadId: input.threadId,
@@ -184,7 +185,7 @@ async function persistHarnessArtifact(input: CompactHarnessOutputInput & {
     threadId: input.threadId,
     taskId: input.taskId,
     subtaskId: input.subtaskId,
-    agentId: input.agentId,
+    agentId: canonicalizeRuntimeAgentId(input.agentId),
     toolId: input.toolId,
     kind: input.kind,
     storage,

@@ -1,4 +1,5 @@
 import { compactHarnessOutput } from './harness-output-compactor.js';
+import { AUTOMATION_ARCHITECT_AGENT_ID, canonicalizeRuntimeAgentId } from '../config/agent-ids.js';
 import type { ToolEnvelopeMetadata } from './harness-tool-envelope.js';
 
 type AutomationCompactionMetadata = ToolEnvelopeMetadata & {
@@ -43,7 +44,7 @@ export async function compactAutomationResultForModel<T>(
     kind: 'tool_output',
     taskId: metadata.taskId,
     subtaskId: metadata.subtaskId,
-    agentId: metadata.agentId ?? 'automationArchitect',
+    agentId: canonicalizeRuntimeAgentId(metadata.agentId) ?? AUTOMATION_ARCHITECT_AGENT_ID,
     threadId: metadata.threadId,
     runId: metadata.runId,
     turnId: metadata.turnId,

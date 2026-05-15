@@ -9,6 +9,7 @@ import { createHash } from 'crypto';
 
 import type { ProcessOutputResultArgs, ProcessorMessageResult } from '@mastra/core/processors';
 import { BaseProcessor } from '@mastra/core/processors';
+import { AUTOMATION_ARCHITECT_AGENT_ID } from '../config/agent-ids.js';
 import { getDb } from '../lib/mongo.js';
 import { redactSecrets } from '../lib/secrets-redactor.js';
 
@@ -83,7 +84,7 @@ export async function persistAutomationDecision(
         id: key,
         key,
         type: 'automation_decision',
-        sourceAgent: 'automationArchitect',
+        sourceAgent: AUTOMATION_ARCHITECT_AGENT_ID,
         automationId: finalDecision.automationId,
         workflowId: finalDecision.workflowId,
         workflowName: finalDecision.workflowName,

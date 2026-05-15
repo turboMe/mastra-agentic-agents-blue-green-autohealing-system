@@ -10,6 +10,11 @@ import {
 } from '../../services/automation-golden-path.js';
 import { startAutomationJob } from '../../services/automation-job-manager.js';
 import { withToolEnvelope, type ToolEnvelopeMetadata } from '../../services/harness-tool-envelope.js';
+import {
+  AUTOMATION_ARCHITECT_AGENT_ID,
+  META_AGENT_ID,
+  canonicalizeRuntimeAgentId,
+} from '../../config/agent-ids.js';
 
 const goldenPathInputSchema = z.object({
   mode: z.enum(['pattern', 'workflow_file', 'workflow_json']),
@@ -29,11 +34,11 @@ const goldenPathInputSchema = z.object({
 
 const startAutomationRequestInputSchema = goldenPathInputSchema.extend({
   executionMode: z.enum(['job', 'sync']).optional().default('job'),
-  callerAgentId: z.enum(['meta-agent', 'automationArchitect']).optional().default('meta-agent'),
+  callerAgentId: z.enum([META_AGENT_ID, AUTOMATION_ARCHITECT_AGENT_ID]).optional().default(META_AGENT_ID),
   callerThreadId: z.string().optional(),
   originAgentId: z.string().optional(),
   originThreadId: z.string().optional(),
-  returnToAgentId: z.enum(['meta-agent', 'automationArchitect']).optional(),
+  returnToAgentId: z.enum([META_AGENT_ID, AUTOMATION_ARCHITECT_AGENT_ID]).optional(),
   returnToThreadId: z.string().optional(),
   wake: z.boolean().optional().default(true),
 });
@@ -47,9 +52,9 @@ export async function startAutomationRequest(
   metadata: (ToolEnvelopeMetadata & { agentId?: string; runId?: string; toolId?: string }) = {},
 ) {
   const input = await toGoldenPathInput(context);
-  const callerAgentId = context.callerAgentId ?? (metadata.agentId as 'meta-agent' | 'automationArchitect' | undefined) ?? 'meta-agent';
+  const callerAgentId = canonicalizeRuntimeAgentId(context.callerAgentId ?? metadata.agentId) ?? META_AGENT_ID;
   const callerThreadId = context.callerThreadId ?? metadata.threadId;
-  const returnToAgentId = context.returnToAgentId ?? callerAgentId;
+  const returnToAgentId = canonicalizeRuntimeAgentId(context.returnToAgentId ?? callerAgentId) ?? callerAgentId;
   const returnToThreadId = context.returnToThreadId ?? callerThreadId ?? metadata.threadId;
 
   if ((context.executionMode ?? 'job') === 'sync') {
@@ -68,10 +73,10 @@ export async function startAutomationRequest(
 
   const record = await startAutomationJob({
     input,
-    targetAgentId: 'automationArchitect',
+    targetAgentId: AUTOMATION_ARCHITECT_AGENT_ID,
     callerAgentId,
     callerThreadId,
-    originAgentId: context.originAgentId ?? callerAgentId,
+    originAgentId: canonicalizeRuntimeAgentId(context.originAgentId ?? callerAgentId) ?? callerAgentId,
     originThreadId: context.originThreadId ?? callerThreadId,
     returnToAgentId,
     returnToThreadId,
@@ -103,10 +108,10 @@ export const startAutomationRequestTool = createTool({
     toolId: 'system_start_automation_request',
     category: 'network',
     risk: 'high',
-    defaultAgentId: 'meta-agent',
+    defaultAgentId: META_AGENT_ID,
     redactInputFields: ['workflow', 'spec', 'approvalToken'],
     policy: (input: any, metadata) => ({
-      agentId: metadata.agentId ?? input.callerAgentId ?? 'meta-agent',
+      agentId: canonicalizeRuntimeAgentId(metadata.agentId ?? input.callerAgentId) ?? META_AGENT_ID,
       action: 'deploy_automation' as const,
       target: input.workflowId ?? input.workflowName ?? input.patternId ?? input.automationId ?? 'automation_request',
       riskHint: 'high' as const,

@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 
+import { AUTOMATION_ARCHITECT_AGENT_ID } from '../config/agent-ids.js';
 import { getDb } from '../lib/mongo.js';
 import { logAgentEvent } from '../lib/agent-event-log.js';
 import { redactSecrets } from '../lib/secrets-redactor.js';
@@ -32,7 +33,7 @@ export async function recordAutomationGoldenPathFailure({
   const failureClass = classifyFailure(result, failedStep);
   const title = `Automation failure: ${failureClass} - ${truncate(result.message || result.error || 'blocked', 90)}`;
   const content = redactSecrets([
-    `Agent: automationArchitect`,
+    `Agent: ${AUTOMATION_ARCHITECT_AGENT_ID}`,
     `Failure class: ${failureClass}`,
     `Status: ${result.status}`,
     `Mode: ${input.mode}`,
@@ -68,7 +69,7 @@ export async function recordAutomationGoldenPathFailure({
     }),
     logAgentEvent({
       type: 'task_failed',
-      agentId: 'automationArchitect',
+      agentId: AUTOMATION_ARCHITECT_AGENT_ID,
       taskId: result.automationId,
       toolId: 'architect_execute_automation_request',
       status: 'error',
@@ -96,7 +97,7 @@ export async function recordAutomationGoldenPathRecovery({
   if (!recovered) return;
 
   const content = redactSecrets([
-    `Agent: automationArchitect`,
+    `Agent: ${AUTOMATION_ARCHITECT_AGENT_ID}`,
     `Status: ${result.status}`,
     `Mode: ${input.mode}`,
     input.patternId ? `Pattern: ${input.patternId}` : '',
@@ -118,7 +119,7 @@ export async function recordAutomationGoldenPathRecovery({
     }),
     logAgentEvent({
       type: 'retry_success',
-      agentId: 'automationArchitect',
+      agentId: AUTOMATION_ARCHITECT_AGENT_ID,
       taskId: result.automationId,
       toolId: 'architect_execute_automation_request',
       status: 'success',
@@ -148,7 +149,7 @@ async function saveKnowledge(input: {
     title: input.title,
     content: storedContent,
     tags: input.tags,
-    sourceAgent: 'automationArchitect',
+    sourceAgent: AUTOMATION_ARCHITECT_AGENT_ID,
   });
   const searchTextHash = hashSystemKnowledgeSearchText(searchText);
   let embedding: number[] = [];
@@ -171,7 +172,7 @@ async function saveKnowledge(input: {
         $set: {
           content: storedContent,
           tags: input.tags,
-          sourceAgent: 'automationArchitect',
+          sourceAgent: AUTOMATION_ARCHITECT_AGENT_ID,
           searchText,
           searchTextHash,
           embedding,
@@ -191,7 +192,7 @@ async function saveKnowledge(input: {
     title: input.title,
     content: storedContent,
     tags: input.tags,
-    sourceAgent: 'automationArchitect',
+    sourceAgent: AUTOMATION_ARCHITECT_AGENT_ID,
     searchText,
     searchTextHash,
     embedding,
