@@ -43,7 +43,8 @@ const startAutomationRequestInputSchema = goldenPathInputSchema.extend({
   wake: z.boolean().optional().default(true),
 });
 
-type StartAutomationRequestInput = z.infer<typeof startAutomationRequestInputSchema>;
+type StartAutomationRequestInput = z.input<typeof startAutomationRequestInputSchema>;
+type ParsedStartAutomationRequestInput = z.infer<typeof startAutomationRequestInputSchema>;
 const LARGE_WORKFLOW_JSON_BYTES = 20 * 1024;
 const WORKFLOW_FILE_ROOT = '/tmp/mastra-automation-workflows';
 
@@ -51,13 +52,14 @@ export async function startAutomationRequest(
   context: StartAutomationRequestInput,
   metadata: (ToolEnvelopeMetadata & { agentId?: string; runId?: string; toolId?: string }) = {},
 ) {
-  const input = await toGoldenPathInput(context);
-  const callerAgentId = canonicalizeRuntimeAgentId(context.callerAgentId ?? metadata.agentId) ?? META_AGENT_ID;
-  const callerThreadId = context.callerThreadId ?? metadata.threadId;
-  const returnToAgentId = canonicalizeRuntimeAgentId(context.returnToAgentId ?? callerAgentId) ?? callerAgentId;
-  const returnToThreadId = context.returnToThreadId ?? callerThreadId ?? metadata.threadId;
+  const parsedContext = startAutomationRequestInputSchema.parse(context);
+  const input = await toGoldenPathInput(parsedContext);
+  const callerAgentId = canonicalizeRuntimeAgentId(parsedContext.callerAgentId ?? metadata.agentId) ?? META_AGENT_ID;
+  const callerThreadId = parsedContext.callerThreadId ?? metadata.threadId;
+  const returnToAgentId = canonicalizeRuntimeAgentId(parsedContext.returnToAgentId ?? callerAgentId) ?? callerAgentId;
+  const returnToThreadId = parsedContext.returnToThreadId ?? callerThreadId ?? metadata.threadId;
 
-  if ((context.executionMode ?? 'job') === 'sync') {
+  if (parsedContext.executionMode === 'sync') {
     const result = await executeAutomationGoldenPath(input);
     return {
       success: result.success,
@@ -76,11 +78,11 @@ export async function startAutomationRequest(
     targetAgentId: AUTOMATION_ARCHITECT_AGENT_ID,
     callerAgentId,
     callerThreadId,
-    originAgentId: canonicalizeRuntimeAgentId(context.originAgentId ?? callerAgentId) ?? callerAgentId,
-    originThreadId: context.originThreadId ?? callerThreadId,
+    originAgentId: canonicalizeRuntimeAgentId(parsedContext.originAgentId ?? callerAgentId) ?? callerAgentId,
+    originThreadId: parsedContext.originThreadId ?? callerThreadId,
     returnToAgentId,
     returnToThreadId,
-    wake: context.wake ?? true,
+    wake: parsedContext.wake,
     runId: metadata.runId,
     turnId: metadata.turnId,
   });
@@ -120,7 +122,7 @@ export const startAutomationRequestTool = createTool({
   }),
 });
 
-async function toGoldenPathInput(context: StartAutomationRequestInput): Promise<AutomationGoldenPathInput> {
+async function toGoldenPathInput(context: ParsedStartAutomationRequestInput): Promise<AutomationGoldenPathInput> {
   const input: AutomationGoldenPathInput = {
     mode: context.mode,
     request: context.request,

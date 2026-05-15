@@ -13,6 +13,7 @@ import type {
   AutomationGoldenPathInput,
   AutomationGoldenPathResult,
   AutomationGoldenPathStep,
+  AutomationRecoveryStrategy,
 } from './automation-golden-path.js';
 
 const KNOWLEDGE_TTL_DAYS = 90;
@@ -30,7 +31,8 @@ export async function recordAutomationGoldenPathFailure({
 
   const now = new Date();
   const failedStep = findTerminalFailureStep(result.steps);
-  const failureClass = classifyFailure(result, failedStep);
+  const failureClass = explicitFailureClass(result) ?? classifyFailure(result, failedStep);
+  result.failureClass = failureClass;
   const title = `Automation failure: ${failureClass} - ${truncate(result.message || result.error || 'blocked', 90)}`;
   const content = redactSecrets([
     `Agent: ${AUTOMATION_ARCHITECT_AGENT_ID}`,
@@ -235,6 +237,11 @@ function classifyFailure(
     result.error,
   ].filter(Boolean).join('\n').toLowerCase();
 
+  if (isToolInputContractText(text)) return 'tool_input_contract';
+  if (failedStep?.name === 'runtime_check' || hasRecoveryStrategy(result, 'runtime_preflight')) {
+    return 'runtime_preflight';
+  }
+  if (isRuntimePreflightText(text)) return 'runtime_preflight';
   if (result.error) return 'exception';
   if (result.missingConfig && result.missingConfig.length > 0) return 'missing_config';
   if (result.validation?.securityIssues?.length) return 'security_validation';
@@ -243,8 +250,14 @@ function classifyFailure(
   if (result.risk?.verdict === 'block') return 'risk_blocked';
   if (result.risk?.verdict === 'review') return 'approval_required';
   if (result.lastTest?.status === 'failed') return 'mock_test_failed';
-  if (/runtime|n8n|mongo|ollama|webhook/.test(text)) return 'runtime_blocked';
+  if (/runtime|n8n|mongo|ollama|webhook/.test(text)) return 'runtime_preflight';
   return result.status;
+}
+
+function explicitFailureClass(result: AutomationGoldenPathResult): string | undefined {
+  return typeof result.failureClass === 'string' && result.failureClass.trim()
+    ? result.failureClass.trim()
+    : undefined;
 }
 
 function summarizeInput(input: AutomationGoldenPathInput): string {
@@ -296,8 +309,11 @@ function summarizeRecovery(result: AutomationGoldenPathResult): string {
 function recommendedNextStep(failureClass: string): string {
   switch (failureClass) {
     case 'missing_config':
+    case 'runtime_preflight':
     case 'runtime_blocked':
       return 'Verify runtime topology and required env vars before composing or deploying.';
+    case 'tool_input_contract':
+      return 'Call the automation tool again with structured input that satisfies the mode-specific schema.';
     case 'workflow_validation':
     case 'security_validation':
       return 'Run deterministic draft repair before deploy and revalidate before touching n8n.';
@@ -314,12 +330,28 @@ function recommendedNextStep(failureClass: string): string {
 }
 
 function hasConnectionFailureSignal(result: AutomationGoldenPathResult, text: string): boolean {
-  const strategies = ((result as any).recoveryStrategies ?? []) as Array<{ name?: string }>;
+  const strategies = recoveryStrategies(result);
   if (strategies.some((strategy) => /connection_id_to_name_repair|connection_graph_repair|manual_connection_mapping_required/.test(strategy.name ?? ''))) {
     return true;
   }
 
   return /connection references unknown source|references unknown target|manual_connection_mapping_required|connection_graph_repair_required|not reachable|disconnected|trigger path/.test(text);
+}
+
+function isToolInputContractText(text: string): boolean {
+  return /object is required|is required for mode=|missing required|input contract|invalid input|schema validation|invalid_arguments|invalid arguments/.test(text);
+}
+
+function isRuntimePreflightText(text: string): boolean {
+  return /runtime check|runtime checks|runtime requirements|runtime preflight|n8n is not reachable|mongodb is not reachable|ollama is not reachable|public webhook/.test(text);
+}
+
+function hasRecoveryStrategy(result: AutomationGoldenPathResult, name: string): boolean {
+  return recoveryStrategies(result).some((strategy) => strategy.name === name);
+}
+
+function recoveryStrategies(result: AutomationGoldenPathResult): AutomationRecoveryStrategy[] {
+  return Array.isArray(result.recoveryStrategies) ? result.recoveryStrategies : [];
 }
 
 function truncate(text: string, max = 1000): string {

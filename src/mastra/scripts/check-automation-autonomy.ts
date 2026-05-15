@@ -12,6 +12,7 @@ import {
 import { startAutomationRequest } from '../tools/system/start-automation-request.js';
 import { queuePendingMessage, takePendingMessages } from '../services/pending-message-queue.js';
 import { automationDecisionOutputProcessor } from '../processors/automation-decision-output.js';
+import { classifyToolError } from '../services/harness-tool-envelope.js';
 import { getDb, closeDb } from '../lib/mongo.js';
 import {
   AUTOMATION_ARCHITECT_AGENT_ID,
@@ -55,6 +56,8 @@ async function main() {
   process.env.FEATURE_SOFT_INTERRUPTS = 'true';
   process.env.FEATURE_BACKGROUND_TASKS = 'true';
   process.env.N8N_CREDENTIAL_TELEGRAM_ID = process.env.N8N_CREDENTIAL_TELEGRAM_ID || 'check-secret-credential-id';
+
+  checkToolErrorClassification();
 
   const db = await getDb();
   const suffix = `${Date.now()}-${randomUUID().slice(0, 6)}`;
@@ -295,6 +298,50 @@ async function cleanup(input: {
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
+}
+
+function checkToolErrorClassification(): void {
+  const workflowValidationClass = classifyToolError({
+    category: 'network',
+    output: {
+      success: false,
+      status: 'blocked',
+      message: 'Workflow validation blocked deploy.',
+      validation: {
+        errors: [{ message: 'Connection references unknown source node: RSS Aggregator' }],
+        securityIssues: [],
+        warnings: [],
+        missingCredentials: [],
+        missingConfig: [],
+      },
+      steps: [
+        {
+          name: 'validate_draft',
+          status: 'blocked',
+          message: 'Draft validation blocked deploy.',
+        },
+      ],
+    },
+  });
+  assert(
+    workflowValidationClass === 'workflow_validation',
+    `Workflow validation blocked deploy classified as ${workflowValidationClass}`,
+  );
+
+  const policyClass = classifyToolError({
+    category: 'network',
+    output: {
+      success: false,
+      message: 'Policy blocked tool execution: architect_deploy_automation',
+    },
+  });
+  assert(policyClass === 'policy_blocked', `policy marker classified as ${policyClass}`);
+
+  const contractClass = classifyToolError({
+    category: 'network',
+    errorMessage: 'workflow object is required for mode=workflow_json.',
+  });
+  assert(contractClass === 'tool_input_contract', `tool input contract classified as ${contractClass}`);
 }
 
 function sleep(ms: number): Promise<void> {

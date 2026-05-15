@@ -66,6 +66,7 @@ export type AutomationGoldenPathInput = {
 export type AutomationGoldenPathResult = {
   success: boolean;
   status: AutomationGoldenPathStatus;
+  failureClass?: string;
   automationId: string;
   workflowId?: string;
   workflowName?: string;
@@ -1193,6 +1194,7 @@ function buildResult(input: Omit<AutomationGoldenPathResult, 'operation'> & {
   return {
     success: input.success,
     status: input.status,
+    failureClass: input.failureClass,
     automationId: input.automationId,
     workflowId: input.workflowId,
     workflowName: input.workflowName,

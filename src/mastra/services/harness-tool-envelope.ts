@@ -350,15 +350,22 @@ export function classifyToolError(input: {
   output?: unknown;
   errorMessage?: string;
 }): string {
+  const structuredClass = classifyStructuredToolOutput(input.output);
+  if (structuredClass) return structuredClass;
+
   const text = [
     input.errorMessage,
     extractOutputText(input.output),
   ].filter(Boolean).join('\n').toLowerCase();
 
+  if (isWorkflowValidationText(text)) return 'workflow_validation';
+  if (isToolInputContractText(text)) return 'tool_input_contract';
+  if (isRuntimePreflightText(text)) return 'runtime_preflight';
+  if (isRiskBlockedText(text)) return 'risk_blocked';
   if (/approval/.test(text)) return 'approval_required';
-  if (/allowlist|not allowed|policy|blocked/.test(text)) return 'policy_blocked';
+  if (isPolicyBlockedText(text)) return 'policy_blocked';
   if (/timeout|timed out|etimedout/.test(text)) return 'timeout';
-  if (/validation|invalid|required|wymagan/.test(text)) return 'validation';
+  if (/validation|invalid|required|wymagan/.test(text)) return 'workflow_validation';
   if (input.category === 'shell' && hasNonZeroExitCode(input.output)) return 'command_failed';
   if (/exit code|test zwrocil bledy|command failed|failed/.test(text)) return 'command_failed';
   if (/conflict|konflikt/.test(text)) return 'file_conflict';
@@ -367,12 +374,82 @@ export function classifyToolError(input: {
 
 function classifyThrownToolError(error: Error): string {
   const message = error.message.toLowerCase();
+  if (isWorkflowValidationText(message)) return 'workflow_validation';
+  if (isToolInputContractText(message)) return 'tool_input_contract';
+  if (isRuntimePreflightText(message)) return 'runtime_preflight';
+  if (isRiskBlockedText(message)) return 'risk_blocked';
   if (/approval/.test(message)) return 'approval_required';
-  if (/allowlist|not allowed|policy|blocked/.test(message)) return 'policy_blocked';
+  if (isPolicyBlockedText(message)) return 'policy_blocked';
   if (/timeout|timed out|etimedout/.test(message)) return 'timeout';
-  if (/validation|invalid|required|wymagan/.test(message)) return 'validation';
+  if (/validation|invalid|required|wymagan/.test(message)) return 'workflow_validation';
   if (/conflict|konflikt/.test(message)) return 'file_conflict';
   return error.name || 'unknown';
+}
+
+function classifyStructuredToolOutput(output: unknown): string | undefined {
+  if (!output || typeof output !== 'object' || Array.isArray(output)) return undefined;
+  const record = output as Record<string, any>;
+  const explicitFailureClass = stringValue(record.failureClass);
+  if (explicitFailureClass) return explicitFailureClass;
+
+  const validation = record.validation;
+  if (validation && typeof validation === 'object') {
+    const errors = Array.isArray(validation.errors) ? validation.errors : [];
+    const securityIssues = Array.isArray(validation.securityIssues) ? validation.securityIssues : [];
+    if (securityIssues.length > 0) return 'security_validation';
+    if (errors.length > 0) return 'workflow_validation';
+  }
+
+  const risk = record.risk;
+  if (risk && typeof risk === 'object' && stringValue(risk.verdict) === 'block') {
+    return 'risk_blocked';
+  }
+  if (risk && typeof risk === 'object' && stringValue(risk.verdict) === 'review') {
+    return 'approval_required';
+  }
+
+  if (Array.isArray(record.missingConfig) && record.missingConfig.length > 0) {
+    return 'runtime_preflight';
+  }
+
+  const failedStep = Array.isArray(record.steps)
+    ? [...record.steps].reverse().find((step) => step?.status === 'failed' || step?.status === 'blocked')
+    : undefined;
+  const failedStepName = stringValue(failedStep?.name);
+  const failedStepMessage = stringValue(failedStep?.message);
+  const stepText = [failedStepName, failedStepMessage].filter(Boolean).join('\n').toLowerCase();
+  if (failedStepName === 'runtime_check' || isRuntimePreflightText(stepText)) return 'runtime_preflight';
+  if (failedStepName === 'risk_score' || isRiskBlockedText(stepText)) return 'risk_blocked';
+  if (failedStepName?.startsWith('validate_') || isWorkflowValidationText(stepText)) return 'workflow_validation';
+
+  const text = extractOutputText(output)?.toLowerCase() ?? '';
+  if (isWorkflowValidationText(text)) return 'workflow_validation';
+  if (isToolInputContractText(text)) return 'tool_input_contract';
+  if (isRuntimePreflightText(text)) return 'runtime_preflight';
+  if (isRiskBlockedText(text)) return 'risk_blocked';
+  if (/approval/.test(text)) return 'approval_required';
+  if (isPolicyBlockedText(text)) return 'policy_blocked';
+  return undefined;
+}
+
+function isWorkflowValidationText(text: string): boolean {
+  return /workflow validation|draft validation|activation validation|validate_workflow|validation blocked deploy|mock test failed/.test(text);
+}
+
+function isToolInputContractText(text: string): boolean {
+  return /object is required|is required for mode=|missing required|input contract|invalid input|schema validation|invalid_arguments|invalid arguments/.test(text);
+}
+
+function isRuntimePreflightText(text: string): boolean {
+  return /runtime check|runtime checks|runtime requirements|runtime preflight|n8n is not reachable|mongodb is not reachable|ollama is not reachable|public webhook/.test(text);
+}
+
+function isRiskBlockedText(text: string): boolean {
+  return /risk score|risk verdict|risk block|blocked by risk|deploy blocked by risk/.test(text);
+}
+
+function isPolicyBlockedText(text: string): boolean {
+  return /policy|allowlist|approval required|not allowed|disallowed|forbidden by policy|policy blocked/.test(text);
 }
 
 function extractToolMetadata(input: unknown): ToolEnvelopeMetadata {
