@@ -14,6 +14,7 @@ import { scheduleSemanticMemoryCheck } from './semantic-memory-worker.js';
 import { beginHarnessTurn, completeHarnessTurn, failHarnessTurn } from './harness-run-state.js';
 import { isWorkspaceTool, logPostHocToolExecution } from './harness-tool-envelope.js';
 import { runWithHarnessExecutionContext } from './harness-execution-context.js';
+import { compactHarnessOutput } from './harness-output-compactor.js';
 
 export type HarnessPhase =
   // Coding phases
@@ -246,6 +247,23 @@ export async function generateWithHarness<TResponse = unknown>(
     console.log(`[Harness] Full response (truncated): ${JSON.stringify(resp).slice(0, 800)}`);
 
     const outputPreview = extractOutputPreview(response);
+    const fullOutputText = extractFullOutputText(response);
+    const outputCompaction = await compactHarnessOutput({
+      text: fullOutputText,
+      kind: 'llm_output',
+      runId,
+      turnId,
+      threadId,
+      taskId: input.taskId,
+      subtaskId: input.subtaskId,
+      agentId: input.agentId,
+      previewBytes: 1000,
+      metadata: {
+        scope: 'harness_generate_output',
+        phase: input.phase,
+      },
+    });
+    const outputArtifactId = outputCompaction.fullTextArtifactId;
 
     if (harnessEnabled) {
       await logHarnessEvent({
@@ -267,6 +285,7 @@ export async function generateWithHarness<TResponse = unknown>(
           originalPromptHash,
           contextHash,
           outputTokensEstimate: tokenEstimate(outputPreview),
+          outputArtifactId,
           precontextApplied: !!precontext?.markdown,
           precontextFeature: input.precontextFeature,
         },
@@ -301,6 +320,7 @@ export async function generateWithHarness<TResponse = unknown>(
       promptHash,
       contextHash,
       outputPreview,
+      outputArtifactId,
       durationMs,
       model: input.model,
       eventsWritten,
@@ -455,32 +475,36 @@ function hashText(text: string): string {
 }
 
 function extractOutputPreview(response: unknown): string {
+  return truncate(extractFullOutputText(response), 1000);
+}
+
+function extractFullOutputText(response: unknown): string {
   try {
-    if (typeof response === 'string') return truncate(response, 1000);
+    if (typeof response === 'string') return response;
     if (response && typeof response === 'object') {
       const record = response as Record<string, unknown>;
 
       if (typeof record.text === 'string' && record.text.length > 0) {
-        return truncate(record.text, 1000);
+        return record.text;
       }
 
       if (Array.isArray(record.steps) && record.steps.length > 0) {
         const lastStep = record.steps[record.steps.length - 1] as Record<string, unknown>;
         if (typeof lastStep?.text === 'string' && lastStep.text.length > 0) {
-          return truncate(lastStep.text, 1000);
+          return lastStep.text;
         }
       }
 
       if (Array.isArray(record.toolResults) && record.toolResults.length > 0) {
         const summary = (record.toolResults as Array<Record<string, unknown>>)
-          .map((tr) => `[${tr.toolName}] ${JSON.stringify(tr.result ?? '').slice(0, 200)}`)
+          .map((tr) => `[${tr.toolName}] ${JSON.stringify(tr.result ?? '')}`)
           .join('\n');
-        return truncate(summary, 1000);
+        return summary;
       }
 
-      if (typeof record.output === 'string') return truncate(record.output, 1000);
+      if (typeof record.output === 'string') return record.output;
     }
-    return truncate(JSON.stringify(response), 1000);
+    return JSON.stringify(response);
   } catch {
     return '';
   }

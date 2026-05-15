@@ -47,6 +47,7 @@ export const checkPendingUpdatesTool = createTool({
       content: z.string(),
       urgent: z.boolean(),
       type: z.string().optional(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
     })),
     message: z.string(),
   }),
@@ -100,6 +101,7 @@ export const checkPendingUpdatesTool = createTool({
         content: d.content,
         urgent: d.urgent,
         type: (d.metadata as Record<string, unknown>)?.type as string ?? 'background_task',
+        metadata: d.metadata,
       }));
 
       return {

@@ -172,7 +172,7 @@ export const agentModels = {
   crmAgent: 'gemma4-26b' as ModelKey,
   analyticsAgent: 'qwen3-coder-30b' as ModelKey,
   weatherAgent: 'gemma4-26b' as ModelKey,
-  automationArchitect: 'qwen3-coder-30b' as ModelKey,
+  automationArchitect: 'gemini-3.1-flash-lite-preview' as ModelKey,
   marketingAgent: 'gemma4-26b' as ModelKey,
   knowledgeAgent: 'gemini-3.1-flash-lite-preview' as ModelKey,   // NotebookLM ops — reliable tool calling for MCP tools
   researcherAgent: 'gemini-3.1-flash-lite-preview' as ModelKey,  // PSEV web research — browser + Tavily deep scraping
@@ -249,7 +249,7 @@ export const infrastructure = {
 
   /** N8n workflow generation defaults (used by automation-architect builders) */
   n8n: {
-    defaultModel: 'qwen3.5-9b' as ModelKey,
+    defaultModel: 'qwen3-coder-30b' as ModelKey,
     reasoningModel: 'qwen3.5-9b' as ModelKey,
   },
 } as const;

@@ -52,6 +52,9 @@ export type DelegationRecord = {
   returnToThreadId?: string;
   status: DelegationStatus;
   result?: string;
+  resultPreview?: string;
+  resultArtifactId?: string;
+  fullResultAvailable?: boolean;
   error?: string;
   startedAt: Date;
   completedAt?: Date;
@@ -206,6 +209,8 @@ async function executeDelegation(
         });
 
     const responseText = harnessResult.outputPreview ?? '';
+    const resultArtifactId = harnessResult.outputArtifactId;
+    const fullResultAvailable = Boolean(resultArtifactId);
     const durationMs = Date.now() - start;
 
     // Update delegation record
@@ -215,6 +220,9 @@ async function executeDelegation(
         $set: {
           status: 'completed' as DelegationStatus,
           result: responseText.slice(0, 5000),
+          resultPreview: responseText,
+          resultArtifactId,
+          fullResultAvailable,
           completedAt: new Date(),
           durationMs,
         },
@@ -231,14 +239,18 @@ async function executeDelegation(
         `**Agent:** ${agentId}`,
         `**Task:** ${input.prompt.slice(0, 200)}${input.prompt.length > 200 ? '...' : ''}`,
         `**Status:** ✅ completed (${(durationMs / 1000).toFixed(1)}s)`,
+        resultArtifactId ? `**Full result artifact:** ${resultArtifactId}` : '',
         `**Result:**`,
         responseText,
-      ].join('\n'),
+      ].filter(Boolean).join('\n'),
       urgent: false,
       metadata: {
         delegationId,
         agentId,
         durationMs,
+        resultPreview: responseText,
+        resultArtifactId,
+        fullResultAvailable,
         type: 'async_delegation_result',
         originAgentId,
         originThreadId: input.originThreadId ?? input.callerThreadId,
@@ -256,7 +268,7 @@ async function executeDelegation(
       input: `[ASYNC COMPLETE] ${input.prompt.slice(0, 500)}`,
       output: responseText.slice(0, 500),
       durationMs,
-      metadata: { delegationId, async: true },
+      metadata: { delegationId, async: true, resultArtifactId, fullResultAvailable },
     });
 
     console.log(`[AsyncDelegation] ✅ ${delegationId} completed in ${(durationMs / 1000).toFixed(1)}s`);

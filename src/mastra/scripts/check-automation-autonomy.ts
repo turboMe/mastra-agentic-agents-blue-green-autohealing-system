@@ -9,7 +9,9 @@ import {
   listAutomationJobs,
   markStaleAutomationJobs,
 } from '../services/automation-job-manager.js';
+import { getAsyncDelegation, startAsyncDelegation } from '../services/async-delegation.js';
 import { startAutomationRequest } from '../tools/system/start-automation-request.js';
+import { checkPendingUpdatesTool } from '../tools/system/check-pending-updates.js';
 import { queuePendingMessage, takePendingMessages } from '../services/pending-message-queue.js';
 import { automationDecisionOutputProcessor } from '../processors/automation-decision-output.js';
 import { classifyToolError } from '../services/harness-tool-envelope.js';
@@ -17,6 +19,7 @@ import { getDb, closeDb } from '../lib/mongo.js';
 import {
   AUTOMATION_ARCHITECT_AGENT_ID,
   AUTOMATION_ARCHITECT_MASTRA_AGENT_ID,
+  CODING_AGENT_ID,
   META_AGENT_ID,
 } from '../config/agent-ids.js';
 
@@ -69,6 +72,9 @@ async function main() {
   let legacyPendingId: string | undefined;
   let legacyAliasJobId: string | undefined;
   let staleJobId: string | undefined;
+  let asyncDelegationId: string | undefined;
+  let asyncPendingId: string | undefined;
+  let asyncArtifactId: string | undefined;
 
   try {
     const precontext = await buildAutomationPrecontext({
@@ -152,6 +158,56 @@ async function main() {
       'canonical automationArchitect did not list legacy automation-architect automation job',
     );
 
+    const asyncThreadId = `${threadId}-async`;
+    const longAsyncResult = `async-result-${'x'.repeat(1800)}`;
+    const fakeAgent = {
+      generate: async () => ({ text: longAsyncResult }),
+    } as any;
+    ({ delegationId: asyncDelegationId } = await startAsyncDelegation({
+      agent: fakeAgent,
+      agentId: CODING_AGENT_ID,
+      prompt: 'Return a long async regression payload.',
+      callerThreadId: asyncThreadId,
+      callerAgentId: META_AGENT_ID,
+      returnToAgentId: META_AGENT_ID,
+      returnToThreadId: asyncThreadId,
+    }));
+    const asyncDelegation = await waitForAsyncDelegation(asyncDelegationId, 10_000);
+    assert(asyncDelegation.status === 'completed', `unexpected async delegation status: ${asyncDelegation.status}`);
+    assert(asyncDelegation.resultPreview?.endsWith('...'), 'async delegation did not keep a compact result preview');
+    assert(Boolean(asyncDelegation.resultArtifactId), 'async delegation did not persist a full result artifact');
+    assert(asyncDelegation.fullResultAvailable === true, 'async delegation did not mark full result availability');
+    asyncArtifactId = asyncDelegation.resultArtifactId;
+
+    const pendingAsyncResult = await db.collection('pending_user_messages').findOne({
+      threadId: asyncThreadId,
+      targetAgentId: META_AGENT_ID,
+      source: 'background_task',
+      status: 'pending',
+      'metadata.delegationId': asyncDelegationId,
+    });
+    assert(Boolean(pendingAsyncResult), 'async delegation did not queue a pending result');
+    asyncPendingId = pendingAsyncResult?.id;
+    assert(
+      pendingAsyncResult?.content.includes(`**Full result artifact:** ${asyncArtifactId}`),
+      'async pending result did not expose the full result artifact id',
+    );
+
+    const pendingToolResult = await (checkPendingUpdatesTool as any).execute({
+      agentId: META_AGENT_ID,
+      threadId: asyncThreadId,
+    });
+    const asyncUpdate = pendingToolResult.updates.find((update: any) => update.metadata?.delegationId === asyncDelegationId);
+    assert(Boolean(asyncUpdate), 'checkPendingUpdates did not return the async delegation result');
+    assert(
+      asyncUpdate.metadata?.resultArtifactId === asyncArtifactId,
+      'checkPendingUpdates dropped async result artifact metadata',
+    );
+    assert(
+      asyncUpdate.metadata?.fullResultAvailable === true,
+      'checkPendingUpdates dropped full result availability metadata',
+    );
+
     const job = await startAutomationRequest({
       mode: 'workflow_json',
       automationId,
@@ -233,6 +289,9 @@ async function main() {
       legacyPendingId,
       legacyAliasJobId,
       staleJobId,
+      asyncDelegationId,
+      asyncPendingId,
+      asyncArtifactId,
     });
     await closeDb();
   }
@@ -246,6 +305,16 @@ async function waitForJob(jobId: string, timeoutMs: number) {
     await sleep(1000);
   }
   throw new Error(`Timed out waiting for automation job ${jobId}`);
+}
+
+async function waitForAsyncDelegation(delegationId: string, timeoutMs: number) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const delegation = await getAsyncDelegation(delegationId);
+    if (delegation && delegation.status !== 'running') return delegation;
+    await sleep(100);
+  }
+  throw new Error(`Timed out waiting for async delegation ${delegationId}`);
 }
 
 async function waitForSharedDecision(automationId: string, timeoutMs: number): Promise<any> {
@@ -272,13 +341,16 @@ async function cleanup(input: {
   legacyPendingId?: string;
   legacyAliasJobId?: string;
   staleJobId?: string;
+  asyncDelegationId?: string;
+  asyncPendingId?: string;
+  asyncArtifactId?: string;
 }) {
   const db = await getDb();
   await Promise.allSettled([
     db.collection('pending_user_messages').deleteMany({
       $or: [
         { threadId: input.threadId },
-        { id: { $in: [input.pendingArchitectId, input.pendingMetaId, input.legacyPendingId].filter(Boolean) } },
+        { id: { $in: [input.pendingArchitectId, input.pendingMetaId, input.legacyPendingId, input.asyncPendingId].filter(Boolean) } },
         { 'metadata.automationId': input.automationId },
       ],
     }),
@@ -293,6 +365,12 @@ async function cleanup(input: {
     db.collection('automation_workflow_snapshots').deleteMany({ automationId: input.automationId }),
     db.collection('shared_memory').deleteMany({ type: 'automation_decision', automationId: input.automationId }),
     db.collection('system_knowledge').deleteMany({ content: { $regex: input.automationId } }),
+    db.collection('async_delegations').deleteMany({
+      delegationId: { $in: [input.asyncDelegationId].filter(Boolean) },
+    }),
+    db.collection('harness_artifacts').deleteMany({
+      id: { $in: [input.asyncArtifactId].filter(Boolean) },
+    }),
   ]);
 }
 
