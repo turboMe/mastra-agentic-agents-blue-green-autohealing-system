@@ -105,7 +105,10 @@ export const deployAutomationTool = createTool({
 
     // 4. Ownership check (for updates). Legacy or unmanaged workflows are read-only.
     if (context.workflowId) {
-      const existing = await db.collection('automation_requests').findOne({ n8nWorkflowId: context.workflowId });
+      const existing = await db.collection('automation_requests').findOne(
+        { n8nWorkflowId: context.workflowId },
+        { sort: { createdAt: 1 } },
+      );
       if (!existing) {
         return {
           success: false,

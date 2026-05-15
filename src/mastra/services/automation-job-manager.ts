@@ -470,10 +470,13 @@ function previewAutomationInput(input: AutomationGoldenPathInput): string {
 async function resolveExistingAutomationId(input: AutomationGoldenPathInput): Promise<string | undefined> {
   if (!input.workflowId) return undefined;
   const db = await getDb();
-  const owner = await db.collection('automation_requests').findOne({
-    n8nWorkflowId: input.workflowId,
-    managedBy: 'mastra',
-  });
+  const owner = await db.collection('automation_requests').findOne(
+    {
+      n8nWorkflowId: input.workflowId,
+      managedBy: 'mastra',
+    },
+    { sort: { createdAt: 1 } },
+  );
   return typeof owner?.automationId === 'string' ? owner.automationId : undefined;
 }
 

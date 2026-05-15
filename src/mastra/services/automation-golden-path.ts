@@ -861,7 +861,10 @@ async function deployWorkflow(input: {
     const existing = await n8n.listWorkflows();
     const match = existing.find((workflow) => workflow.name === expectedName || workflow.name === input.workflow.name);
     if (match) {
-      const owner = await db.collection('automation_requests').findOne({ n8nWorkflowId: match.id });
+      const owner = await db.collection('automation_requests').findOne(
+        { n8nWorkflowId: match.id },
+        { sort: { createdAt: 1 } },
+      );
       if (!owner || owner.managedBy !== 'mastra') {
         throw new Error(`Workflow name already exists but is not Mastra-managed: ${match.name} (${match.id}).`);
       }
@@ -872,7 +875,10 @@ async function deployWorkflow(input: {
   }
 
   if (workflowId) {
-    existingOwner = existingOwner ?? await db.collection('automation_requests').findOne({ n8nWorkflowId: workflowId });
+    existingOwner = existingOwner ?? await db.collection('automation_requests').findOne(
+      { n8nWorkflowId: workflowId },
+      { sort: { createdAt: 1 } },
+    );
     if (existingOwner && existingOwner.managedBy !== 'mastra') {
       throw new Error(`Workflow ${workflowId} is not managed by Mastra.`);
     }
