@@ -47,7 +47,7 @@ export const deployAutomationTool = createTool({
       riskHint: 'high' as const,
     }),
     execute: async (context: any) => {
-    const automationId = context.automationId || randomUUID();
+    let automationId = context.automationId || randomUUID();
 
     // 1. Best-effort fixup of obvious LLM mistakes in connection keys
     // (e.g. {"'Set Vars'": …} → {"Set Vars": …}). Runs before validation so
@@ -128,6 +128,10 @@ export const deployAutomationTool = createTool({
           operation: 'blocked' as const,
           message: `Odmowa edycji: workflow ${context.workflowId} nalezy do automationId=${existing.automationId}, nie ${context.automationId}.`,
         };
+      }
+
+      if (!context.automationId && existing.automationId) {
+        automationId = existing.automationId;
       }
     }
 

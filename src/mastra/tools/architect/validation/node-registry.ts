@@ -52,6 +52,10 @@ export const TRIGGER_TYPES = new Set([
   'n8n-nodes-base.executeWorkflowTrigger',
 ]);
 
+export const NON_ACTIVATABLE_TRIGGER_TYPES = new Set([
+  'n8n-nodes-base.manualTrigger',
+]);
+
 export const FORBIDDEN_NODE_TYPES = [
   'n8n-nodes-base.executeCommand',
   'n8n-nodes-base.readBinaryFile',

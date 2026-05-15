@@ -99,7 +99,7 @@ export async function startAutomationJob(
   }
 
   const jobId = randomUUID();
-  const automationId = input.automationId ?? input.input.automationId ?? randomUUID();
+  const automationId = input.automationId ?? input.input.automationId ?? await resolveExistingAutomationId(input.input) ?? randomUUID();
   const now = new Date();
   const goldenPathInput: AutomationGoldenPathInput = {
     ...input.input,
@@ -465,6 +465,16 @@ function previewAutomationInput(input: AutomationGoldenPathInput): string {
     workflowFilePath: input.workflowFilePath,
     approvalToken: input.approvalToken ? '[REDACTED]' : undefined,
   }, null, 2)).text.slice(0, 2000);
+}
+
+async function resolveExistingAutomationId(input: AutomationGoldenPathInput): Promise<string | undefined> {
+  if (!input.workflowId) return undefined;
+  const db = await getDb();
+  const owner = await db.collection('automation_requests').findOne({
+    n8nWorkflowId: input.workflowId,
+    managedBy: 'mastra',
+  });
+  return typeof owner?.automationId === 'string' ? owner.automationId : undefined;
 }
 
 function buildResultPreview(result: AutomationGoldenPathResult, compactedPreview: string): string {

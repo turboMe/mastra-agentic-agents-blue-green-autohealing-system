@@ -283,6 +283,13 @@ async function persistTestEvent(
 ) {
   try {
     const db = await getDb();
+    const existing = await db.collection('automation_requests').findOne(
+      { automationId },
+      { projection: { status: 1 } },
+    );
+    const nextStatus = status === 'passed' && existing?.status !== 'active'
+      ? 'tested'
+      : existing?.status;
     await db.collection('automation_events').insertOne({
       automationId,
       type: 'test_run',
@@ -293,7 +300,13 @@ async function persistTestEvent(
       .collection('automation_requests')
       .updateOne(
         { automationId },
-        { $set: { lastTest: { mode, status, executionId, findings, at: new Date() }, updatedAt: new Date() } },
+        {
+          $set: {
+            lastTest: { mode, status, executionId, findings, at: new Date() },
+            ...(nextStatus ? { status: nextStatus } : {}),
+            updatedAt: new Date(),
+          },
+        },
       );
   } catch {
     // never block test on audit failure

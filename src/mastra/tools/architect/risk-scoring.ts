@@ -7,6 +7,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { withToolEnvelope } from '../../services/harness-tool-envelope.js';
 import { compactAutomationResultForModel } from '../../services/automation-output-compaction.js';
+import { TRIGGER_TYPES } from './validation/node-registry.js';
 
 // ── Forbidden node types that immediately raise risk ───────────────────────
 const CRITICAL_NODE_TYPES = [
@@ -180,10 +181,7 @@ export function analyzeWorkflow(workflowJson: unknown): { score: number; finding
   }
 
   // ── No trigger node check ────────────────────────────────────────────────
-  const triggerTypes = ['webhook', 'scheduleTrigger', 'cron', 'manualTrigger', 'emailReadImap'];
-  const hasTrigger = nodes.some((n) =>
-    triggerTypes.some((t) => String(n.type ?? '').toLowerCase().includes(t.toLowerCase())),
-  );
+  const hasTrigger = nodes.some((node) => TRIGGER_TYPES.has(String(node.type ?? '')));
   if (!hasTrigger && nodes.length > 0) {
     findings.push({ severity: 'medium', code: 'NO_TRIGGER', message: 'No trigger node detected — workflow cannot run automatically' });
     score += 10;

@@ -5,7 +5,12 @@ import {
   MissingConfig,
   WorkflowGraphComponent,
 } from './validation-types.js';
-import { KNOWN_NODE_TYPES, TRIGGER_TYPES, FORBIDDEN_NODE_TYPES } from './node-registry.js';
+import {
+  FORBIDDEN_NODE_TYPES,
+  KNOWN_NODE_TYPES,
+  NON_ACTIVATABLE_TRIGGER_TYPES,
+  TRIGGER_TYPES,
+} from './node-registry.js';
 import { getRuntimeTopology } from '../../../config/runtime-topology.js';
 
 const DANGEROUS_CODE_PATTERNS: Array<{ pattern: RegExp; message: string }> = [
@@ -442,6 +447,7 @@ export function validateWorkflow(
   const nodeIds = new Set<string>();
   const allNodeNames = new Set(nodes.map((node) => node?.name).filter((name): name is string => typeof name === 'string' && name.length > 0));
   let hasTrigger = false;
+  let hasActivatableTrigger = false;
   let connectionCount = 0;
 
   for (const node of nodes) {
@@ -451,6 +457,13 @@ export function validateWorkflow(
     if (!node.id) warnings.push({ nodeName: node.name, message: 'Node missing "id"', severity: 'warning' });
     if (node.typeVersion === undefined)
       warnings.push({ nodeName: node.name, message: 'Node missing "typeVersion"', severity: 'warning' });
+    if (!isPlainObject(node.parameters)) {
+      errors.push({
+        nodeName: node.name,
+        message: `Node "${node.name || 'unknown'}" must define "parameters" as an object.`,
+        severity: 'error',
+      });
+    }
     if (!Array.isArray(node.position) || node.position.length !== 2) {
       warnings.push({ nodeName: node.name, message: 'Node missing valid [x,y] position', severity: 'warning' });
     }
@@ -482,6 +495,9 @@ export function validateWorkflow(
     // 3. Trigger check
     if (TRIGGER_TYPES.has(node.type)) {
       hasTrigger = true;
+      if (!NON_ACTIVATABLE_TRIGGER_TYPES.has(node.type)) {
+        hasActivatableTrigger = true;
+      }
     }
 
     // 4. Forbidden node check
@@ -490,7 +506,7 @@ export function validateWorkflow(
     }
 
     // 5. Parameters & Security
-    if (node.parameters) {
+    if (isPlainObject(node.parameters)) {
       const paramStr = JSON.stringify(node.parameters);
 
       // No $vars.*
@@ -687,6 +703,9 @@ export function validateWorkflow(
     if (!hasTrigger) {
       errors.push({ message: 'Activation profile requires a trigger node.', severity: 'error' });
       isValid = false;
+    } else if (!hasActivatableTrigger) {
+      errors.push({ message: 'Activation profile requires at least one non-manual trigger node.', severity: 'error' });
+      isValid = false;
     } else if (graph.executableNodeNames.length > 0 && graph.reachableExecutableNodeNames.length === 0) {
       errors.push({ message: 'Activation profile requires a trigger path to at least one executable node.', severity: 'error' });
       isValid = false;
@@ -712,6 +731,10 @@ export function validateWorkflow(
 
 function isCodeLikeNode(type: string | undefined): boolean {
   return type === 'n8n-nodes-base.code' || type === 'n8n-nodes-base.function';
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 function collectStringValues(value: unknown): string[] {

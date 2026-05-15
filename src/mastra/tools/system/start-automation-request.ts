@@ -41,7 +41,7 @@ const startAutomationRequestInputSchema = goldenPathInputSchema.extend({
   returnToAgentId: z.enum([META_AGENT_ID, AUTOMATION_ARCHITECT_AGENT_ID]).optional(),
   returnToThreadId: z.string().optional(),
   wake: z.boolean().optional().default(true),
-});
+}).superRefine(addGoldenPathModeIssues);
 
 type StartAutomationRequestInput = z.input<typeof startAutomationRequestInputSchema>;
 type ParsedStartAutomationRequestInput = z.infer<typeof startAutomationRequestInputSchema>;
@@ -168,4 +168,39 @@ function readableWorkflowName(workflow: unknown): string | undefined {
 function safeFileStem(value: string): string {
   const stem = value.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '');
   return stem.slice(0, 80) || 'workflow';
+}
+
+function addGoldenPathModeIssues(input: z.infer<typeof goldenPathInputSchema>, ctx: z.RefinementCtx): void {
+  if (input.mode === 'workflow_json' && (!input.workflow || typeof input.workflow !== 'object' || Array.isArray(input.workflow))) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['workflow'],
+      message: 'workflow object is required for mode=workflow_json.',
+    });
+  }
+
+  if (input.mode === 'workflow_file' && !input.workflowFilePath?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['workflowFilePath'],
+      message: 'workflowFilePath is required for mode=workflow_file.',
+    });
+  }
+
+  if (input.mode === 'pattern') {
+    if (!input.patternId?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['patternId'],
+        message: 'patternId is required for mode=pattern.',
+      });
+    }
+    if (!input.spec) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['spec'],
+        message: 'spec is required for mode=pattern.',
+      });
+    }
+  }
 }

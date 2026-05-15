@@ -107,7 +107,7 @@ const SAFE_FILE_ROOTS = [
 export async function executeAutomationGoldenPath(
   input: AutomationGoldenPathInput,
 ): Promise<AutomationGoldenPathResult> {
-  const automationId = input.automationId || randomUUID();
+  let automationId = input.automationId || randomUUID();
   const steps: AutomationGoldenPathStep[] = [];
   let workflowId = input.workflowId;
   let workflowName: string | undefined;
@@ -304,6 +304,7 @@ export async function executeAutomationGoldenPath(
       validation: draftValidation,
       risk,
     });
+    automationId = deployed.automationId;
     workflowId = deployed.workflowId;
     workflowName = deployed.workflowName;
     deployedWorkflow = deployed.workflow;
@@ -841,6 +842,7 @@ async function deployWorkflow(input: {
   validation: ValidationResult;
   risk: ReturnType<typeof analyzeWorkflow> & { verdict: 'approve' | 'review' | 'block' };
 }): Promise<{
+  automationId: string;
   workflowId: string;
   workflowName: string;
   operation: 'create' | 'update';
@@ -851,6 +853,8 @@ async function deployWorkflow(input: {
   const n8n = new N8nService();
   let workflowId = input.workflowId;
   let operation: 'create' | 'update' = workflowId ? 'update' : 'create';
+  let automationId = input.automationId;
+  let existingOwner: any;
 
   if (!workflowId) {
     const expectedName = ensureMastraName(input.workflow.name);
@@ -861,15 +865,19 @@ async function deployWorkflow(input: {
       if (!owner || owner.managedBy !== 'mastra') {
         throw new Error(`Workflow name already exists but is not Mastra-managed: ${match.name} (${match.id}).`);
       }
+      existingOwner = owner;
       workflowId = match.id;
       operation = 'update';
     }
   }
 
   if (workflowId) {
-    const existingOwner = await db.collection('automation_requests').findOne({ n8nWorkflowId: workflowId });
+    existingOwner = existingOwner ?? await db.collection('automation_requests').findOne({ n8nWorkflowId: workflowId });
     if (existingOwner && existingOwner.managedBy !== 'mastra') {
       throw new Error(`Workflow ${workflowId} is not managed by Mastra.`);
+    }
+    if (existingOwner?.automationId && existingOwner.automationId !== automationId) {
+      automationId = existingOwner.automationId;
     }
   }
 
@@ -898,10 +906,10 @@ async function deployWorkflow(input: {
   if (!workflowId) throw new Error('n8n did not return a workflow id.');
 
   await db.collection('automation_requests').updateOne(
-    { automationId: input.automationId },
+    { automationId },
     {
       $set: {
-        automationId: input.automationId,
+        automationId,
         n8nWorkflowId: workflowId,
         name: payload.name,
         status: 'draft_created',
@@ -918,7 +926,7 @@ async function deployWorkflow(input: {
   );
 
   await db.collection('automation_workflow_snapshots').insertOne({
-    automationId: input.automationId,
+    automationId,
     n8nWorkflowId: workflowId,
     version: new Date().toISOString(),
     workflow: payload,
@@ -927,6 +935,7 @@ async function deployWorkflow(input: {
 
   const workflow = await n8n.getWorkflow(workflowId);
   return {
+    automationId,
     workflowId,
     workflowName: payload.name,
     operation,

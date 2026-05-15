@@ -61,6 +61,7 @@ async function main() {
   process.env.N8N_CREDENTIAL_TELEGRAM_ID = process.env.N8N_CREDENTIAL_TELEGRAM_ID || 'check-secret-credential-id';
 
   const classificationWorkflowValidation = checkToolErrorClassification();
+  const structuredInputContract = await checkStructuredInputContract();
 
   const db = await getDb();
   const suffix = `${Date.now()}-${randomUUID().slice(0, 6)}`;
@@ -278,6 +279,7 @@ async function main() {
     console.log('automation-autonomy check passed');
     console.log('metaStructuredWorkflowJson=passed');
     console.log(`classificationWorkflowValidation=${classificationWorkflowValidation}`);
+    console.log(`structuredInputContract=${structuredInputContract}`);
     console.log('asyncFullResultArtifact=passed');
     console.log(`precontextTokens=${precontext.tokenEstimate}`);
     console.log(`jobId=${jobId}, jobStatus=${completedJob.status}`);
@@ -424,6 +426,25 @@ function checkToolErrorClassification(): string {
   });
   assert(contractClass === 'tool_input_contract', `tool input contract classified as ${contractClass}`);
 
+  return 'passed';
+}
+
+async function checkStructuredInputContract(): Promise<string> {
+  let message = '';
+  try {
+    await startAutomationRequest({
+      mode: 'workflow_json',
+      callerAgentId: META_AGENT_ID,
+      executionMode: 'job',
+    } as any);
+  } catch (error) {
+    message = (error as Error).message;
+  }
+
+  assert(
+    message.includes('workflow object is required for mode=workflow_json.'),
+    `workflow_json contract was not rejected before job creation: ${message || 'no error'}`,
+  );
   return 'passed';
 }
 

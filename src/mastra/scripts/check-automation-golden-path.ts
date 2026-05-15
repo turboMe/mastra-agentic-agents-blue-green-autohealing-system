@@ -7,6 +7,7 @@ import { N8nService } from '../tools/n8n/client.js';
 import { getDb } from '../lib/mongo.js';
 import { normalizeConnectionKeys, validateWorkflow } from '../tools/architect/validation/workflow-validator.js';
 import { applyRepairs } from '../tools/architect/testing/repair-workflow.js';
+import { analyzeWorkflow } from '../tools/architect/risk-scoring.js';
 
 const unsafeWorkflow = {
   name: 'Unsafe Function Workflow',
@@ -44,6 +45,9 @@ async function main() {
   const graphValidation = checkGraphValidation();
   const connectionRepair = checkConnectionRepair();
   const unsupportedVars = checkUnsupportedVarsHandling();
+  const malformedParameters = checkMalformedParameters();
+  const triggerConsistency = checkTriggerConsistency();
+  const activationTriggerValidation = checkActivationTriggerValidation();
 
   const unsafeResult = await executeAutomationGoldenPath({
     mode: 'workflow_json',
@@ -58,25 +62,26 @@ async function main() {
   }
 
   const automationId = `check-safe-${Date.now()}`;
+  const safeWorkflow = {
+    name: `Golden Path Check ${randomUUID().slice(0, 8)}`,
+    active: false,
+    settings: { executionOrder: 'v1' },
+    nodes: [
+      {
+        id: 'manual',
+        name: 'Manual Trigger',
+        type: 'n8n-nodes-base.manualTrigger',
+        typeVersion: 1,
+        position: [0, 0],
+        parameters: {},
+      },
+    ],
+    connections: {},
+  };
   const safeResult = await executeAutomationGoldenPath({
     mode: 'workflow_json',
     automationId,
-    workflow: {
-      name: `Golden Path Check ${randomUUID().slice(0, 8)}`,
-      active: false,
-      settings: { executionOrder: 'v1' },
-      nodes: [
-        {
-          id: 'manual',
-          name: 'Manual Trigger',
-          type: 'n8n-nodes-base.manualTrigger',
-          typeVersion: 1,
-          position: [0, 0],
-          parameters: {},
-        },
-      ],
-      connections: {},
-    },
+    workflow: safeWorkflow,
   });
 
   try {
@@ -90,6 +95,23 @@ async function main() {
       console.error(JSON.stringify({ workflowId: safeResult.workflowId, active: deployedWorkflow.active }, null, 2));
       throw new Error('Safe workflow was not left inactive after deploy + mock test.');
     }
+
+    const ownerReuseResult = await executeAutomationGoldenPath({
+      mode: 'workflow_json',
+      workflowId: safeResult.workflowId,
+      workflow: safeWorkflow,
+    });
+    if (!ownerReuseResult.success || ownerReuseResult.automationId !== automationId) {
+      console.error(JSON.stringify({ safeResult, ownerReuseResult }, null, 2));
+      throw new Error('Golden Path update did not reuse existing workflow ownership.');
+    }
+    const duplicateOwners = await (await getDb()).collection('automation_requests').countDocuments({
+      n8nWorkflowId: safeResult.workflowId,
+    });
+    if (duplicateOwners !== 1) {
+      console.error(JSON.stringify({ safeResult, ownerReuseResult, duplicateOwners }, null, 2));
+      throw new Error('Golden Path update created duplicate automation ownership records.');
+    }
   } finally {
     await cleanup(automationId, safeResult.workflowId);
   }
@@ -99,7 +121,11 @@ async function main() {
   console.log(`graphValidation=${graphValidation}`);
   console.log(`connectionRepair=${connectionRepair}`);
   console.log(`unsupportedVars=${unsupportedVars}`);
+  console.log(`malformedParameters=${malformedParameters}`);
+  console.log(`triggerConsistency=${triggerConsistency}`);
+  console.log(`activationTriggerValidation=${activationTriggerValidation}`);
   console.log('inactiveAfterDeploy=passed');
+  console.log('ownerReuse=passed');
   console.log(`unsafeStatus=${unsafeResult.status}, securityIssues=${securityCount}`);
   console.log(`safeStatus=${safeResult.status}, workflowId=${safeResult.workflowId}`);
   process.exit(0);
@@ -353,6 +379,104 @@ function checkUnsupportedVarsHandling(): string {
   return 'passed';
 }
 
+function checkMalformedParameters(): string {
+  const workflow: any = {
+    name: `Malformed Parameters ${randomUUID().slice(0, 8)}`,
+    active: false,
+    settings: { executionOrder: 'v1' },
+    nodes: [
+      {
+        id: 'manual',
+        name: 'Manual Trigger',
+        type: 'n8n-nodes-base.manualTrigger',
+        typeVersion: 1,
+        position: [0, 0],
+      },
+    ],
+    connections: {},
+  };
+
+  const validation = validateWorkflow(workflow, 'draft');
+  if (validation.valid || !validation.errors.some((error) => error.message.includes('"parameters" as an object'))) {
+    console.error(JSON.stringify({ validation }, null, 2));
+    throw new Error('Malformed node parameters were not blocked before deploy.');
+  }
+
+  return 'passed';
+}
+
+function checkTriggerConsistency(): string {
+  const workflow: any = {
+    name: `RSS Trigger Risk ${randomUUID().slice(0, 8)}`,
+    active: false,
+    settings: { executionOrder: 'v1' },
+    nodes: [
+      {
+        id: 'rss-trigger',
+        name: 'RSS Trigger',
+        type: 'n8n-nodes-base.rssFeedReadTrigger',
+        typeVersion: 1,
+        position: [0, 0],
+        parameters: {},
+      },
+    ],
+    connections: {},
+  };
+
+  const validation = validateWorkflow(workflow, 'strict');
+  const risk = analyzeWorkflow(workflow);
+  if (!validation.valid || risk.findings.some((finding) => finding.code === 'NO_TRIGGER')) {
+    console.error(JSON.stringify({ validation, risk }, null, 2));
+    throw new Error('Trigger detection is inconsistent for rssFeedReadTrigger.');
+  }
+
+  return 'passed';
+}
+
+function checkActivationTriggerValidation(): string {
+  const manualWorkflow: any = {
+    name: `Manual Activation ${randomUUID().slice(0, 8)}`,
+    active: false,
+    settings: { executionOrder: 'v1' },
+    nodes: [
+      {
+        id: 'manual',
+        name: 'Manual Trigger',
+        type: 'n8n-nodes-base.manualTrigger',
+        typeVersion: 1,
+        position: [0, 0],
+        parameters: {},
+      },
+    ],
+    connections: {},
+  };
+  const scheduleWorkflow: any = {
+    ...manualWorkflow,
+    name: `Scheduled Activation ${randomUUID().slice(0, 8)}`,
+    nodes: [
+      {
+        ...manualWorkflow.nodes[0],
+        id: 'schedule',
+        name: 'Schedule Trigger',
+        type: 'n8n-nodes-base.scheduleTrigger',
+      },
+    ],
+  };
+
+  const manualValidation = validateWorkflow(manualWorkflow, 'activation');
+  const scheduleValidation = validateWorkflow(scheduleWorkflow, 'activation');
+  if (
+    manualValidation.valid ||
+    !manualValidation.errors.some((error) => error.message.includes('non-manual trigger')) ||
+    !scheduleValidation.valid
+  ) {
+    console.error(JSON.stringify({ manualValidation, scheduleValidation }, null, 2));
+    throw new Error('Activation validation did not distinguish manual-only workflows.');
+  }
+
+  return 'passed';
+}
+
 async function cleanup(automationId: string, workflowId?: string) {
   if (workflowId) {
     const n8n = new N8nService();
@@ -360,9 +484,19 @@ async function cleanup(automationId: string, workflowId?: string) {
   }
 
   const db = await getDb();
-  await db.collection('automation_requests').deleteOne({ automationId }).catch(() => undefined);
+  await db.collection('automation_requests').deleteMany({
+    $or: [
+      { automationId },
+      ...(workflowId ? [{ n8nWorkflowId: workflowId }] : []),
+    ],
+  }).catch(() => undefined);
   await db.collection('automation_events').deleteMany({ automationId }).catch(() => undefined);
-  await db.collection('automation_workflow_snapshots').deleteMany({ automationId }).catch(() => undefined);
+  await db.collection('automation_workflow_snapshots').deleteMany({
+    $or: [
+      { automationId },
+      ...(workflowId ? [{ n8nWorkflowId: workflowId }] : []),
+    ],
+  }).catch(() => undefined);
 }
 
 main().catch((error) => {

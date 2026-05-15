@@ -25,6 +25,39 @@ const goldenPathInputSchema = z.object({
   activate: z.boolean().optional().default(false),
   allowDraftWithMissingCredentials: z.boolean().optional().default(true),
   requiresPublicWebhook: z.boolean().optional().default(false),
+}).superRefine((input, ctx) => {
+  if (input.mode === 'workflow_json' && (!input.workflow || typeof input.workflow !== 'object' || Array.isArray(input.workflow))) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['workflow'],
+      message: 'workflow object is required for mode=workflow_json.',
+    });
+  }
+
+  if (input.mode === 'workflow_file' && !input.workflowFilePath?.trim()) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['workflowFilePath'],
+      message: 'workflowFilePath is required for mode=workflow_file.',
+    });
+  }
+
+  if (input.mode === 'pattern') {
+    if (!input.patternId?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['patternId'],
+        message: 'patternId is required for mode=pattern.',
+      });
+    }
+    if (!input.spec) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['spec'],
+        message: 'spec is required for mode=pattern.',
+      });
+    }
+  }
 });
 
 export const startAutomationJobTool = createTool({
