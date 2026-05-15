@@ -16,7 +16,7 @@ import { analyzeWorkflow } from '../tools/architect/risk-scoring.js';
 import { getCredentialFromRegistry } from '../tools/architect/credentials/credential-registry.js';
 import { generateMockPayload } from '../tools/architect/testing/mock-data.js';
 import { applyRepairs } from '../tools/architect/testing/repair-workflow.js';
-import type { TestFinding } from '../tools/architect/testing/test-types.js';
+import type { RepairResult, TestFinding } from '../tools/architect/testing/test-types.js';
 import {
   recordAutomationGoldenPathFailure,
   recordAutomationGoldenPathRecovery,
@@ -99,6 +99,7 @@ type RuntimeRequirements = {
 
 const SAFE_FILE_ROOTS = [
   process.env.ARCHITECT_WORKFLOW_ROOT ?? '/projekty/Jarvis-Projects/n8n_workflows',
+  '/tmp',
   process.cwd(),
 ];
 
@@ -198,8 +199,9 @@ export async function executeAutomationGoldenPath(
         allowDraftWithMissingCredentials: input.allowDraftWithMissingCredentials,
       });
       repairAttempts += draftRepair.attempts;
+      const draftRepairStrategy = selectValidationRecoveryStrategy(draftValidation, draftRepair.stopReason);
       recoveryStrategies.push({
-        name: 'draft_validation_repair',
+        name: draftRepairStrategy,
         outcome: draftRepair.succeeded ? 'succeeded' : draftRepair.changed ? 'failed' : 'not_applicable',
         reason: draftRepair.message,
         changes: draftRepair.changes,
@@ -208,7 +210,7 @@ export async function executeAutomationGoldenPath(
         'strategy_retry',
         draftRepair.succeeded ? 'success' : draftRepair.changed ? 'warning' : 'failed',
         draftRepair.message,
-        { strategy: 'draft_validation_repair', changes: draftRepair.changes },
+        { strategy: draftRepairStrategy, stopReason: draftRepair.stopReason, changes: draftRepair.changes },
       );
 
       if (draftRepair.workflow && draftRepair.validation) {
@@ -338,10 +340,10 @@ export async function executeAutomationGoldenPath(
         'repair_workflow',
         repair.success ? 'success' : repair.changed ? 'warning' : 'failed',
         repair.message,
-        { attempt: repairAttempts, strategy: strategyName, changes: repair.changes },
+        { attempt: repairAttempts, strategy: repair.strategyName ?? strategyName, stopReason: repair.stopReason, changes: repair.changes },
       );
       recoveryStrategies[recoveryStrategies.length - 1] = {
-        name: strategyName,
+        name: repair.strategyName ?? strategyName,
         outcome: repair.success ? 'succeeded' : repair.changed ? 'failed' : 'not_applicable',
         reason: repair.message,
         changes: repair.changes,
@@ -726,6 +728,8 @@ async function repairDraftBeforeDeploy(input: {
   workflow?: any;
   validation?: ValidationResult;
   changes: unknown[];
+  remainingIssues?: TestFinding[];
+  stopReason?: string;
   message: string;
 }> {
   if (input.attempt > 3) {
@@ -761,8 +765,10 @@ async function repairDraftBeforeDeploy(input: {
       attempts,
       changed: false,
       succeeded: false,
-      changes: [],
-      message: 'No deterministic draft repair was possible.',
+      changes: repaired.changes,
+      remainingIssues: repaired.remainingIssues,
+      stopReason: repaired.stopReason,
+      message: `No deterministic draft repair was possible: ${describeRepairResult(repaired)}.`,
     };
   }
 
@@ -787,18 +793,43 @@ async function repairDraftBeforeDeploy(input: {
     workflow: repaired.patchedWorkflow,
     validation: nextValidation,
     changes: repaired.changes,
+    remainingIssues: repaired.remainingIssues,
+    stopReason: repaired.stopReason,
     message: stillBlocked
-      ? 'Draft repair changed the workflow, but draft validation still blocks deploy.'
+      ? `Draft repair changed the workflow, but draft validation still blocks deploy: ${describeRepairResult(repaired)}.`
       : 'Draft repair resolved blocking validation issues before deploy.',
   };
 }
 
-function selectMockTestRecoveryStrategy(findings: TestFinding[]): string {
+function selectValidationRecoveryStrategy(validation: ValidationResult, stopReason?: string): string {
+  return selectRecoveryStrategy(validationToFindings(validation), stopReason);
+}
+
+function selectMockTestRecoveryStrategy(findings: TestFinding[], stopReason?: string): string {
+  return selectRecoveryStrategy(findings, stopReason);
+}
+
+function selectRecoveryStrategy(findings: TestFinding[], stopReason?: string): string {
+  if (stopReason === 'manual_connection_mapping_required') return 'manual_connection_mapping_required';
+  if (stopReason === 'connection_graph_repair_required') return 'connection_graph_repair';
+  if (stopReason === 'unsupported_n8n_vars') return 'unsupported_n8n_vars_rewrite';
+
   const text = findings.map((finding) => `${finding.message} ${finding.suggestedFix ?? ''}`).join('\n').toLowerCase();
+  if (/connection references unknown source|references unknown target|missing target node/.test(text)) {
+    return 'connection_id_to_name_repair';
+  }
+  if (/not reachable|disconnected|trigger path|no trigger node/.test(text)) return 'connection_graph_repair';
+  if (/\$vars/.test(text)) return 'unsupported_n8n_vars_rewrite';
   if (/credential|chatid|telegram|gmail|mongo/.test(text)) return 'credential_or_config_repair';
   if (/localhost:3000|af-mongodb|\$vars|executionorder|active=false/.test(text)) return 'runtime_topology_repair';
   if (/security|auth|webhook/.test(text)) return 'security_repair_or_escalation';
   return 'structural_workflow_repair';
+}
+
+function describeRepairResult(result: RepairResult): string {
+  const issue = result.remainingIssues[0];
+  if (issue) return `${result.stopReason ?? 'remaining_issues'}: ${issue.message}`;
+  return result.stopReason ?? 'no_changes_possible';
 }
 
 async function deployWorkflow(input: {
@@ -966,14 +997,23 @@ async function repairAndRedeploy(input: {
   findings: TestFinding[];
   attempt: number;
   approvalToken?: string;
-}): Promise<{ success: boolean; changed: boolean; changes: unknown[]; workflow?: any; message: string }> {
+}): Promise<{
+  success: boolean;
+  changed: boolean;
+  changes: unknown[];
+  workflow?: any;
+  message: string;
+  stopReason?: string;
+  strategyName?: string;
+}> {
   const db = await getDb();
   const repaired = applyRepairs(input.workflow, input.findings);
+  const strategyName = selectMockTestRecoveryStrategy(input.findings, repaired.stopReason);
 
   await db.collection('automation_events').insertOne({
     automationId: input.automationId,
     type: 'repair_attempt',
-    data: { attempt: input.attempt, changes: repaired.changes },
+    data: { attempt: input.attempt, strategyName, stopReason: repaired.stopReason, changes: repaired.changes },
     createdAt: new Date(),
   });
 
@@ -982,7 +1022,9 @@ async function repairAndRedeploy(input: {
       success: false,
       changed: false,
       changes: [],
-      message: 'No deterministic repair was possible.',
+      stopReason: repaired.stopReason,
+      strategyName,
+      message: `No deterministic repair was possible: ${describeRepairResult(repaired)}.`,
     };
   }
 
@@ -994,7 +1036,9 @@ async function repairAndRedeploy(input: {
       changed: true,
       changes: repaired.changes,
       workflow: repaired.patchedWorkflow,
-      message: 'Repair produced workflow that still fails draft validation.',
+      stopReason: repaired.stopReason,
+      strategyName,
+      message: `Repair produced workflow that still fails draft validation: ${describeRepairResult(repaired)}.`,
     };
   }
 
@@ -1005,6 +1049,8 @@ async function repairAndRedeploy(input: {
       changed: true,
       changes: repaired.changes,
       workflow: repaired.patchedWorkflow,
+      stopReason: repaired.stopReason,
+      strategyName,
       message: `Repair blocked by risk verdict=${risk.verdict}.`,
     };
   }
@@ -1023,6 +1069,8 @@ async function repairAndRedeploy(input: {
     changed: true,
     changes: repaired.changes,
     workflow: deployed.workflow,
+    stopReason: repaired.stopReason,
+    strategyName,
     message: `Repair attempt ${input.attempt} deployed.`,
   };
 }

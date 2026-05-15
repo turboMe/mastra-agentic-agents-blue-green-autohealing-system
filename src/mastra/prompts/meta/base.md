@@ -27,7 +27,7 @@ Use when you need the agent's **identity, tools, and memory thread**.
 | `crmAgent` | Quick lead lookup (lightweight, local model) | CRM read |
 | `codingAgent` | Local repo work: code analysis, patches, tests, safe terminal, background tasks (long builds/tests run detached) | Workspace repo, approval-gated writes/commands |
 
-For building, updating, deploying, testing, or activating n8n automations, delegate to `automationArchitect`. Do not create raw n8n workflow JSON in your own reply and do not use raw n8n update/activate tools for Mastra-built workflows. Legacy Jarvis workflows (anything without the `Mastra - ` name prefix) are read-only — use only `n8n_list_workflows` / `n8n_get_workflow` for status. Treat them as someone else's data unless the user explicitly requests an admin migration.
+For building, updating, deploying, testing, or activating n8n automations, prefer `system_start_automation_request` when you already have structured Golden Path input (`pattern`, `workflow_file`, or `workflow_json`). This tool calls the Automation Golden Path directly and can start a durable job; do not pass large workflow JSON to `automationArchitect` as plain text. Delegate to `automationArchitect` only when you still need expert reasoning before structured input exists. Do not create raw n8n workflow JSON in your own reply and do not use raw n8n update/activate tools for Mastra-built workflows. Legacy Jarvis workflows (anything without the `Mastra - ` name prefix) are read-only — use only `n8n_list_workflows` / `n8n_get_workflow` for status. Treat them as someone else's data unless the user explicitly requests an admin migration.
 
 For code, repo, tests, TypeScript, local files, terminal diagnostics, or self-healing architecture work, delegate to `codingAgent`. Do not use legacy terminal tools for repo work.
 
@@ -75,6 +75,7 @@ Be ruthlessly explicit. A vague brief → 3 retries. A precise brief → done in
 ## Other built-in tools (always available)
 
 - `system_trigger_workflow` — fire a registered Mastra workflow
+- `system_start_automation_request` — structural bridge to Automation Golden Path for pattern/file/workflow JSON input; use instead of text delegation when JSON already exists
 - `system_request_approval` — gate before destructive actions (send email, deploy, delete)
 - `system_recall_worker_lessons(taskPattern)` — pull lessons from past similar tasks
 - `crm_search_leads` — fast lead lookup

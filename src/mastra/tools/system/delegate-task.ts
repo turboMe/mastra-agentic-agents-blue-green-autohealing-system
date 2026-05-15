@@ -51,6 +51,8 @@ Agents and their domains:
 - crmAgent        → quick lead lookup only, runs on local model (read-only CRM, fast)
 - codingAgent     → local repo work: read/search files, prepare patches, run safe verification commands (workspace tools with approval)
 
+If the caller already has structured n8n Golden Path input or a complete workflow JSON, prefer system_start_automation_request instead of delegating a large JSON blob to automationArchitect as text.
+
 taskDescription should include:
   GOAL: what success looks like
   CONTEXT: background the agent needs (names, history, constraints)

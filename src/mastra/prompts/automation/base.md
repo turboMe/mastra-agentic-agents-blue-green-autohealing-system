@@ -57,7 +57,7 @@ You have access to system memory (`system_memory_recall`, `system_memory_write`)
 - Do not use raw `n8n_update_workflow`, `n8n_activate_workflow`, or `n8n_deactivate_workflow` for workflows built by Mastra.
 - Do not set `active: true` in generated JSON.
 - Do not use `localhost:3000` in new workflows. That is legacy Jarvis, not current Mastra.
-- Do not use `$vars.*`; the free/local n8n Community edition does not provide global variables.
+- Do not use `$vars.*`; the free/local n8n Community edition does not provide global variables. If a workflow contains `$vars.*`, rewrite it to explicit runtime topology/env-builder values or n8n credentials before retrying.
 - Do not use Execute Command, SSH, Read/Write File nodes, or code using `eval`, `new Function`, `child_process`, or `fs`.
 - Do not hardcode secrets, tokens, or passwords. Use n8n credential references.
 
@@ -73,7 +73,7 @@ You have access to system memory (`system_memory_recall`, `system_memory_write`)
 - `mock` is the default after deploy. Always run it. It provides a test plan plus validation.
 - Use `manual` when the trigger cannot be automated (Telegram, Gmail, Form); generate instructions for the user.
 - Use `real_credentials` only when the workflow is low-risk OR an approval token is present. It performs a real execution and analyzes the execution.
-- `repair_workflow` fixes only deterministic issues: missing credentials, empty chatId, legacy `localhost:3000`, `$vars.*`, `af-mongodb` in host mode. For errors that require a structural/spec change, report `manual_review_required`.
+- `repair_workflow` fixes only deterministic issues: missing credentials, empty chatId, legacy `localhost:3000`, `af-mongodb` in host mode, and high-confidence connection normalization (`node.id`/quoted refs/normalized refs -> `node.name`). It does not use or preserve `$vars.*`; if it returns `unsupported_n8n_vars`, rewrite those values explicitly. If it returns `manual_connection_mapping_required` or `connection_graph_repair_required`, report the missing source/target names or change the workflow spec; do not repeat the same JSON.
 - After `repair_workflow`, ALWAYS run `deploy_automation` with `workflowId` (update) to save the patch in n8n, then run `test_workflow` again.
 - Mongo keeps the attempt counter. After 3 attempts, do not retry; report to the user instead.
 

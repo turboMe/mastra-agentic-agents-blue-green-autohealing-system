@@ -10,6 +10,7 @@ import { updateLeadTool } from '../tools/crm/update-lead.js';
 import { recordEmailDraftTool } from '../tools/crm/record-email-draft.js';
 import { addContextTool, listContextTool, pushSignalTool } from '../tools/memory/add-context.js';
 import { delegateTaskTool } from '../tools/system/delegate-task.js';
+import { startAutomationRequestTool } from '../tools/system/start-automation-request.js';
 import { triggerWorkflowTool } from '../tools/system/trigger-workflow.js';
 import { requestApprovalTool } from '../tools/system/request-approval.js';
 import { runWorkerTool } from '../tools/system/run-worker.js';
@@ -166,6 +167,7 @@ export const metaAgent: Agent = new Agent({
   tools: {
     // Orchestration
     delegateTaskTool,
+    startAutomationRequestTool,
     triggerWorkflowTool,
     requestApprovalTool,
     // Ad-hoc workers (Etap 1 — blank local model executors)

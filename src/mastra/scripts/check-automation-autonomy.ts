@@ -7,8 +7,8 @@ import { buildAutomationPrecontext } from '../services/automation-precontext.js'
 import {
   getAutomationJob,
   markStaleAutomationJobs,
-  startAutomationJob,
 } from '../services/automation-job-manager.js';
+import { startAutomationRequest } from '../tools/system/start-automation-request.js';
 import { queuePendingMessage, takePendingMessages } from '../services/pending-message-queue.js';
 import { automationDecisionOutputProcessor } from '../processors/automation-decision-output.js';
 import { getDb, closeDb } from '../lib/mongo.js';
@@ -95,17 +95,18 @@ async function main() {
     const metaStillPending = await db.collection('pending_user_messages').findOne({ id: pendingMetaId, status: 'pending' });
     assert(Boolean(metaStillPending), 'meta-agent pending update was consumed by the wrong agent');
 
-    const job = await startAutomationJob({
-      input: {
-        mode: 'workflow_json',
-        automationId,
-        workflow: unsafeWorkflow,
-      },
-      targetAgentId: 'automationArchitect',
-      returnToAgentId: 'automationArchitect',
+    const job = await startAutomationRequest({
+      mode: 'workflow_json',
+      automationId,
+      workflow: unsafeWorkflow,
+      callerAgentId: 'meta-agent',
+      callerThreadId: threadId,
+      returnToAgentId: 'meta-agent',
       returnToThreadId: threadId,
       wake: true,
     });
+    assert(job.executionMode === 'job', 'system_start_automation_request did not start a durable job');
+    assert(job.returnToAgentId === 'meta-agent', 'structured automation request did not preserve returnToAgentId');
     jobId = job.jobId;
 
     const persistedJob = await db.collection('automation_jobs').findOne({ jobId });
@@ -116,7 +117,7 @@ async function main() {
     assert(completedJob.resultPreview || completedJob.error, 'job has no result preview or error');
 
     const pendingJobResult = await db.collection('pending_user_messages').findOne({
-      targetAgentId: 'automationArchitect',
+      targetAgentId: 'meta-agent',
       source: 'automation_job',
       status: 'pending',
       'metadata.jobId': jobId,

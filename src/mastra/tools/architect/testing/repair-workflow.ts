@@ -5,6 +5,7 @@ import { normalizeConnectionKeys, validateWorkflow } from '../validation/workflo
 import { getCredentialFromRegistry } from '../credentials/credential-registry.js';
 import { getRuntimeTopology } from '../../../config/runtime-topology.js';
 import type { RepairChange, RepairResult, TestFinding } from './test-types.js';
+import type { ValidationResult } from '../validation/validation-types.js';
 import { withToolEnvelope } from '../../../services/harness-tool-envelope.js';
 
 const MAX_ATTEMPTS = 3;
@@ -86,22 +87,16 @@ export const repairWorkflowTool = createTool({
 
     const result = applyRepairs(context.workflow, context.findings ?? []);
 
-    // Re-validate after patching to compute remaining issues.
-    const postValidation = validateWorkflow(result.patchedWorkflow ?? context.workflow, 'strict');
-    const remaining: TestFinding[] = [
-      ...postValidation.errors.map((e) => ({ severity: 'error' as const, nodeName: e.nodeName, message: e.message })),
-      ...postValidation.securityIssues.map((s) => ({ severity: 'error' as const, nodeName: s.nodeName, message: s.message })),
-      ...postValidation.missingCredentials.map((c) => ({
-        severity: 'error' as const,
-        message: `Missing credential: ${c.service}`,
-        suggestedFix: c.setupHint,
-      })),
-      ...postValidation.missingConfig.map((c) => ({
-        severity: 'error' as const,
-        message: `Missing config: ${c.key}`,
-        suggestedFix: c.description,
-      })),
-    ];
+    // Re-validate after patching to compute remaining issues for both deploy
+    // draft validation and strict mock-test validation.
+    const postWorkflow = result.patchedWorkflow ?? context.workflow;
+    const draftValidation = validateWorkflow(postWorkflow, 'draft');
+    const strictValidation = validateWorkflow(postWorkflow, 'strict');
+    const remaining = dedupeFindings([
+      ...result.remainingIssues,
+      ...validationResultToRepairFindings(draftValidation),
+      ...validationResultToRepairFindings(strictValidation),
+    ]);
 
     await db.collection('automation_events').insertOne({
       automationId,
@@ -119,11 +114,11 @@ export const repairWorkflowTool = createTool({
       patchedWorkflow: result.patchedWorkflow,
       changes: result.changes,
       remainingIssues: remaining,
-      stopReason: result.changes.length === 0 ? 'no_changes_possible' : undefined,
+      stopReason: result.stopReason,
       message: success
         ? `Workflow naprawiony (proba ${attempt}/${MAX_ATTEMPTS}). Uzyj deploy_automation zeby zapisac patch.`
         : result.changes.length === 0
-          ? 'Brak zmian mozliwych do automatycznego zastosowania. Wymaga zmiany specu lub manualnej interwencji.'
+          ? `Brak zmian mozliwych do automatycznego zastosowania: ${describeRepairStop(result)}.`
           : `Workflow czesciowo naprawiony (zmiany: ${result.changes.length}), ale pozostaly bledy. Sprobuj ponownie lub wymaga manualnej interwencji.`,
     };
     }
@@ -142,6 +137,7 @@ export function applyRepairs(
 
   const patched = JSON.parse(JSON.stringify(workflow));
   const nodes: any[] = Array.isArray(patched.nodes) ? patched.nodes : [];
+  const connectionRepairRequested = hasConnectionRepairSignal(findings);
   const topology = getRuntimeTopology();
   const mastraBase = topology.mastraApiUrlForN8n.replace(/\/$/, '');
 
@@ -244,18 +240,7 @@ export function applyRepairs(
       }
     }
 
-    // 3g. Strip $vars.* (not supported in community)
-    const varsFix = stripVars(node.parameters);
-    if (varsFix.changed) {
-      node.parameters = varsFix.value;
-      changes.push({
-        nodeName: node.name,
-        field: 'parameters.*',
-        reason: `Usunieto wystapienia $vars.* (nieobslugiwane w n8n Community).`,
-      });
-    }
-
-    // 3h. Ensure unique name (rename duplicates by appending suffix)
+    // 3g. Ensure unique name (rename duplicates by appending suffix)
     // Handled at workflow level below.
   }
 
@@ -273,19 +258,169 @@ export function applyRepairs(
 
   // 5. Normalize n8n connections from node.id/quoted refs to node.name.
   for (const reason of normalizeConnectionKeys(patched)) {
-    changes.push({ field: 'connections', reason });
+    changes.push({ field: 'connections', reason: `connection_id_to_name_repair: ${reason}` });
   }
 
-  // Suggestions from findings that we can't auto-fix get reflected as no-ops here;
-  // they'll appear in remaining issues after re-validation.
-  void findings;
+  const draftValidation = validateWorkflow(patched, 'draft');
+  const strictValidation = validateWorkflow(patched, 'strict');
+  const connectionIssues = collectConnectionIssues(patched);
+  const graphIssues = collectGraphIssues([...draftValidation.errors, ...strictValidation.errors]);
+  const unsupportedVarsIssues = collectUnsupportedVarsIssues([...draftValidation.errors, ...strictValidation.errors]);
+  const remainingIssues = dedupeFindings([
+    ...connectionIssues.map((issue) => connectionIssueToFinding(issue, nodes)),
+    ...graphIssues,
+    ...unsupportedVarsIssues,
+  ]);
+
+  let stopReason: string | undefined;
+  if (connectionIssues.length > 0 && (connectionRepairRequested || changes.some((change) => change.field === 'connections'))) {
+    stopReason = 'manual_connection_mapping_required';
+  } else if (graphIssues.length > 0 && connectionRepairRequested) {
+    stopReason = 'connection_graph_repair_required';
+  } else if (unsupportedVarsIssues.length > 0) {
+    stopReason = 'unsupported_n8n_vars';
+  } else if (changes.length === 0) {
+    stopReason = 'no_changes_possible';
+  }
 
   return {
     success: changes.length > 0,
     patchedWorkflow: patched,
     changes,
-    remainingIssues: [],
+    remainingIssues,
+    stopReason,
   };
+}
+
+type ConnectionIssue = {
+  kind: 'unknown_source' | 'unknown_target' | 'missing_target';
+  sourceName?: string;
+  ref?: string;
+};
+
+function hasConnectionRepairSignal(findings: { message: string; suggestedFix?: string }[]): boolean {
+  const text = findings.map((finding) => `${finding.message} ${finding.suggestedFix ?? ''}`).join('\n').toLowerCase();
+  return /connection|not reachable|disconnected|trigger path|orphan/.test(text);
+}
+
+function collectConnectionIssues(workflow: any): ConnectionIssue[] {
+  const nodes: any[] = Array.isArray(workflow?.nodes) ? workflow.nodes : [];
+  const nodeNames = new Set(nodes.map((node) => node?.name).filter((name): name is string => typeof name === 'string' && name.length > 0));
+  const connections = workflow?.connections && typeof workflow.connections === 'object' && !Array.isArray(workflow.connections)
+    ? workflow.connections
+    : {};
+  const issues: ConnectionIssue[] = [];
+
+  for (const [sourceName, sourceConnections] of Object.entries(connections)) {
+    if (!nodeNames.has(sourceName)) {
+      issues.push({ kind: 'unknown_source', sourceName });
+    }
+
+    const main = (sourceConnections as any)?.main;
+    if (!Array.isArray(main)) continue;
+
+    for (const outputGroup of main) {
+      if (!Array.isArray(outputGroup)) continue;
+      for (const conn of outputGroup) {
+        if (!conn || typeof conn !== 'object' || !conn.node) {
+          issues.push({ kind: 'missing_target', sourceName });
+        } else if (typeof conn.node === 'string' && !nodeNames.has(conn.node)) {
+          issues.push({ kind: 'unknown_target', sourceName, ref: conn.node });
+        }
+      }
+    }
+  }
+
+  return issues;
+}
+
+function connectionIssueToFinding(issue: ConnectionIssue, nodes: any[]): TestFinding {
+  const knownNodeNames = nodes
+    .map((node) => node?.name)
+    .filter((name): name is string => typeof name === 'string' && name.length > 0)
+    .sort((a, b) => a.localeCompare(b));
+  const known = knownNodeNames.length > 0 ? ` Known node names: ${knownNodeNames.join(', ')}.` : '';
+
+  if (issue.kind === 'unknown_source') {
+    return {
+      severity: 'error',
+      message: `manual_connection_mapping_required: connection source "${issue.sourceName}" does not match any node.id or node.name after normalization.`,
+      suggestedFix: `Map source "${issue.sourceName}" to one of workflow.nodes[*].name or remove the stale connection.${known}`,
+    };
+  }
+
+  if (issue.kind === 'unknown_target') {
+    return {
+      severity: 'error',
+      nodeName: issue.sourceName,
+      message: `manual_connection_mapping_required: connection target "${issue.ref}" from "${issue.sourceName}" does not match any node.id or node.name after normalization.`,
+      suggestedFix: `Map target "${issue.ref}" to one of workflow.nodes[*].name or remove the stale edge.${known}`,
+    };
+  }
+
+  return {
+    severity: 'error',
+    nodeName: issue.sourceName,
+    message: `manual_connection_mapping_required: connection from "${issue.sourceName}" has no target node.`,
+    suggestedFix: `Add a target node name under connections["${issue.sourceName}"].main or remove the empty edge.${known}`,
+  };
+}
+
+function collectGraphIssues(errors: { message: string; nodeName?: string }[]): TestFinding[] {
+  return errors
+    .filter((error) => /not reachable|disconnected|trigger path|no trigger node/i.test(error.message))
+    .map((error) => ({
+      severity: 'error' as const,
+      nodeName: error.nodeName,
+      message: `connection_graph_repair_required: ${error.message}`,
+      suggestedFix: 'Connect every executable node to a trigger path, or model this workflow as a subworkflow with executeWorkflowTrigger.',
+    }));
+}
+
+function collectUnsupportedVarsIssues(errors: { message: string; nodeName?: string }[]): TestFinding[] {
+  return errors
+    .filter((error) => /\$vars\.\*/i.test(error.message))
+    .map((error) => ({
+      severity: 'error' as const,
+      nodeName: error.nodeName,
+      message: `unsupported_n8n_vars: ${error.message}`,
+      suggestedFix: 'n8n Community Edition nie obsluguje $vars.*. Zastap to jawna wartoscia z runtime topology, env/config buildera albo credentialem n8n.',
+    }));
+}
+
+function dedupeFindings(findings: TestFinding[]): TestFinding[] {
+  const seen = new Set<string>();
+  const out: TestFinding[] = [];
+  for (const finding of findings) {
+    const key = `${finding.severity}|${finding.nodeName ?? ''}|${finding.message}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(finding);
+  }
+  return out;
+}
+
+function validationResultToRepairFindings(validation: ValidationResult): TestFinding[] {
+  return [
+    ...validation.errors.map((item) => ({ severity: 'error' as const, nodeName: item.nodeName, message: item.message })),
+    ...validation.securityIssues.map((item) => ({ severity: 'error' as const, nodeName: item.nodeName, message: item.message })),
+    ...validation.missingCredentials.map((item) => ({
+      severity: 'error' as const,
+      message: `Missing credential: ${item.service}`,
+      suggestedFix: item.setupHint,
+    })),
+    ...validation.missingConfig.map((item) => ({
+      severity: 'error' as const,
+      message: `Missing config: ${item.key}`,
+      suggestedFix: item.description,
+    })),
+  ];
+}
+
+function describeRepairStop(result: RepairResult): string {
+  const issue = result.remainingIssues[0];
+  if (issue) return `${result.stopReason ?? 'no_changes_possible'}: ${issue.message}`;
+  return result.stopReason ?? 'no_changes_possible';
 }
 
 function replaceInDeep(value: unknown, search: string, replacement: string): { value: any; changed: boolean } {
@@ -309,35 +444,6 @@ function replaceInDeep(value: unknown, search: string, replacement: string): { v
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) {
       const r = replaceInDeep(v, search, replacement);
-      if (r.changed) changed = true;
-      out[k] = r.value;
-    }
-    return { value: out, changed };
-  }
-  return { value, changed: false };
-}
-
-function stripVars(value: unknown): { value: any; changed: boolean } {
-  if (typeof value === 'string') {
-    if (/\$vars\./.test(value)) {
-      return { value: value.replace(/\$vars\.[a-zA-Z0-9_]+/g, '""'), changed: true };
-    }
-    return { value, changed: false };
-  }
-  if (Array.isArray(value)) {
-    let changed = false;
-    const out = value.map((item) => {
-      const r = stripVars(item);
-      if (r.changed) changed = true;
-      return r.value;
-    });
-    return { value: out, changed };
-  }
-  if (value && typeof value === 'object') {
-    let changed = false;
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value)) {
-      const r = stripVars(v);
       if (r.changed) changed = true;
       out[k] = r.value;
     }

@@ -237,6 +237,7 @@ function classifyFailure(
   if (result.error) return 'exception';
   if (result.missingConfig && result.missingConfig.length > 0) return 'missing_config';
   if (result.validation?.securityIssues?.length) return 'security_validation';
+  if (hasConnectionFailureSignal(result, text)) return 'connection_validation';
   if (result.validation?.errors?.length) return 'workflow_validation';
   if (result.risk?.verdict === 'block') return 'risk_blocked';
   if (result.risk?.verdict === 'review') return 'approval_required';
@@ -262,6 +263,7 @@ function summarizeValidation(result: AutomationGoldenPathResult): string {
   return [
     `Validation: errors=${result.validation.errors.length}, securityIssues=${result.validation.securityIssues.length}, warnings=${result.validation.warnings.length}`,
     `Missing credentials=${result.validation.missingCredentials.length}, missing config=${result.validation.missingConfig.length}`,
+    `Graph: triggers=${result.validation.triggerCount}, reachable=${result.validation.reachableNodeCount}, orphans=${result.validation.orphanNodeCount}, disconnectedComponents=${result.validation.disconnectedComponents.length}`,
   ].join('\n');
 }
 
@@ -298,6 +300,8 @@ function recommendedNextStep(failureClass: string): string {
     case 'workflow_validation':
     case 'security_validation':
       return 'Run deterministic draft repair before deploy and revalidate before touching n8n.';
+    case 'connection_validation':
+      return 'Run connection_id_to_name_repair first; if refs still do not match node.id or node.name, return manual_connection_mapping_required with missing source/target names.';
     case 'approval_required':
     case 'risk_blocked':
       return 'Do not bypass policy; request approval or redesign the workflow to lower risk.';
@@ -306,6 +310,15 @@ function recommendedNextStep(failureClass: string): string {
     default:
       return 'Recall similar failure_case records before retrying the same automation shape.';
   }
+}
+
+function hasConnectionFailureSignal(result: AutomationGoldenPathResult, text: string): boolean {
+  const strategies = ((result as any).recoveryStrategies ?? []) as Array<{ name?: string }>;
+  if (strategies.some((strategy) => /connection_id_to_name_repair|connection_graph_repair|manual_connection_mapping_required/.test(strategy.name ?? ''))) {
+    return true;
+  }
+
+  return /connection references unknown source|references unknown target|manual_connection_mapping_required|connection_graph_repair_required|not reachable|disconnected|trigger path/.test(text);
 }
 
 function truncate(text: string, max = 1000): string {

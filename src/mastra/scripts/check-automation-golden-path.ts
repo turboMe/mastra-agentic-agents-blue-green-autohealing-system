@@ -6,6 +6,7 @@ import { executeAutomationGoldenPath } from '../services/automation-golden-path.
 import { N8nService } from '../tools/n8n/client.js';
 import { getDb } from '../lib/mongo.js';
 import { normalizeConnectionKeys, validateWorkflow } from '../tools/architect/validation/workflow-validator.js';
+import { applyRepairs } from '../tools/architect/testing/repair-workflow.js';
 
 const unsafeWorkflow = {
   name: 'Unsafe Function Workflow',
@@ -41,6 +42,8 @@ const unsafeWorkflow = {
 async function main() {
   const connectionNormalization = checkConnectionIdNormalization();
   const graphValidation = checkGraphValidation();
+  const connectionRepair = checkConnectionRepair();
+  const unsupportedVars = checkUnsupportedVarsHandling();
 
   const unsafeResult = await executeAutomationGoldenPath({
     mode: 'workflow_json',
@@ -88,6 +91,8 @@ async function main() {
   console.log('automation-golden-path check passed');
   console.log(`connectionIdNormalization=${connectionNormalization}`);
   console.log(`graphValidation=${graphValidation}`);
+  console.log(`connectionRepair=${connectionRepair}`);
+  console.log(`unsupportedVars=${unsupportedVars}`);
   console.log(`unsafeStatus=${unsafeResult.status}, securityIssues=${securityCount}`);
   console.log(`safeStatus=${safeResult.status}, workflowId=${safeResult.workflowId}`);
   process.exit(0);
@@ -216,6 +221,126 @@ function checkGraphValidation(): string {
   if (!linearStrict.valid || linearStrict.orphanNodeCount !== 0 || linearStrict.reachableNodeCount !== 4) {
     console.error(JSON.stringify({ linearStrict }, null, 2));
     throw new Error('Linear trigger-to-executable graph did not pass validation.');
+  }
+
+  return 'passed';
+}
+
+function checkConnectionRepair(): string {
+  const repairableWorkflow: any = {
+    name: `Connection Repair ${randomUUID().slice(0, 8)}`,
+    active: false,
+    settings: { executionOrder: 'v1' },
+    nodes: [
+      {
+        id: 'manual_trigger_01',
+        name: 'Manual Trigger',
+        type: 'n8n-nodes-base.manualTrigger',
+        typeVersion: 1,
+        position: [0, 0],
+        parameters: {},
+      },
+      {
+        id: 'transform_payload_01',
+        name: 'Transform Payload',
+        type: 'n8n-nodes-base.set',
+        typeVersion: 3.4,
+        position: [220, 0],
+        parameters: {},
+      },
+    ],
+    connections: {
+      manual_trigger_01: {
+        main: [[{ node: 'transform_payload_01', type: 'main', index: 0 }]],
+      },
+    },
+  };
+
+  const beforeRepairValidation = validateWorkflow(repairableWorkflow, 'strict');
+  const repair = applyRepairs(
+    repairableWorkflow,
+    beforeRepairValidation.errors.map((error) => ({
+      severity: 'error',
+      nodeName: error.nodeName,
+      message: error.message,
+    })),
+  );
+  const repairedValidation = validateWorkflow(repair.patchedWorkflow, 'strict');
+  if (!repair.success || !repairedValidation.valid || !repair.changes.some((change) => change.reason.includes('connection_id_to_name_repair'))) {
+    console.error(JSON.stringify({ repair, repairedValidation }, null, 2));
+    throw new Error('Connection id/name repair did not produce a valid workflow.');
+  }
+
+  const manualWorkflow: any = {
+    ...repairableWorkflow,
+    connections: {
+      'Manual Trigger': {
+        main: [[{ node: 'Missing Target', type: 'main', index: 0 }]],
+      },
+    },
+  };
+  const manualValidation = validateWorkflow(manualWorkflow, 'strict');
+  const manualRepair = applyRepairs(
+    manualWorkflow,
+    manualValidation.errors.map((error) => ({ severity: 'error', nodeName: error.nodeName, message: error.message })),
+  );
+  if (manualRepair.stopReason !== 'manual_connection_mapping_required' || manualRepair.remainingIssues.length === 0) {
+    console.error(JSON.stringify({ manualValidation, manualRepair }, null, 2));
+    throw new Error('Unknown connection target did not produce manual_connection_mapping_required.');
+  }
+
+  return 'passed';
+}
+
+function checkUnsupportedVarsHandling(): string {
+  const workflow: any = {
+    name: `Unsupported Vars ${randomUUID().slice(0, 8)}`,
+    active: false,
+    settings: { executionOrder: 'v1' },
+    nodes: [
+      {
+        id: 'manual',
+        name: 'Manual Trigger',
+        type: 'n8n-nodes-base.manualTrigger',
+        typeVersion: 1,
+        position: [0, 0],
+        parameters: {},
+      },
+      {
+        id: 'set_value',
+        name: 'Set Value',
+        type: 'n8n-nodes-base.set',
+        typeVersion: 3.4,
+        position: [220, 0],
+        parameters: {
+          assignments: {
+            assignments: [
+              {
+                id: 'base-url',
+                name: 'baseUrl',
+                value: '={{ $vars.MASTRA_API_URL }}',
+                type: 'string',
+              },
+            ],
+          },
+        },
+      },
+    ],
+    connections: {
+      'Manual Trigger': {
+        main: [[{ node: 'Set Value', type: 'main', index: 0 }]],
+      },
+    },
+  };
+
+  const validation = validateWorkflow(workflow, 'strict');
+  const repair = applyRepairs(
+    workflow,
+    validation.errors.map((error) => ({ severity: 'error', nodeName: error.nodeName, message: error.message })),
+  );
+  if (validation.valid || repair.stopReason !== 'unsupported_n8n_vars' || !repair.remainingIssues.some((issue) => issue.message.includes('unsupported_n8n_vars'))) {
+    console.error(JSON.stringify({ validation, repair }, null, 2));
+    throw new Error('$vars.* did not produce unsupported_n8n_vars.');
   }
 
   return 'passed';
