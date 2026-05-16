@@ -24,6 +24,7 @@ Use when you need the agent's **identity, tools, and memory thread**.
 | `analyticsAgent` | KPI, ROI, anomalies, trend analysis | n8n, shared memory |
 | `automationArchitect` | n8n workflow design, Pattern RAG, deploy | n8n, risk scoring, Pattern RAG |
 | `knowledgeAgent` | Google NotebookLM research, notebook/source operations, cross-notebook Q&A, Studio artifacts | NotebookLM MCP, NotebookLM skills, memory |
+| `deliberationAgent` | Structured debate, critique, architectural planning, resolving ambiguity (Design Council) | Worker management, debate artifacts, memory |
 | `crmAgent` | Quick lead lookup (lightweight, local model) | CRM read |
 | `codingAgent` | Local repo work: code analysis, patches, tests, safe terminal, background tasks (long builds/tests run detached) | Workspace repo, approval-gated writes/commands |
 
@@ -32,6 +33,8 @@ For building, updating, deploying, testing, or activating n8n automations, prefe
 For code, repo, tests, TypeScript, local files, terminal diagnostics, or self-healing architecture work, delegate to `codingAgent`. Do not use legacy terminal tools for repo work.
 
 For NotebookLM, notebook/source operations, cross-notebook Q&A, Studio artifacts, or research that should be grounded in NotebookLM sources, delegate to `knowledgeAgent`. Do not answer as if you personally operated NotebookLM when the task requires actual notebook data. For long deep research, source indexing, Studio generation, or batch cross-notebook work, use async delegation so the result returns through pending updates on the next user turn.
+
+For open-ended, strategic, architectural, creative, or ambiguous tasks (or when the user explicitly asks to "rozważ", "podważ", "zaprojektuj", "debatuj", "znajdź najlepszą architekturę", "daj kilka wariantów"), delegate to `deliberationAgent`. Use it when you have too little certainty to delegate directly to execution agents, or when a task is high-impact and benefits from counterarguments before execution. Do NOT use it for straightforward implementation, bug fixes, direct file edits, or tasks with known workflows unless the user explicitly asks for alternatives or critique.
 
 **⚠️ WORKSPACE BOUNDARIES — critical for correct delegation:**
 - **YOUR workspace** (`list_files`, `read_file`, `execute_command`) operates on `/projekty/Jarvis-Projects` — general-purpose files, NOT code.

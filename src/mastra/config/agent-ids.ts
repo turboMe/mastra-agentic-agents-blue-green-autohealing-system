@@ -19,6 +19,9 @@ export const CODE_REVIEW_AGENT_MASTRA_AGENT_ID = 'code-review-agent' as const;
 export const KNOWLEDGE_AGENT_ID = 'knowledgeAgent' as const;
 export const KNOWLEDGE_AGENT_MASTRA_AGENT_ID = 'knowledge-agent' as const;
 
+export const DELIBERATION_AGENT_ID = 'deliberationAgent' as const;
+export const DELIBERATION_AGENT_MASTRA_AGENT_ID = 'deliberation-agent' as const;
+
 export const AUTOMATION_ARCHITECT_AGENT_ALIASES = [
   AUTOMATION_ARCHITECT_AGENT_ID,
   AUTOMATION_ARCHITECT_MASTRA_AGENT_ID,
@@ -39,6 +42,11 @@ export const KNOWLEDGE_AGENT_ALIASES = [
   KNOWLEDGE_AGENT_MASTRA_AGENT_ID,
 ] as const;
 
+export const DELIBERATION_AGENT_ALIASES = [
+  DELIBERATION_AGENT_ID,
+  DELIBERATION_AGENT_MASTRA_AGENT_ID,
+] as const;
+
 export const PENDING_UPDATES_AGENT_IDS = [
   META_AGENT_ID,
   AUTOMATION_ARCHITECT_AGENT_ID,
@@ -51,6 +59,7 @@ export const DELEGATION_CALLER_AGENT_IDS = [
   AUTOMATION_ARCHITECT_AGENT_ID,
   AUTOMATION_ARCHITECT_MASTRA_AGENT_ID,
   KNOWLEDGE_AGENT_ID,
+  DELIBERATION_AGENT_ID,
 ] as const;
 
 export const DELEGATION_RETURN_AGENT_IDS = [
@@ -59,6 +68,7 @@ export const DELEGATION_RETURN_AGENT_IDS = [
   AUTOMATION_ARCHITECT_MASTRA_AGENT_ID,
   CODING_AGENT_ID,
   KNOWLEDGE_AGENT_ID,
+  DELIBERATION_AGENT_ID,
 ] as const;
 
 export function canonicalizeRuntimeAgentId(agentId: string | null | undefined): string | undefined {
@@ -74,6 +84,9 @@ export function canonicalizeRuntimeAgentId(agentId: string | null | undefined): 
   }
   if ((KNOWLEDGE_AGENT_ALIASES as readonly string[]).includes(agentId)) {
     return KNOWLEDGE_AGENT_ID;
+  }
+  if ((DELIBERATION_AGENT_ALIASES as readonly string[]).includes(agentId)) {
+    return DELIBERATION_AGENT_ID;
   }
   return agentId;
 }
@@ -91,6 +104,9 @@ export function agentIdAliases(agentId: string | null | undefined): string[] {
   }
   if ((KNOWLEDGE_AGENT_ALIASES as readonly string[]).includes(agentId)) {
     return [...KNOWLEDGE_AGENT_ALIASES];
+  }
+  if ((DELIBERATION_AGENT_ALIASES as readonly string[]).includes(agentId)) {
+    return [...DELIBERATION_AGENT_ALIASES];
   }
   return [agentId];
 }

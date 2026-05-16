@@ -60,12 +60,14 @@ import { codingAgent } from './agents/coding-agent';
 import { codeReviewAgent } from './agents/code-review-agent';
 import { knowledgeAgent } from './agents/knowledge-agent';
 import { researcherAgent } from './agents/researcher-agent';
+import { deliberationAgent } from './agents/deliberation-agent';
 
 // Scorers
 import { toolCallAppropriatenessScorer, completenessScorer, translationScorer } from './scorers/weather-scorer';
 import { metaToolCallAppropriatenessScorer } from './scorers/meta-agent-scorer';
 import { marketingDraftingCompletenessScorer } from './scorers/marketing-agent-scorer';
 import { architectRiskSoundnessScorer } from './scorers/automation-architect-scorer';
+import { deliberationQualityScorer } from './scorers/deliberation-scorer';
 
 // Server (custom API routes)
 import { registerApiRoute } from '@mastra/core/server';
@@ -469,6 +471,7 @@ export const mastra: Mastra = new Mastra({
     codeReviewAgent,
     knowledgeAgent,
     researcherAgent,
+    deliberationAgent,
   },
   scorers: {
     toolCallAppropriatenessScorer,
@@ -477,6 +480,7 @@ export const mastra: Mastra = new Mastra({
     metaToolCallAppropriatenessScorer,
     marketingDraftingCompletenessScorer,
     architectRiskSoundnessScorer,
+    deliberationQualityScorer,
   },
   storage: new MastraCompositeStore({
     id: 'composite-storage',

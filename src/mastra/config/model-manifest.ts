@@ -176,6 +176,7 @@ export const agentModels = {
   marketingAgent: 'gemma4-26b' as ModelKey,
   knowledgeAgent: 'gemini-3.1-flash-lite-preview' as ModelKey,   // NotebookLM ops — reliable tool calling for MCP tools
   researcherAgent: 'gemini-3.1-flash-lite-preview' as ModelKey,  // PSEV web research — browser + Tavily deep scraping
+  deliberationAgent: 'gemini-3.1-flash-lite-preview' as ModelKey, // Design Council
 } as const;
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -252,4 +253,20 @@ export const infrastructure = {
     defaultModel: 'qwen3-coder-30b' as ModelKey,
     reasoningModel: 'qwen3.5-9b' as ModelKey,
   },
+} as const;
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SECTION 6: DELIBERATION ASSIGNMENTS
+//
+// Model assignments for specific Design Council roles in the deliberationAgent.
+// Used by the run_deliberation_worker tool.
+// ═════════════════════════════════════════════════════════════════════════════
+
+export const deliberationAssignments = {
+  systemsArchitect: 'qwen3.5-9b' as ModelKey,
+  llmEngineer: 'qwen3.5-9b' as ModelKey,
+  redTeamCritic: 'gemini-2.5-flash' as ModelKey,
+  creativeStrategist: 'gemma4-e4b' as ModelKey,
+  memoryArchitect: 'gemma4-e4b' as ModelKey,
+  synthesisPlanner: 'gemma4-e4b' as ModelKey,
 } as const;

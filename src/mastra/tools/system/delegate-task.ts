@@ -14,6 +14,7 @@ import { AGENTIC_AGENTS_REPO } from '../../workspaces/code-workspace.js';
 import {
   AUTOMATION_ARCHITECT_AGENT_ID,
   CODING_AGENT_ID,
+  DELIBERATION_AGENT_ID,
   DELEGATION_CALLER_AGENT_IDS,
   DELEGATION_RETURN_AGENT_IDS,
   KNOWLEDGE_AGENT_ID,
@@ -41,6 +42,7 @@ const AGENT_IDS: Record<string, string> = {
   knowledgeAgent: KNOWLEDGE_AGENT_ID,
   crmAgent: 'crmAgent',
   codingAgent: CODING_AGENT_ID,
+  deliberationAgent: DELIBERATION_AGENT_ID,
 } as const;
 
 type AgentKey = keyof typeof AGENT_IDS;
@@ -57,6 +59,7 @@ Agents and their domains:
 - analyticsAgent  → KPI reports, ROI, anomalies, trend analysis (has n8n monitoring + shared memory tools)
 - automationArchitect → n8n workflow design, Pattern RAG, risk scoring, deploy with guardrails (has full n8n + Pattern RAG tools)
 - knowledgeAgent  → Google NotebookLM research, notebook/source operations, cross-notebook Q&A, Studio artifacts (has NotebookLM MCP tools)
+- deliberationAgent → structured debate, critique, architectural planning, resolving ambiguity via Design Council (has worker management + debate artifacts + memory tools)
 - crmAgent        → quick lead lookup only, runs on local model (read-only CRM, fast)
 - codingAgent     → local repo work: read/search files, prepare patches, run safe verification commands (workspace tools with approval)
 
@@ -70,7 +73,7 @@ taskDescription should include:
 
 CAN be called multiple times in parallel when tasks are independent.`,
   inputSchema: z.object({
-    targetAgent: z.enum(['marketingAgent', 'salesAgent', 'analyticsAgent', 'automationArchitect', 'knowledgeAgent', 'crmAgent', 'codingAgent'])
+    targetAgent: z.enum(['marketingAgent', 'salesAgent', 'analyticsAgent', 'automationArchitect', 'knowledgeAgent', 'crmAgent', 'codingAgent', 'deliberationAgent'])
       .describe('Nazwa sub-agenta do którego delegujemy zadanie'),
     taskDescription: z.string().min(20).describe('Full task brief IN ENGLISH: GOAL + CONTEXT + OUTPUT FORMAT + CONSTRAINTS. The more explicit, the better the result from the sub-agent.'),
     threadId: z.string().optional().describe('ThreadId z Mastra Memory — przekaż gdy chcesz zachować ciągłość rozmowy z sub-agentem'),
@@ -314,6 +317,36 @@ CAN be called multiple times in parallel when tasks are independent.`,
         });
 
         const responseText = harnessResult.outputPreview ?? '';
+
+        logAgentEvent({
+          type: 'delegation',
+          agentId: context.targetAgent,
+          status: 'success',
+          input: context.taskDescription.slice(0, 500),
+          output: responseText.slice(0, 500),
+          durationMs: Date.now() - start,
+        });
+
+        return {
+          success: true,
+          result: responseText,
+          agentUsed: context.targetAgent,
+        };
+      }
+
+      // ── Route deliberationAgent: direct generate (no harness needed) ──
+      if (context.targetAgent === 'deliberationAgent') {
+        const response = await agent.generate(
+          context.taskDescription,
+          {
+            memory: {
+              thread: delegationThreadId,
+              resource: delegationResourceId,
+            },
+          },
+        );
+
+        const responseText = response.text ?? '';
 
         logAgentEvent({
           type: 'delegation',
