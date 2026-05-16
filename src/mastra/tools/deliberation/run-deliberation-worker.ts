@@ -91,6 +91,7 @@ Please fix the mistakes and try again.`;
       const adHocWorker = new Agent({
         id: `deliberation-worker-${input.role}-${Date.now()}`,
         name: `Ad-Hoc Deliberation Worker (${input.role})`,
+        mastra: mastra as any,
         instructions:
           `You are an AI executing the role of ${input.role} in a Design Council debate.\n` +
           'You are a pure text-in-text-out function. No tools, no memory.\n' +
