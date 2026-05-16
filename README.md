@@ -1,40 +1,51 @@
-# Mastra Agentic Environment
+# Mastra Agentic Environment: The Advanced Cognitive Harness
 
-An autonomous, multi-domain agentic ecosystem built on top of the [Mastra](https://mastra.ai/) framework. This repository contains a suite of highly specialized TypeScript-based AI agents and workflows, featuring dynamic model routing and an advanced self-healing infrastructure.
+An autonomous, multi-domain agentic ecosystem built on top of the [Mastra](https://mastra.ai/) framework. This repository represents a significant architectural leap forward, transforming a standard Mastra instance into a highly resilient, async-first cognitive environment inspired by the advanced patterns of the `jcode` project.
 
-##  Capabilities
+## 🌟 The "jcode-inspired" Cognitive Harness
 
-### 1. Auto-Healing Infrastructure 
-The stability of the environment relies on a comprehensive self-healing diagnostic pipeline that ensures continuous operation without manual intervention:
-* **Two-Phase Repair Workflow**: Employs a `diagnose-and-plan` followed by an `execute-patch` sequence, cleanly isolating architectural reasoning from low-level execution.
-* **Isolated Staging Environments**: Uses a Staging Worktree architecture to test code modifications and patches in isolation before merging.
-* **Automated Quality Gates**: The `repo-maintenance` workflow works alongside the Code Review Agent to enforce architectural oversight before any self-generated patches are finalized.
-* **Resilience Mechanisms**: Incorporates runtime validation, automatic JSON repair, and deterministic fallbacks when models produce malformed outputs.
+This environment goes beyond standard multi-agent frameworks by implementing a robust **Harness Architecture**. These features ensure that agents possess long-term memory, context awareness, and strict operational safety:
 
-### 2. Dynamic Model Routing & Manipulation
-To balance performance, cost, and local hardware constraints (VRAM allocation), the environment employs model manipulation strategy:
-* **Smart Router & Model Registry**: Dynamically allocates subtasks between local models (e.g., via Ollama) and cloud providers (Google Gemini, OpenAI, Anthropic). 
-* **Context-Aware Assignment**: Models are selected on the fly based on the required task complexity, available VRAM budget, and cost efficiency.
-* **Multi-Tier Fallbacks**: Configurable fallback chains (e.g., Local Model → Cloud Fallback Agent → Deterministic Fallback) ensure high reliability during heavy research or generation tasks.
+*   **Cognitive Pre-contexting**: Before executing a task, the environment dynamically loads domain-specific context (Coding, Review, Automation, Knowledge). This "grounds" the LLM in the current state of the codebase and project goals, drastically reducing hallucinations.
+*   **Asynchronous Background Tasks & Soft Interrupts**: Agents can delegate heavy, time-consuming operations (like complex code analysis or semantic searches) to background processes. Instead of hanging and timing out, the agent enters a "Soft Interrupt" state and seamlessly resumes reasoning once the result is injected into its cognitive stream.
+*   **Async Semantic Memory & File Activity Ledger**: The system maintains an ongoing memory of the workspace. A dedicated File Activity Ledger tracks which files were modified and why, giving agents a perfect multi-turn understanding of the codebase evolution.
+*   **Tool Envelope Governance & Telemetry**: Every tool execution is wrapped in a secure *Envelope*. This enforces the `Harness Policy` (with `log_only` or strict `enforce` modes), enabling 100% telemetry, rollback capabilities, and execution replayability.
 
-### 3. Multi-Agent Orchestration
-The ecosystem operates through a network of specialized agents, overseen by a supervisory Meta Agent:
-* **Meta Agent**: The primary orchestrator. It uses a `ToolSearchProcessor` to semantically discover required tools at runtime, minimizing prompt context while maximizing capability.
-* **Coding & Code Review Agents**: Specialized in software engineering, interacting with file systems, executing tests, and verifying code quality.
-* **Domain-Specific Agents**: Includes agents for Marketing (`weekly-content`, `producer-hunt`), CRM, Sales, Analytics, and custom domains.
+## 🤖 Agent Topology
 
-### 4. Tool Integrations
-Agents have access to a rich set of deterministic and AI-driven tools:
-* **Code & Workspace**: Git worktree manipulation, external project scaffolding, and precise file tracking.
-* **External Systems**: Deep integration with Google Workspace (Gmail, Calendar), external search (Tavily), and RSS feeds.
-* **Automation**: Full integration with local `n8n` instances for webhooks, workflow triggering, and health checks.
-* **Knowledge Retrieval**: Connections to NotebookLM (via MCP) for semantic querying across research notebooks.
+The environment operates on a hierarchical topology, ensuring clear separation of concerns and expert-level execution.
+
+### The Orchestrator: Meta Agent
+The **Meta Agent** serves as the central nervous system. It does not execute raw code or build automations itself. Instead, it:
+1. Receives the initial intent or task.
+2. Uses the `ToolSearchProcessor` to semantically discover required capabilities at runtime, keeping its prompt context lightweight.
+3. Strategically delegates sub-tasks to specialized Domain Agents.
+4. Synthesizes the results and orchestrates cross-domain feedback loops.
+
+### Specialized Domain Agents (Sub-Agents)
+*   **Coding Agent**: The core software engineer. Equipped with native workspace tools, capable of scaffolding, refactoring, and complex file manipulation.
+*   **Code Review Agent**: The automated gatekeeper. Enforces architectural oversight and quality gates on patches generated by the Coding Agent before they are committed.
+*   **Automation Architect**: Designs and manages `n8n` workflows. It governs webhook configurations, tool deployments, and third-party integrations.
+*   **Deliberation Agent (Design Council)**: A specialized architecture for structured debate. Used for strategic tasks where multiple sub-agents critique and refine an implementation plan before execution.
+*   **Researcher Agent**: Integrates with NotebookLM via MCP for deep semantic querying across research notebooks.
+
+## 🔄 How the Flow Works (Execution Lifecycle)
+
+1. **Intent Capture & Pre-context**: A request enters the system. The Harness instantly builds the state (Semantic Memory + File Ledger).
+2. **Meta-Orchestration**: The Meta Agent analyzes the intent and searches its dynamic tool registry. It formulates a plan.
+3. **Delegation**: The Meta Agent triggers a Domain Agent (e.g., Coding Agent).
+4. **Execution & Background Tasks**: The Domain Agent executes. If a sub-task is heavy, it fires an async background task and waits via Soft Interrupts.
+5. **Governance (The Envelope)**: Every tool interaction (e.g., writing a file) is intercepted by the Tool Envelope for policy validation and telemetry logging.
+6. **Review & Self-Healing**: Output is passed to the Code Review Agent. If validation fails, a `diagnose-and-plan` → `execute-patch` self-healing loop is triggered within an isolated staging worktree.
+7. **Finalization**: The Meta Agent synthesizes the completed workflow and reports the result.
+
+---
 
 ## 🌍 Language Note / Nota Językowa
 
-**EN:** The core logic of the system is language-agnostic, but many internal agent prompts and hardcoded configurations are currently written in Polish, as the ecosystem was originally tailored for a Polish user. However, these prompts are easily customizable and can be rewritten in English (or any other language) with minimal effort by editing the agent instructions and prompt configurations.
+**EN:** The core logic of the system is language-agnostic. However, many internal agent prompts and configurations are written in Polish, tailored for the original ecosystem. They can easily be adapted.
 
-**PL:** Logika systemu jest uniwersalna, ale wiele promptów i wbudowanych tekstów agentów jest obecnie napisanych w języku polskim, ponieważ środowisko było tworzone pod kątem polskiego użytkownika. Prompty te można jednak bardzo łatwo przetłumaczyć lub dostosować do własnych potrzeb, edytując instrukcje w kodzie.
+**PL:** Logika systemu jest uniwersalna, ale wiele promptów jest zoptymalizowanych pod język polski. Można je w pełni modyfikować w kodzie.
 
 ---
 
@@ -42,57 +53,46 @@ Agents have access to a rich set of deterministic and AI-driven tools:
 
 ### Prerequisites / Wymagania
 * Node.js `>=22.13.0`
-* [Ollama](https://ollama.com/) (for running local reasoning models / do uruchamiania lokalnych modeli)
-* Docker (for `n8n` and database services / dla `n8n` i baz danych)
+* [Ollama](https://ollama.com/) (for running local reasoning models)
+* Docker (for `n8n` and database services)
+* NotebookLM CLI (`nlm`) *(Optional, for advanced research capabilities)*
 
 ### Installation / Instalacja
 
-**1. Clone the repository and use the appropriate Node version / Sklonuj repozytorium i użyj odpowiedniej wersji Node:**
+**1. Clone the repository and setup Node:**
 ```bash
 nvm use
 npm run node:check
-```
-
-**2. Install dependencies / Zainstaluj zależności:**
-```bash
 npm install
 ```
 
-**3. Set up environment variables / Ustaw zmienne środowiskowe:**
+**2. Setup environment variables:**
 ```bash
 cp .env.example .env
-# EN: Add your specific model provider keys and external tool API tokens
-# PL: Dodaj swoje klucze API dla modeli AI oraz zewnętrznych narzędzi
+# EN: Add your specific model provider keys and external tool API tokens.
+# PL: Uzupełnij tokeny API w pliku .env.
 ```
 
-### Running the Environment / Uruchamianie Środowiska
+> **⚠️ IMPORTANT DOCKER VOLUME SETUP FOR FRESH INSTALLS**
+> This repository is configured to reuse an existing external `n8n` volume for state persistence.
+> **If you are setting this up on a fresh machine**, your `docker compose up` will fail.
+> To fix this, open the `docker-compose.yml` file in the root directory and modify the `n8n_data` volume by removing `external: true` and `name`:
+> ```yaml
+> volumes:
+>   n8n_data: # Leave it empty like this
+> ```
 
-**EN:** Start the Mastra development server and local studio UI:
-**PL:** Uruchom serwer deweloperski Mastra oraz lokalne UI:
+**3. Run the Environment:**
 ```bash
-npm run dev
-```
-**EN:** Open [http://localhost:4111](http://localhost:4111) to access the Mastra Studio for interactive testing of agents, workflows, and tools.
-**PL:** Otwórz [http://localhost:4111](http://localhost:4111) aby uzyskać dostęp do Mastra Studio – interaktywnego panelu do testowania agentów i przepływów.
-
-**EN:** Start necessary background services:
-**PL:** Uruchom niezbędne usługi w tle:
-```bash
-# Start MongoDB / Uruchom MongoDB
+# Start background services (MongoDB, n8n, Cloudflare tunnel)
 npm run mongo:up
-
-# Start n8n automation and cloudflare tunnel / Uruchom n8n i tunel Cloudflare
 npm run n8n:up
 npm run tunnel:up
+
+# Start the Mastra development server and local studio UI
+npm run dev
 ```
 
-## Architecture
+**EN:** Open [http://localhost:4111](http://localhost:4111) to access the Mastra Studio.
 
-The project is structured around the standard Mastra directory layout:
-* `src/mastra/agents/`: Definitions of all autonomous agents (e.g., `meta-agent.ts`, `coding-agent.ts`).
-* `src/mastra/workflows/`: Multi-step orchestrations (e.g., `repo-maintenance.ts`, `producer-hunt.ts`).
-* `src/mastra/tools/`: Custom tools spanning coding operations, CRM interactions, Google APIs, and more.
-* `src/mastra/config/`: Configuration for dynamic model routing (`workflow-models.ts`).
-* `scripts/`: Operational scripts for database initialization, cron-runners, and health checks.
-
-
+**PL:** Otwórz [http://localhost:4111](http://localhost:4111), aby uzyskać dostęp do panelu Mastra Studio.
