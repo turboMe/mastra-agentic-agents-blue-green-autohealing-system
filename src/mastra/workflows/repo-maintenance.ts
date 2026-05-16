@@ -6,6 +6,7 @@ import { getErrorCollector } from '../services/error-collector.js';
 import { AGENTIC_AGENTS_REPO } from '../workspaces/code-workspace.js';
 
 import { generateCoding } from '../services/coding-harness.js';
+import { generateReview } from '../services/review-harness.js';
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -333,24 +334,11 @@ const executeReviewAgent = createStep({
     const agent = mastra?.getAgent('codeReviewAgent');
     if (!agent) throw new Error('codeReviewAgent not found');
 
-    // Ładujemy artefakt z Mongo PRZED wywołaniem agenta, żeby dostarczyć diff w prompcie
     const db = await getDb();
-    const artifact = await db.collection('code_task_artifacts').findOne({ taskId: inputData.taskId });
-
-    const diffContent = artifact?.diffSummary || '(brak diffa — pliki mogły zostać dodane jako nowe)';
-    const filesChanged = Array.isArray(artifact?.filesChanged)
-      ? artifact.filesChanged.map((f: any) => `${f.path}: ${f.summary}`).join('\n')
-      : '(brak informacji o zmienionych plikach)';
 
     const prompt = `Zadanie ${inputData.taskId} oczekuje na twoje Code Review (iteracja: ${inputData.iteration}/${MAX_REVIEW_ITERATIONS}).
 
-    Zmienione pliki:
-    ${filesChanged}
-
-    Diff zmian:
-    \`\`\`
-    ${diffContent}
-    \`\`\`
+    Pasywny kontekst review zawiera artifact zadania, diff, zmienione pliki, sygnaly weryfikacji i poprzednie notatki review, jesli istnieja.
 
     Przeanalizuj powyższy diff pod kątem:
     - Poprawności logicznej i składniowej
@@ -360,12 +348,12 @@ const executeReviewAgent = createStep({
     Na końcu użyj submitReviewTool i prześlij verdict (approve/needs_changes) wraz z uzasadnieniem.
     Jeśli diff wygląda poprawnie i spełnia wymagania zadania, daj approve.`;
 
-    const response = await generateCoding({
+    const response = await generateReview({
       agent,
-      agentId: 'codeReviewAgent',
       prompt,
       taskId: inputData.taskId,
-      phase: 'review',
+      threadId: inputData.taskId,
+      reviewIteration: inputData.iteration,
       repoPath: AGENTIC_AGENTS_REPO,
       timeoutMs: 180_000,
 
@@ -647,12 +635,12 @@ const decisionGate = createStep({
 
       const nextIteration = iteration + 1;
 
-      await generateCoding({
+      await generateReview({
         agent: reviewAgent,
-        agentId: 'codeReviewAgent',
         prompt: `Zadanie ${taskId} zostało poprawione (iteracja ${nextIteration}/${MAX_REVIEW_ITERATIONS}). Pobierz artefakt i przeprowadź ponowne Code Review. Użyj submitReviewTool aby zaktualizować werdykt.`,
         taskId,
-        phase: 'review',
+        threadId: taskId,
+        reviewIteration: nextIteration,
         repoPath: AGENTIC_AGENTS_REPO,
         timeoutMs: 180_000,
 

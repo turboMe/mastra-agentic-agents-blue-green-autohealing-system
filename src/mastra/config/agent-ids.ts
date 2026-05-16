@@ -13,6 +13,9 @@ export const AUTOMATION_ARCHITECT_MASTRA_AGENT_ID = 'automation-architect' as co
 export const CODING_AGENT_ID = 'codingAgent' as const;
 export const CODING_AGENT_MASTRA_AGENT_ID = 'coding-agent' as const;
 
+export const CODE_REVIEW_AGENT_ID = 'codeReviewAgent' as const;
+export const CODE_REVIEW_AGENT_MASTRA_AGENT_ID = 'code-review-agent' as const;
+
 export const KNOWLEDGE_AGENT_ID = 'knowledgeAgent' as const;
 export const KNOWLEDGE_AGENT_MASTRA_AGENT_ID = 'knowledge-agent' as const;
 
@@ -24,6 +27,11 @@ export const AUTOMATION_ARCHITECT_AGENT_ALIASES = [
 export const CODING_AGENT_ALIASES = [
   CODING_AGENT_ID,
   CODING_AGENT_MASTRA_AGENT_ID,
+] as const;
+
+export const CODE_REVIEW_AGENT_ALIASES = [
+  CODE_REVIEW_AGENT_ID,
+  CODE_REVIEW_AGENT_MASTRA_AGENT_ID,
 ] as const;
 
 export const KNOWLEDGE_AGENT_ALIASES = [
@@ -61,6 +69,9 @@ export function canonicalizeRuntimeAgentId(agentId: string | null | undefined): 
   if ((CODING_AGENT_ALIASES as readonly string[]).includes(agentId)) {
     return CODING_AGENT_ID;
   }
+  if ((CODE_REVIEW_AGENT_ALIASES as readonly string[]).includes(agentId)) {
+    return CODE_REVIEW_AGENT_ID;
+  }
   if ((KNOWLEDGE_AGENT_ALIASES as readonly string[]).includes(agentId)) {
     return KNOWLEDGE_AGENT_ID;
   }
@@ -74,6 +85,9 @@ export function agentIdAliases(agentId: string | null | undefined): string[] {
   }
   if ((CODING_AGENT_ALIASES as readonly string[]).includes(agentId)) {
     return [...CODING_AGENT_ALIASES];
+  }
+  if ((CODE_REVIEW_AGENT_ALIASES as readonly string[]).includes(agentId)) {
+    return [...CODE_REVIEW_AGENT_ALIASES];
   }
   if ((KNOWLEDGE_AGENT_ALIASES as readonly string[]).includes(agentId)) {
     return [...KNOWLEDGE_AGENT_ALIASES];

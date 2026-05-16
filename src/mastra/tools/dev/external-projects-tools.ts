@@ -8,7 +8,7 @@ import { resolve } from 'path';
 // Import subagent directly for delegation
 import { codeReviewAgent } from '../../agents/code-review-agent.js';
 
-import { generateCoding } from '../../services/coding-harness.js';
+import { generateReview } from '../../services/review-harness.js';
 
 export const createExternalProjectTool = createTool({
   id: 'createExternalProject',
@@ -78,11 +78,9 @@ export const delegateToReviewerTool = createTool({
   }),
   execute: async (context) => {
     try {
-      const harnessResult = await generateCoding({
+      const harnessResult = await generateReview({
         agent: codeReviewAgent,
-        agentId: 'codeReviewAgent',
         prompt: `Jako sub-agent recenzujacy, sprawdz ponizszy kontekst i kod. Daj krotka, ekspercka odpowiedz czy jest on bezpieczny i prawidlowy:\n\n${context.context}`,
-        phase: 'review',
         timeoutMs: 120_000,
 
       });
